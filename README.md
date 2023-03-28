@@ -10,6 +10,6 @@ i've used this to create windows (and linux) binaries to for my playdate game's 
 4. Compile using the provided makefile.
 
 # credits
-## Playdate api headers (contained in PD_API directory) are copyright by panic inc
+Playdate api headers (contained in PD_API directory) are copyright by panic inc
 
 
