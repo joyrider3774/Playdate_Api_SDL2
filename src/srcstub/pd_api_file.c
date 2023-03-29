@@ -2,7 +2,9 @@
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <time.h>
+#include <errno.h>
 #include "pd_api/pd_api_display.h"
 #include "pd_api/pd_api_file.h"
 #include "gamestubcallbacks.h"
@@ -56,8 +58,8 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 
 int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, void* userdata), void* userdata, int showhidden)
 {
-    char filename[1000];
-    char filename2[1000];
+    char filename[260];
+    char filename2[520];
     struct dirent *entry;
     struct stat lstats;
 
@@ -114,9 +116,13 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
 
 int	pd_api_file_mkdir(const char* path)
 {
-    char filename[1000];
+    char filename[260];
     sprintf(filename, "./saveddata/%s", path);
+    #if defined(_WIN32)
     return mkdir(filename);
+    #else 
+    return mkdir(filename, 0777);
+    #endif
 }
 
 int	pd_api_file_unlink(const char* name, int recursive)
@@ -129,9 +135,9 @@ int	pd_api_file_unlink(const char* name, int recursive)
             return 0;
 
         struct stat lstats;
-        char filename[1000];
-        char filename2[1000];
-        char filename3[1000];
+        char filename[260];
+        char filename2[520];
+        char filename3[520];
         sprintf(filename, "./saveddata/%s", name);
         if(stat(filename, &lstats) == 0)
         {
@@ -192,8 +198,8 @@ int	pd_api_file_unlink(const char* name, int recursive)
 
 int	pd_api_file_rename(const char* from, const char* to)
 {
-    char filename[1000];
-    char filenameTo[1000];
+    char filename[260];
+    char filenameTo[260];
     sprintf(filename, "./saveddata/%s", from);
     sprintf(filenameTo, "./saveddata/%s", to);
     return rename(filename, filenameTo);
@@ -202,7 +208,7 @@ int	pd_api_file_rename(const char* from, const char* to)
 SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 {
     char *modestr;
-    char filename[1000];
+    char filename[260];
     FILE *LastFile = NULL;
     if (((mode & kFileWrite) == kFileWrite) || ((mode & kFileAppend) == kFileAppend) || ((mode & kFileReadData) == kFileReadData))
     {

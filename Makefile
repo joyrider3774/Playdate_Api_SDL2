@@ -1,4 +1,4 @@
-SRC_DIR = src/srcgame src/srcstub src/srcstub/pd_api
+SRC_DIR = src/srcgame src/srcstub src/srcstub/pd_api src/srcgame/scenes/board src/srcgame/scenes/title src/srcgame/scenes/options src/srcgame/game src/srcgame/title
 OBJ_DIR = ./obj
 OUT_DIR = ./Source
 EXE=game

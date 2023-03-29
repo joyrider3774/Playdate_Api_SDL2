@@ -50,3 +50,11 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+/.vscode
+/Source_formula1
+/Source_waternet
+/Source_blockdude
+/src/srcgame_waternet
+/src/srcgame_blockdude
+/src/srcgame_formula1
+/Source_tetris

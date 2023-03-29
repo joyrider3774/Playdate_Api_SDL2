@@ -16,7 +16,7 @@ PlaydateAPI *Api;
 int audio_rate = 44100; 
 Uint16 audio_format = AUDIO_S16SYS; 
 int audio_channels = 2; 
-int audio_buffers = 4096;
+int audio_buffers = 256;
 
 
 //mapped value of clear must lie between black and white and its value may not be bigger than whitethreshold or lower than blackthreshold

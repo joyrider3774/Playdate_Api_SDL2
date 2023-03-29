@@ -24,7 +24,7 @@ int SampleListCount = 0;
 struct AudioSample {
     Mix_Chunk *sound;
     int channel;
-    char path[PATH_MAX];
+    char path[260];
 };
 
 AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
@@ -41,7 +41,7 @@ AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
 AudioSample* pd_api_sound_loadSample(const char* path)
 {    
     char ext[5];
-    char* fullpath = malloc((strlen(path) + 5) * sizeof(char));
+    char* fullpath = malloc((strlen(path) + 7) * sizeof(char));
     bool needextension = true;
     if(strlen(path) > 4)
     {
@@ -52,12 +52,12 @@ AudioSample* pd_api_sound_loadSample(const char* path)
     if (needextension)
     {
         struct stat lstats;   
-        sprintf(fullpath,"%s.mp3", path);
+        sprintf(fullpath,"./%s.mp3", path);
         if(stat(fullpath, &lstats) != 0)
-            sprintf(fullpath,"%s.wav", path);
+            sprintf(fullpath,"./%s.wav", path);
     }
     else
-        sprintf(fullpath, "%s", path);
+        sprintf(fullpath, "./%s", path);
     
     AudioSample* tmp = NULL;
     
