@@ -8,6 +8,7 @@
 #include "gamestub.h"
 #include "gamestubcallbacks.h"
 #include "pd_api.h"
+#include "defines.h"
 
 SDL_Window *SdlWindow;
 SDL_Renderer *Renderer;
@@ -30,7 +31,7 @@ SDL_Color  pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
 bool stubDoQuit;
 SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
 
-void fullScreenCallBack()
+void _pd_api_sys_fullScreenCallBack()
 {
     //return;
     Uint32 FullscreenFlag = SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -49,12 +50,12 @@ void fullScreenCallBack()
     }
 }
 
-void renderResetCallBack()
+void _pd_api_sys_renderResetCallBack()
 {
     SDL_Log("Render Reset\n");
 }
 
-void quitCallBack()
+void _pd_api_sys_quitCallBack()
 {
     stubDoQuit = true;
 }
@@ -154,7 +155,6 @@ Possible options are:\n\
                     if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) == 0) 
                     {
                         SDL_Log("Succesfully Initialized SDL_MIXER\n");
-                        printf("Allocated %d individual channels for playblack\n", Mix_AllocateChannels(pd_api_sound_MaxSimSounds));
                         //initialiaze playdate api
                         Api = (PlaydateAPI*) malloc(sizeof(*Api));
                         Api->system = pd_api_sys_Create_playdate_sys();
@@ -179,7 +179,7 @@ Possible options are:\n\
                             Uint64 StartTicks = SDL_GetPerformanceCounter();
                             _pd_api_sys_UpdateInput();
                             //run the update function    
-                            DoUpdate(DoUpdateuserdata);
+                            _pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
                             
                             //clear fullbackground of the real screen (in case display offset is used)
                             target = SDL_GetRenderTarget(Renderer);
@@ -283,12 +283,14 @@ Possible options are:\n\
                                 fpslogticks = SDL_GetPerformanceCounter();
                             }                    
                         }
+                        _pd_api_sound_freeSampleList();
                         Mix_CloseAudio();
                     }
                     else
                     {
                         SDL_Log("Failed to initialize SDL Mixer: %s\n", Mix_GetError());
                     }
+                    _pd_api_gfx_freeFontList();
                     TTF_Quit();
                     SDL_DestroyRenderer(Renderer);
                 } 

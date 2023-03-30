@@ -10,7 +10,7 @@ OBJS = $(addprefix $(OBJ_DIR)/, $(SRC:c=o))
 INC_DIRS = -I./ $(addprefix -I, $(SRC_DIR))
 
 CC ?= gcc
-CFLAGS = -g -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-return-type `sdl2-config --cflags` -fexec-charset=UTF-8
+CFLAGS = -g -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-variable -Wno-unused-parameter -Wno-return-type `sdl2-config --cflags`
 OPT_LEVEL ?= -O2 
 LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm -mconsole
 

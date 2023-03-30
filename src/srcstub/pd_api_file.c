@@ -1,4 +1,5 @@
 #include <dirent.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <fcntl.h>
 #include <sys/stat.h>
@@ -8,6 +9,7 @@
 #include "pd_api/pd_api_display.h"
 #include "pd_api/pd_api_file.h"
 #include "gamestubcallbacks.h"
+#include "defines.h"
 
 const char* pd_api_file_geterr(void)
 {
@@ -18,7 +20,7 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 {
     int result = -1;
     struct stat lstats;
-    char filename[1000];
+    char filename[MAXPATH];
     sprintf(filename, "./saveddata/%s", path);
     if(stat(filename, &lstats) == 0)
     {
@@ -58,10 +60,14 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 
 int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, void* userdata), void* userdata, int showhidden)
 {
-    char filename[260];
-    char filename2[520];
+    char filename[MAXPATH];
+    char filename2[(2*MAXPATH)+1];
+    int listsize = ARRAY_LIST_INCSIZES;
+    int listcount = 0;
     struct dirent *entry;
     struct stat lstats;
+
+    char **filenamelist = malloc(listsize * sizeof (*filenamelist));
 
     //saved data folder
     sprintf(filename, "./saveddata/%s", path);
@@ -73,7 +79,7 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
             if((strcmp(entry->d_name, ".") == 0) ||
                (strcmp(entry->d_name, "..") == 0))
                 continue;
-            
+
             sprintf(filename2, "%s/%s", filename, entry->d_name);           
             if(stat(filename2, &lstats) == 0)
             {
@@ -82,7 +88,15 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
                 else
                     sprintf(filename2, "%s", entry->d_name);
                 callback(filename2, userdata);
-                printf("%s\n", entry->d_name);
+                //keep found values in in a list so we won't send duplicate names
+                if (listcount >= listsize)
+                {
+                    listsize += ARRAY_LIST_INCSIZES;
+                    filenamelist = realloc(filenamelist, listsize * sizeof(*filenamelist));
+                }
+
+                filenamelist[listcount] = malloc(261 * sizeof(char));
+                strcpy(filenamelist[listcount++], filename2);
             }
         }
         closedir(dir);
@@ -105,18 +119,35 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
                     sprintf(filename2, "%s/", entry->d_name);
                 else
                     sprintf(filename2, "%s", entry->d_name);
-                callback(filename2, userdata);
-                printf("%s\n", entry->d_name);
+                bool bfound = false;
+                for (int i = 0; i < listcount; i++)
+                {
+                    bfound = strcmp(filename2, filenamelist[i]) == 0;
+                    if(bfound)
+                    {
+                        break;
+                    }
+                }
+
+                if(!bfound)
+                {
+                    callback(filename2, userdata);
+                }
             }
         }
         closedir(dir);
     }
+    for (int i = 0; i < listcount; i++)
+    {
+        free(filenamelist[i]);
+    }
+    free(filenamelist);
     return 0;
 }
 
 int	pd_api_file_mkdir(const char* path)
 {
-    char filename[260];
+    char filename[MAXPATH];
     sprintf(filename, "./saveddata/%s", path);
     #if defined(_WIN32)
     return mkdir(filename);
@@ -135,9 +166,9 @@ int	pd_api_file_unlink(const char* name, int recursive)
             return 0;
 
         struct stat lstats;
-        char filename[260];
-        char filename2[520];
-        char filename3[520];
+        char filename[MAXPATH];
+        char filename2[(2*MAXPATH) + 1];
+        char filename3[(2*MAXPATH) + 1];
         sprintf(filename, "./saveddata/%s", name);
         if(stat(filename, &lstats) == 0)
         {
@@ -198,8 +229,8 @@ int	pd_api_file_unlink(const char* name, int recursive)
 
 int	pd_api_file_rename(const char* from, const char* to)
 {
-    char filename[260];
-    char filenameTo[260];
+    char filename[MAXPATH];
+    char filenameTo[MAXPATH];
     sprintf(filename, "./saveddata/%s", from);
     sprintf(filenameTo, "./saveddata/%s", to);
     return rename(filename, filenameTo);
@@ -208,7 +239,7 @@ int	pd_api_file_rename(const char* from, const char* to)
 SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 {
     char *modestr;
-    char filename[260];
+    char filename[MAXPATH];
     FILE *LastFile = NULL;
     if (((mode & kFileWrite) == kFileWrite) || ((mode & kFileAppend) == kFileAppend) || ((mode & kFileReadData) == kFileReadData))
     {

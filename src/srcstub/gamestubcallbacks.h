@@ -14,17 +14,22 @@ typedef struct playdate_sound_sample playdate_sound_sample;
 typedef struct playdate_file playdate_file;
 typedef struct LCDBitmap LCDBitmap;
 
-extern int pd_api_sound_MaxSimSounds;
-extern void fullScreenCallBack();
-extern void renderResetCallBack();
-extern void quitCallBack();
+extern void _pd_api_sys_fullScreenCallBack();
+extern void _pd_api_sys_renderResetCallBack();
+extern void _pd_api_sys_quitCallBack();
 
+//sys
+extern PDCallbackFunction* _pd_api_sys_DoUpdate;
+extern void* _pd_api_sys_DoUpdateuserdata;
+extern void _pd_api_sys_UpdateInput();
+extern void _pd_api_sound_freeSampleList();
+extern void _pd_api_gfx_freeFontList();
 extern void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, const double angle, int centerx, int centery, LCDBitmapFlip flip);
 extern SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
-extern void _pd_api_sys_UpdateInput();
-extern PDCallbackFunction* DoUpdate;
 
-extern void* DoUpdateuserdata;
+
+
+
 extern float _DisplayFps;
 extern double _DisplayDesiredDelta;
 extern unsigned int _DisplayScale;

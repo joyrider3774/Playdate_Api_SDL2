@@ -2,10 +2,11 @@
 #include "pd_api/pd_api_sys.h"
 #include "CInput.h"
 #include "gamestubcallbacks.h"
+#include "defines.h"
 
-CInput *pd_api_sys_input = NULL;
-PDCallbackFunction* DoUpdate;
-void* DoUpdateuserdata;
+CInput *_pd_api_sys_input = NULL;
+PDCallbackFunction* _pd_api_sys_DoUpdate;
+void* _pd_api_sys_DoUpdateuserdata;
 
 int _CranckSoundDisabled = 0;
 int _CranckDocked = 0;
@@ -13,27 +14,27 @@ Uint32 pd_api_sys_startElapsed = 0;
 
 void _pd_api_sys_UpdateInput()
 {
-	if(pd_api_sys_input == NULL)
+	if(_pd_api_sys_input == NULL)
 	{
-		pd_api_sys_input = CInput_Create();
+		_pd_api_sys_input = CInput_Create();
 	}
 	
-	CInput_Update(pd_api_sys_input);
+	CInput_Update(_pd_api_sys_input);
 
-	if ((pd_api_sys_input->Buttons.ButFullscreen) && (!pd_api_sys_input->PrevButtons.ButFullscreen))
-		fullScreenCallBack();
+	if ((_pd_api_sys_input->Buttons.ButFullscreen) && (!_pd_api_sys_input->PrevButtons.ButFullscreen))
+		_pd_api_sys_fullScreenCallBack();
 
-	if (pd_api_sys_input->Buttons.RenderReset)
-		renderResetCallBack();
+	if (_pd_api_sys_input->Buttons.RenderReset)
+		_pd_api_sys_renderResetCallBack();
 
-	if (pd_api_sys_input->Buttons.ButQuit)
-		quitCallBack();
+	if (_pd_api_sys_input->Buttons.ButQuit)
+		_pd_api_sys_quitCallBack();
 }
 
 void pd_api_sys_setUpdateCallback(PDCallbackFunction* update, void* userdata)
 {
-	DoUpdate = update;
-	DoUpdateuserdata = userdata;
+	_pd_api_sys_DoUpdate = update;
+	_pd_api_sys_DoUpdateuserdata = userdata;
 }
 
 void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons* released)
@@ -41,66 +42,66 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 	if(current != NULL)
 	{
 		*current = 0;
-		if (pd_api_sys_input->Buttons.ButLeft)
+		if (_pd_api_sys_input->Buttons.ButLeft)
 			*current |= kButtonLeft;
 
-		if (pd_api_sys_input->Buttons.ButRight)
+		if (_pd_api_sys_input->Buttons.ButRight)
 			*current |= kButtonRight;
 
-		if (pd_api_sys_input->Buttons.ButUp)
+		if (_pd_api_sys_input->Buttons.ButUp)
 			*current |= kButtonUp;
 
-		if (pd_api_sys_input->Buttons.ButDown)
+		if (_pd_api_sys_input->Buttons.ButDown)
 			*current |= kButtonDown;
 
-		if (pd_api_sys_input->Buttons.ButA)
+		if (_pd_api_sys_input->Buttons.ButA)
 			*current |= kButtonA;
 
-		if (pd_api_sys_input->Buttons.ButB)
+		if (_pd_api_sys_input->Buttons.ButB)
 			*current |= kButtonB;		
 	}
 	
 	if(pushed != NULL)
 	{
 		*pushed = 0;
-		if ((pd_api_sys_input->Buttons.ButLeft) && (!pd_api_sys_input->PrevButtons.ButLeft))
+		if ((_pd_api_sys_input->Buttons.ButLeft) && (!_pd_api_sys_input->PrevButtons.ButLeft))
 			*pushed |= kButtonLeft;
 
-		if ((pd_api_sys_input->Buttons.ButRight) && (!pd_api_sys_input->PrevButtons.ButRight))
+		if ((_pd_api_sys_input->Buttons.ButRight) && (!_pd_api_sys_input->PrevButtons.ButRight))
 			*pushed |= kButtonRight;
 
-		if ((pd_api_sys_input->Buttons.ButUp) && (!pd_api_sys_input->PrevButtons.ButUp))
+		if ((_pd_api_sys_input->Buttons.ButUp) && (!_pd_api_sys_input->PrevButtons.ButUp))
 			*pushed |= kButtonUp;
 
-		if ((pd_api_sys_input->Buttons.ButDown) && (!pd_api_sys_input->PrevButtons.ButDown))
+		if ((_pd_api_sys_input->Buttons.ButDown) && (!_pd_api_sys_input->PrevButtons.ButDown))
 			*pushed |= kButtonDown;
 
-		if ((pd_api_sys_input->Buttons.ButA) && (!pd_api_sys_input->PrevButtons.ButA))
+		if ((_pd_api_sys_input->Buttons.ButA) && (!_pd_api_sys_input->PrevButtons.ButA))
 			*pushed |= kButtonA;
 
-		if ((pd_api_sys_input->Buttons.ButB) && (!pd_api_sys_input->PrevButtons.ButB))
+		if ((_pd_api_sys_input->Buttons.ButB) && (!_pd_api_sys_input->PrevButtons.ButB))
 			*pushed |= kButtonB;
 	}
 	
 	if (released != NULL)
 	{
 		*released = 0;
-		if ((!pd_api_sys_input->Buttons.ButLeft) && (pd_api_sys_input->PrevButtons.ButLeft))
+		if ((!_pd_api_sys_input->Buttons.ButLeft) && (_pd_api_sys_input->PrevButtons.ButLeft))
 			*released |= kButtonLeft;
 
-		if ((!pd_api_sys_input->Buttons.ButRight) && (pd_api_sys_input->PrevButtons.ButRight))
+		if ((!_pd_api_sys_input->Buttons.ButRight) && (_pd_api_sys_input->PrevButtons.ButRight))
 			*released |= kButtonRight;
 
-		if ((!pd_api_sys_input->Buttons.ButUp) && (pd_api_sys_input->PrevButtons.ButUp))
+		if ((!_pd_api_sys_input->Buttons.ButUp) && (_pd_api_sys_input->PrevButtons.ButUp))
 			*released |= kButtonUp;
 		
-		if ((!pd_api_sys_input->Buttons.ButDown) && (pd_api_sys_input->PrevButtons.ButDown))
+		if ((!_pd_api_sys_input->Buttons.ButDown) && (_pd_api_sys_input->PrevButtons.ButDown))
 			*released |= kButtonDown;
 
-		if ((!pd_api_sys_input->Buttons.ButA) && (pd_api_sys_input->PrevButtons.ButA))
+		if ((!_pd_api_sys_input->Buttons.ButA) && (_pd_api_sys_input->PrevButtons.ButA))
 			*released |= kButtonA;
 
-		if ((!pd_api_sys_input->Buttons.ButB) && (pd_api_sys_input->PrevButtons.ButB))
+		if ((!_pd_api_sys_input->Buttons.ButB) && (_pd_api_sys_input->PrevButtons.ButB))
 			*released |= kButtonB;
 	}
 }
@@ -175,7 +176,7 @@ void* pd_api_sys_realloc(void* ptr, size_t size) // ptr = NULL -> malloc, size =
 
 int pd_api_sys_formatString(char **ret, const char *fmt, ...)
 {
-	char Buf[10000];
+	char Buf[FORMAT_STRING_BUFLENGTH];
 	va_list argptr;
     va_start(argptr, fmt);
     vsprintf(&Buf[0], fmt, argptr);

@@ -4,12 +4,9 @@
 #include "pd_api/pd_api_sound.h"
 #include "gamestubcallbacks.h"
 #include "gamestub.h"
+#include "defines.h"
 
 //AudioSample
-
-#define MAX_SIM_SOUNDS 100
-
-int pd_api_sound_MaxSimSounds = MAX_SIM_SOUNDS;
 
 struct SampleChannelEntry {
     AudioSample* Sample;
@@ -18,13 +15,13 @@ struct SampleChannelEntry {
 
 typedef struct SampleChannelEntry SampleChannelEntry;
 
-SampleChannelEntry SampleList[MAX_SIM_SOUNDS];
+SampleChannelEntry** SampleList = NULL;
 int SampleListCount = 0;
 
 struct AudioSample {
     Mix_Chunk *sound;
     int channel;
-    char path[260];
+    char *path;
 };
 
 AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
@@ -32,7 +29,7 @@ AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
     AudioSample *Tmp = (AudioSample*) malloc(sizeof(*Tmp));
     Tmp->sound = NULL;
     Tmp->channel = -1;
-    Tmp->path[0] = '\0';
+    Tmp->path = NULL;
     return Tmp;
 }
 
@@ -63,47 +60,61 @@ AudioSample* pd_api_sound_loadSample(const char* path)
     
     for (int i= 0; i < SampleListCount; i++)
     {
-        if((SampleList[i].Sample != NULL) && SampleList[i].loaded && (strcasecmp(path, SampleList[i].Sample->path) == 0))
+        if(SampleList[i]->loaded && (SampleList[i]->Sample != NULL))
         {
-            tmp = SampleList[i].Sample;
-            break;
+            if (SampleList[i]->Sample->path != NULL)
+            {
+                if (strcasecmp(path, SampleList[i]->Sample->path) == 0)
+                {
+                    tmp = SampleList[i]->Sample;
+                    break;
+                }
+            }
         }
     }
 
     if (tmp == NULL)
     {
-        if (SampleListCount < MAX_SIM_SOUNDS)
+        tmp = pd_api_sound_newSampleBuffer(0);
+        tmp->path = fullpath;
+        tmp->sound = Mix_LoadWAV(tmp->path); 
+        if(tmp->sound == NULL) 
+        { 
+            printf("Unable to load Audio file \"%s\": %s\n", path, Mix_GetError());
+        }
+        
+        bool found = false;
+        int index = SampleListCount;
+        for (int i= 0; i < SampleListCount; i++)
         {
-            tmp = pd_api_sound_newSampleBuffer(4096);
-            tmp->sound = Mix_LoadWAV(fullpath); 
-            strcpy(tmp->path, path);
-            if(tmp->sound == NULL) 
-            { 
-                tmp->channel = -1;
-                printf("Unable to load Audio file \"%s\": %s\n", path, Mix_GetError());
-            }
-            
-            bool found  = false;
-            int index = SampleListCount;
-            for (int i= 0; i < SampleListCount; i++)
+            if(!SampleList[i]->loaded)
             {
-                if(!SampleList[i].loaded)
-                {
-                    index = i;
-                    found = true;
-                    break;
-                }
+                index = i;
+                found = true;
+                break;
             }
-            SampleList[index].Sample = tmp;
-            SampleList[index].loaded = true;
-            tmp->channel = index;
-             if(!found)
-                SampleListCount++;
         }
-        else
-        {
-            printf("Unable to load Audio file \"%s\" Maximum Mix Channel limit reached !", path);
+
+        if(!found)
+        {            
+            if(SampleListCount == 0)
+            {
+                SampleList = malloc(sizeof(*SampleList));
+            }
+            else
+            {
+                SampleList = realloc(SampleList, (SampleListCount + 1) * sizeof(*SampleList));
+            }
+            SampleListCount++;
+            SampleList[index] = malloc(sizeof(SampleChannelEntry));
+            if (SampleListCount != Mix_AllocateChannels(SampleListCount))
+            {
+                printf("Warning Mix_AllocateChannels(%d)\n failed!", SampleListCount);
+            }; 
         }
+        tmp->channel = index;
+        SampleList[index]->Sample = tmp;
+        SampleList[index]->loaded = true;
     }
     return tmp;
 }
@@ -131,19 +142,22 @@ void pd_api_sound_freeSample(AudioSample* sample)
 {
     if(sample == NULL)
         return;
-    if(sample->sound != NULL)
+
+    if(sample->sound)
         Mix_FreeChunk(sample->sound);
 
-    for (int i= 0; i < SampleListCount; i++)
+    if(sample->channel > -1)
     {
-        if(SampleList[i].loaded && (strcasecmp(sample->path, SampleList[i].Sample->path) == 0))
+        if(SampleList[sample->channel]->loaded)
         {
-            SampleList[i].loaded = false;
-            SampleList[i].Sample = NULL;
-            break;
+            SampleList[sample->channel]->loaded = false;
+            SampleList[sample->channel]->Sample = NULL;
         }
     }
 
+    if(sample->path)
+        free(sample->path);
+    
     free(sample);
 }
 
@@ -222,10 +236,12 @@ int pd_api_sound_playSamplePlayer(SamplePlayer* player, int repeat, float rate)
 {
     if(player->sample == NULL)
         return -1;
+    
     if(player->sample->sound == NULL)
         return -1;
+
     int channel = Mix_PlayChannel(player->sample->channel, player->sample->sound, repeat-1);
-    printf("Channel: %d\n", channel);
+    
     if(channel > -1)
         return 0;
     else
@@ -237,7 +253,7 @@ int pd_api_sound_isPlayingSamplePlayer(SamplePlayer* player)
     if(player->sample == NULL)
         return 0;
 
-    if( player->sample->channel > -1)
+    if(player->sample->channel > -1)
     {
         if(Mix_Playing(player->sample->channel))
         {
@@ -268,7 +284,8 @@ void pd_api_sound_setVolumeSamplePlayer(SamplePlayer* player, float left, float 
     {
         if (player->sample->sound != NULL)
         {
-            Mix_VolumeChunk(player->sample->sound, MIX_MAX_VOLUME * left);
+            if(player->sample->channel > -1 )
+                Mix_Volume(player->sample->channel, MIX_MAX_VOLUME * left);
         }
     }
 }
@@ -589,4 +606,15 @@ playdate_sound* pd_api_sound_Create_playdate_sound()
 
     return Tmp;
 }
-  
+
+void _pd_api_sound_freeSampleList()
+{
+    for (int i = 0; i < SampleListCount; i++)
+    {
+        if(SampleList[i]->loaded)
+        {
+            pd_api_sound_freeSample(SampleList[i]->Sample);
+            SampleList[i]->loaded = false;
+        }
+    }
+}

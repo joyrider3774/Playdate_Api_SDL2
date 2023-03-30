@@ -7,9 +7,7 @@
 #include "pd_api/pd_api_gfx.h"
 #include "gamestubcallbacks.h"
 #include "gamestub.h"
-
-#define GFX_STACK_MAX_SIZE 100 // maximum size of the stack
-#define FONT_LIST_MAX_SIZE 100 // maximum of different fonts we can load
+#include "defines.h"
 
 const char loaderror[] = "Failed loading!";
 
@@ -23,7 +21,7 @@ struct LCDBitmapTable {
     int count;
     int w;
     int h;
-    LCDBitmap* bitmaps[1000];
+    LCDBitmap** bitmaps;
 };
 
 struct LCDFont {
@@ -62,17 +60,20 @@ struct GfxContext {
 typedef struct GfxContext GfxContext;
 
 struct FontListEntry {
-    char path[260];
+    char* path;
     LCDFont *font;
 };
 
 typedef struct FontListEntry FontListEntry;
 
+FontListEntry** fontlist; // the list
+int fontlistcount = 0; //the nr of elements
+
+
 GfxContext gfxstack[GFX_STACK_MAX_SIZE]; // the stack
 int gfxstacktop = 0; // index of the top element of the stack
 
-FontListEntry fontlist[FONT_LIST_MAX_SIZE]; // the list
-int fontlistcount = 0; //the nr of elements
+
 
 LCDBitmap* _Playdate_Screen;
 
@@ -367,6 +368,7 @@ LCDBitmapTable* pd_api_gfx_Create_LCDBitmapTable()
         tmp->count = 0;
         tmp->w = 0;
         tmp->h = 0;
+        tmp->bitmaps = NULL;
     }
     return tmp;
 }
@@ -380,6 +382,7 @@ LCDBitmapTable* pd_api_gfx_newBitmapTable(int count, int width, int height)
         result->count = count;
         result->w = width;
         result->h = height;
+        result->bitmaps = malloc(count * sizeof (*result->bitmaps));
         for (int i = 0; i < count; i++)
         {
             result->bitmaps[i] = pd_api_gfx_newBitmap(width, height, kColorClear);
@@ -503,6 +506,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                 result = pd_api_gfx_Create_LCDBitmapTable();
                 if(result)
                 {
+                    result->bitmaps = malloc(sizeof(*result->bitmaps));
                     *outerr = NULL;
                     result->w = w;
                     result->h = h;
@@ -510,7 +514,8 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                     for (int y = 0; y < fullh; y+=h)
                     {
                         for (int x = 0; x < fullw ; x+=w)
-                        {
+                        {     
+                            result->bitmaps = realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
                             result->bitmaps[result->count] = pd_api_gfx_newBitmap(w, h, kColorClear);
                             if(result->bitmaps[result->count])
                             {
@@ -1370,40 +1375,42 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
     else
         sprintf(fullpath, "./%s.ttf", path);
 
-    printf("Path: '%s'\n fullpath:'%s'", path, fullpath);
-
     //check font list to see if we already loaded the font
     for (int i = 0; i < fontlistcount; i++)
     {
-        if (strcasecmp(fontlist[i].path, fullpath) == 0)
+        if (strcasecmp(fontlist[i]->path, fullpath) == 0)
         {
             *outErr = NULL;
             free(fullpath);
-            return fontlist[i].font;
+            return fontlist[i]->font;
         }
     }
 
-    if(fontlistcount < FONT_LIST_MAX_SIZE)
+    TTF_Font* font = TTF_OpenFont(fullpath, 12);
+    if(font)
     {
-        TTF_Font* font = TTF_OpenFont(fullpath, 12);
-        if(font)
+        result = pd_api_gfx_Create_LCDFont();
+        if(result)
         {
-            result = pd_api_gfx_Create_LCDFont();
-            if(result)
-            {
-                printf("Yay\n");
-                *outErr = NULL;
-                TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
-                result->font = font;
+            *outErr = NULL;
+            TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
+            result->font = font;
 
-                strcpy(fontlist[fontlistcount].path, fullpath);
-                fontlist[fontlistcount].font = result;
-                fontlistcount++;
+            if(fontlistcount == 0)
+            {
+                fontlist = malloc(sizeof(*fontlist));
             }
-        }   
-    }
-    else
-        printf("Max chaced font list size reached!\n");
+            else
+            {
+                fontlist = realloc(fontlist, (fontlistcount+1) * sizeof(*fontlist));
+            }
+            fontlist[fontlistcount] = malloc(sizeof(FontListEntry));
+            fontlist[fontlistcount]->path = malloc(strlen(fullpath) + 1);
+            strcpy(fontlist[fontlistcount]->path, fullpath);
+            fontlist[fontlistcount]->font = result;
+            fontlistcount++;
+        }
+    }   
 
     free(fullpath);
     return result;
@@ -1603,3 +1610,14 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 }
 
 
+void _pd_api_gfx_freeFontList()
+{
+    for (int i = 0; i < fontlistcount; i++)
+    {
+        if(fontlist[i]->path)
+            free(fontlist[i]->path);
+        if(fontlist[i]->font)
+            if(fontlist[i]->font->font)
+                TTF_CloseFont(fontlist[i]->font->font);
+    }
+}
