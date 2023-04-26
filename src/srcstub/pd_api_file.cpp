@@ -67,7 +67,7 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
     struct dirent *entry;
     struct stat lstats;
 
-    char **filenamelist = malloc(listsize * sizeof (*filenamelist));
+    char **filenamelist = (char **) malloc(listsize * sizeof (*filenamelist));
 
     //saved data folder
     sprintf(filename, "./saveddata/%s", path);
@@ -92,10 +92,10 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
                 if (listcount >= listsize)
                 {
                     listsize += ARRAY_LIST_INCSIZES;
-                    filenamelist = realloc(filenamelist, listsize * sizeof(*filenamelist));
+                    filenamelist = (char **) realloc(filenamelist, listsize * sizeof(*filenamelist));
                 }
 
-                filenamelist[listcount] = malloc(261 * sizeof(char));
+                filenamelist[listcount] = (char *) malloc(261 * sizeof(char));
                 strcpy(filenamelist[listcount++], filename2);
             }
         }
@@ -238,7 +238,7 @@ int	pd_api_file_rename(const char* from, const char* to)
 
 SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 {
-    char *modestr;
+    char modestr[4];
     char filename[MAXPATH];
     FILE *LastFile = NULL;
     if (((mode & kFileWrite) == kFileWrite) || ((mode & kFileAppend) == kFileAppend) || ((mode & kFileReadData) == kFileReadData))
@@ -253,14 +253,20 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 
     if ((mode & kFileWrite) == kFileWrite)
     {
-        modestr = "w+b";
+        modestr[0] = 'w';
+        modestr[1] = '+';
+        modestr[2] = 'b';
+        modestr[3] = '\0';
         LastFile = fopen(filename, modestr);
     }
     else
     {
         if ((mode & kFileAppend) == kFileAppend)
         {
-            modestr = "a+b";
+            modestr[0] = 'a';
+            modestr[1] = '+';
+            modestr[2] = 'b';
+            modestr[3] = '\0';
             LastFile = fopen(filename, modestr);
         }
         else
@@ -268,7 +274,10 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
             //both read and readdata, data gets preference
             if (((mode & kFileReadData) == kFileReadData) && ((mode & kFileRead) == kFileRead))
             {
-                modestr = "r+b";
+                modestr[0] = 'r';
+                modestr[1] = '+';
+                modestr[2] = 'b';
+                modestr[3] = '\0';
                 LastFile = fopen(filename, modestr);
                 if(!LastFile)
                 {
@@ -281,7 +290,10 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
                 //read mode, path has been set in beginning of function then
                 if(((mode & kFileRead) == kFileRead) || ((mode & kFileReadData) == kFileReadData))
                 {
-                    modestr = "r+b";
+                    modestr[0] = 'r';
+                    modestr[1] = '+';
+                    modestr[2] = 'b';
+                    modestr[3] = '\0';
                     LastFile = fopen(filename, modestr);
                 }
             }
@@ -292,32 +304,32 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 
 int	pd_api_file_SDFileclose(SDFile* file)
 {
-    return fclose(file);
+    return fclose((FILE*)file);
 }
 
 int	pd_api_file_SDFileread(SDFile* file, void* buf, unsigned int len)
 {
-    return fread(buf, 1, len, file);
+    return fread(buf, 1, len, (FILE*)file);
 }
 
 int	pd_api_file_SDFilewrite(SDFile* file, const void* buf, unsigned int len)
 {
-    return fwrite(buf, 1, len, file);
+    return fwrite(buf, 1, len, (FILE*)file);
 }
 
 int	pd_api_file_SDFileflush(SDFile* file)
 {
-    return fflush(file);
+    return fflush((FILE*)file);
 }
 
 int	pd_api_file_SDFiletell(SDFile* file)
 {
-    return ftell(file);
+    return ftell((FILE*)file);
 }
 
 int	pd_api_file_SDFileseek(SDFile* file, int pos, int whence)
 {
-    return fseek(file, pos, whence);
+    return fseek((FILE*)file, pos, whence);
 }
 
 playdate_file* pd_api_file_Create_playdate_file()

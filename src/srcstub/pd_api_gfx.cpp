@@ -4,10 +4,13 @@
 #include <SDL_ttf.h>
 #include <string.h>
 #include <dirent.h>
+#include <vector>
 #include "pd_api/pd_api_gfx.h"
 #include "gamestubcallbacks.h"
 #include "gamestub.h"
 #include "defines.h"
+#include "debug.h"
+
 
 const char loaderror[] = "Failed loading!";
 
@@ -44,37 +47,47 @@ struct LCDVideoPlayer {
 
 };
 
-struct GfxContext {
-    LCDBitmapDrawMode BitmapDrawMode;
-    LCDSolidColor BackgroundColor;
-    LCDBitmap* stencil;
-    int drawoffsetx;
-    int drawoffsety;
-    SDL_Rect cliprect;
-    LCDLineCapStyle linecapstyle;
-    LCDFont* font;
-    int tracking;
-    LCDBitmap* DrawTarget;
+class GfxContext;
+class GfxContext {
+    public:
+        LCDBitmapDrawMode BitmapDrawMode;
+        LCDSolidColor BackgroundColor;
+        LCDBitmap* stencil;
+        int drawoffsetx;
+        int drawoffsety;
+        SDL_Rect cliprect;
+        LCDLineCapStyle linecapstyle;
+        LCDFont* font;
+        int tracking;
+        LCDBitmap* DrawTarget;
+        void Assign(GfxContext* Context);
 };
 
-typedef struct GfxContext GfxContext;
+void GfxContext::Assign(GfxContext* Context)
+{
+    this->BitmapDrawMode = Context->BitmapDrawMode;
+    this->BackgroundColor = Context->BackgroundColor;
+    this->stencil = Context->stencil;
+    this->drawoffsetx = Context->drawoffsetx;
+    this->drawoffsety = Context->drawoffsety;
+    this->cliprect = Context->cliprect;
+    this->linecapstyle = Context->linecapstyle;
+    this->font = Context->font;
+    this->tracking = Context->tracking;
+    this->DrawTarget = Context->DrawTarget;
+}
 
-struct FontListEntry {
-    char* path;
-    LCDFont *font;
+
+class FontListEntry {
+    public:
+        char* path;
+        LCDFont *font;
 };
 
-typedef struct FontListEntry FontListEntry;
+std::vector<FontListEntry*> fontlist;
+std::vector<GfxContext*> gfxstack;
 
-FontListEntry** fontlist; // the list
-int fontlistcount = 0; //the nr of elements
-
-
-GfxContext gfxstack[GFX_STACK_MAX_SIZE]; // the stack
-int gfxstacktop = 0; // index of the top element of the stack
-
-
-
+GfxContext* CurrentGfxContext;
 LCDBitmap* _Playdate_Screen;
 
 SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
@@ -84,7 +97,7 @@ SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
 
 LCDColor getBackgroundDrawColor()
 {
-    return gfxstack[gfxstacktop].BackgroundColor;
+    return CurrentGfxContext->BackgroundColor;
 }
 
 // Drawing Functions
@@ -114,89 +127,90 @@ void pd_api_gfx_clear(LCDColor color)
 
 void pd_api_gfx_setBackgroundColor(LCDSolidColor color)
 {
-    gfxstack[gfxstacktop].BackgroundColor = color;
+    CurrentGfxContext->BackgroundColor = color;
 }
 
 void pd_api_gfx_setStencil(LCDBitmap* stencil) // deprecated in favor of setStencilImage, which adds a "tile" flag
 {
-    gfxstack[gfxstacktop].stencil = stencil;
+    CurrentGfxContext->stencil = stencil;
 }
 
 void pd_api_gfx_setDrawMode(LCDBitmapDrawMode mode)
 {
-    gfxstack[gfxstacktop].BitmapDrawMode = mode;
+    CurrentGfxContext->BitmapDrawMode = mode;
 }
 
 void pd_api_gfx_setDrawOffset(int dx, int dy)
 {
-    gfxstack[gfxstacktop].drawoffsetx = dx;
-    gfxstack[gfxstacktop].drawoffsety = dy;
+    CurrentGfxContext->drawoffsetx = dx;
+    CurrentGfxContext->drawoffsety = dy;
 }
 
 void pd_api_gfx_setClipRect(int x, int y, int width, int height)
 {
-    gfxstack[gfxstacktop].cliprect.x = x;
-    gfxstack[gfxstacktop].cliprect.y = y;
-    gfxstack[gfxstacktop].cliprect.w = width;
-    gfxstack[gfxstacktop].cliprect.h = height;
-    SDL_RenderSetClipRect(Renderer, &gfxstack[gfxstacktop].cliprect);
+    CurrentGfxContext->cliprect.x = x;
+    CurrentGfxContext->cliprect.y = y;
+    CurrentGfxContext->cliprect.w = width;
+    CurrentGfxContext->cliprect.h = height;
+    SDL_RenderSetClipRect(Renderer, &CurrentGfxContext->cliprect);
 }
 
 void pd_api_gfx_clearClipRect(void)
 {
-    gfxstack[gfxstacktop].cliprect.x = -1;
-    gfxstack[gfxstacktop].cliprect.y = -1;
-    gfxstack[gfxstacktop].cliprect.w = -1;
-    gfxstack[gfxstacktop].cliprect.h = -1;
+    CurrentGfxContext->cliprect.x = -1;
+    CurrentGfxContext->cliprect.y = -1;
+    CurrentGfxContext->cliprect.w = -1;
+    CurrentGfxContext->cliprect.h = -1;
     SDL_RenderSetClipRect(Renderer, NULL);
 }
 
 void pd_api_gfx_setLineCapStyle(LCDLineCapStyle endCapStyle)
 {
-    gfxstack[gfxstacktop].linecapstyle = endCapStyle;
+    CurrentGfxContext->linecapstyle = endCapStyle;
 }
 
 void pd_api_gfx_setFont(LCDFont* font)
 {
-    gfxstack[gfxstacktop].font = font;
+    if(!font)
+        printfDebug(DebugInfo, "pd_api_gfx_setFont null");
+    CurrentGfxContext->font = font;
 }
 
 void pd_api_gfx_setTextTracking(int tracking)
 {
-    gfxstack[gfxstacktop].tracking = tracking;
+    CurrentGfxContext->tracking = tracking;
 }
 
 void pd_api_gfx_pushContext(LCDBitmap* target)
 {
-    if (gfxstacktop == GFX_STACK_MAX_SIZE - 1) 
-    {
-        printf("Error: gfxstack overflow\n");
-        return;
-    }
-    gfxstacktop++;
-    gfxstack[gfxstacktop] = gfxstack[gfxstacktop-1] ;
+  
+    GfxContext* Tmp = new GfxContext();
+    Tmp->Assign(CurrentGfxContext);
     if(target)
     {
-        gfxstack[gfxstacktop].DrawTarget = target;
+        Tmp->DrawTarget = target;
     }
     else
     {
-        gfxstack[gfxstacktop].DrawTarget = _Playdate_Screen;
+        Tmp->DrawTarget = _Playdate_Screen;
     }
+    gfxstack.push_back(Tmp);
+    CurrentGfxContext = Tmp;
     
-    SDL_SetRenderTarget(Renderer, gfxstack[gfxstacktop].DrawTarget->Tex);
+    SDL_SetRenderTarget(Renderer, CurrentGfxContext->DrawTarget->Tex);
 }
 
 void pd_api_gfx_popContext(void)
 {
-    if(gfxstacktop > 0)
+    //we should awlays have 1 item it is added when creating the graphics api subset!
+    if(gfxstack.size() > 1)
     {
-        gfxstacktop--;
-
+        gfxstack.pop_back();
+        CurrentGfxContext = gfxstack[gfxstack.size()-1];
         //restore drawtarget
-        if(gfxstack[gfxstacktop].DrawTarget)
+        if(CurrentGfxContext->DrawTarget)
         {
-            SDL_SetRenderTarget(Renderer, gfxstack[gfxstacktop].DrawTarget->Tex);
+            SDL_SetRenderTarget(Renderer, CurrentGfxContext->DrawTarget->Tex);
         }
         else
         {
@@ -204,12 +218,12 @@ void pd_api_gfx_popContext(void)
         }
 
         //restore cliprect
-        if ((gfxstack[gfxstacktop].cliprect.x > -1) &&
-            (gfxstack[gfxstacktop].cliprect.y > -1) &&
-            (gfxstack[gfxstacktop].cliprect.w > -1) &&
-            (gfxstack[gfxstacktop].cliprect.h > -1))
+        if ((CurrentGfxContext->cliprect.x > -1) &&
+            (CurrentGfxContext->cliprect.y > -1) &&
+            (CurrentGfxContext->cliprect.w > -1) &&
+            (CurrentGfxContext->cliprect.h > -1))
         {
-            SDL_RenderSetClipRect(Renderer, &gfxstack[gfxstacktop].cliprect);
+            SDL_RenderSetClipRect(Renderer, &CurrentGfxContext->cliprect);
         }
         else
         {
@@ -287,7 +301,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
     *outerr = loaderror;    
     LCDBitmap* result = NULL;
     char ext[5];
-    char* fullpath = malloc((strlen(path) + 7) * sizeof(char));
+    char* fullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
     bool needextension = true;
     if(strlen(path) > 4)
     {
@@ -346,12 +360,33 @@ void pd_api_gfx_loadIntoBitmap(const char* path, LCDBitmap* bitmap, const char**
 void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* rowbytes, uint8_t** mask, uint8_t** data)
 {
     
-    *mask = NULL;
-    *data = NULL;
-    if(bitmap == NULL)
+    if(mask)
     {
-        *width = bitmap->w;
-        *height = bitmap->h;
+        *mask = NULL;
+    }
+    if(data)
+    {
+        *data = NULL;
+    }
+    if(width)
+    {
+        *width = 0;
+        if(bitmap != NULL)
+        {
+            *width = bitmap->w;
+        }
+    }
+    if(height)
+    {
+        *height = 0;
+        if(bitmap != NULL)
+        {
+            *height = bitmap->h;
+        }
+    }
+    if(rowbytes)
+    {
+        rowbytes = 0;
     }
 }
 
@@ -382,7 +417,7 @@ LCDBitmapTable* pd_api_gfx_newBitmapTable(int count, int width, int height)
         result->count = count;
         result->w = width;
         result->h = height;
-        result->bitmaps = malloc(count * sizeof (*result->bitmaps));
+        result->bitmaps = (LCDBitmap **) malloc(count * sizeof (*result->bitmaps));
         for (int i = 0; i < count; i++)
         {
             result->bitmaps[i] = pd_api_gfx_newBitmap(width, height, kColorClear);
@@ -409,7 +444,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
     LCDBitmapTable* result = NULL;
     char dir_name[255];
     char prefix[255];
-    char *partialPath = strrchr(path, '/');
+    const char *partialPath = strrchr(path, '/');
 
     if(partialPath)
     {
@@ -429,7 +464,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
     
     DIR *dir = opendir(dir_name);
     if (dir == NULL) {
-        printf("error opening dir \"%s\"!", dir_name);
+        printfDebug(DebugInfo, "error opening dir \"%s\"!", dir_name);
         return NULL;
     }
     
@@ -438,7 +473,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
     while ((entry = readdir(dir)) != NULL) {
         if (strncasecmp(prefix, entry->d_name, strlen(prefix)) == 0) 
         {
-            fullpath = malloc(((strlen(entry->d_name)+1)  + (strlen(dir_name) + 1) + 1) * sizeof(char));
+            fullpath =  (char *) malloc(((strlen(entry->d_name)+1)  + (strlen(dir_name) + 1) + 1) * sizeof(char));
             strcpy(fullpath, dir_name);
             strcat(fullpath, "/");
             strcat(fullpath, entry->d_name);
@@ -448,7 +483,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
     closedir(dir);
     if (fullpath)
     {
-        char *tmpPath = malloc((strlen(fullpath)+1) * sizeof(char));
+        char *tmpPath =  (char *) malloc((strlen(fullpath)+1) * sizeof(char));
         strcpy(tmpPath, fullpath);
         
         char *s = tmpPath;
@@ -506,7 +541,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                 result = pd_api_gfx_Create_LCDBitmapTable();
                 if(result)
                 {
-                    result->bitmaps = malloc(sizeof(*result->bitmaps));
+                    result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
                     *outerr = NULL;
                     result->w = w;
                     result->h = h;
@@ -515,7 +550,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                     {
                         for (int x = 0; x < fullw ; x+=w)
                         {     
-                            result->bitmaps = realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
+                            result->bitmaps = (LCDBitmap **) realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
                             result->bitmaps[result->count] = pd_api_gfx_newBitmap(w, h, kColorClear);
                             if(result->bitmaps[result->count])
                             {
@@ -660,7 +695,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
+        bitmap = pd_api_gfx_copyBitmap(CurrentGfxContext->DrawTarget);
         pd_api_gfx_pushContext(bitmap);
         pd_api_gfx_clear(kColorClear);
     }
@@ -696,7 +731,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     if (color == kColorXOR)
     {
         pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
+        pd_api_gfx_pushContext(CurrentGfxContext->DrawTarget);
         pd_api_gfx_setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
         pd_api_gfx_popContext();
@@ -752,8 +787,6 @@ LCDFont* pd_api_gfx_makeFontFromData(LCDFontData* data, int wide)
 
 void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, const double angle, int centerx, int centery, LCDBitmapFlip flip)
 {
-    LCDBitmap* result = NULL;
-
     //create dest rect first with x, y set to 0 so we can draw the scaled bitmap to a temp texture
     SDL_Rect dstrect;
     dstrect.x = 0;
@@ -768,61 +801,55 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
     //draw bitmap first with scaling or flipped or so
     SDL_Texture *tmpTexture = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_TARGET, dstrect.w, dstrect.h);
     SDL_SetRenderTarget(Renderer, tmpTexture);
-    SDL_RendererFlip renderflip = SDL_FLIP_NONE;
     SDL_Point CenterPos;
     CenterPos.x = centery;
     CenterPos.y = centery;
     switch (flip)
     {
         case kBitmapUnflipped:
-            renderflip = SDL_FLIP_NONE;
-            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, renderflip);
+            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, SDL_FLIP_NONE);
             break;
         case kBitmapFlippedX:
-            renderflip = SDL_FLIP_HORIZONTAL;
-            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, renderflip);
+            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, SDL_FLIP_HORIZONTAL);
             break;
         case kBitmapFlippedY:
-            renderflip = SDL_FLIP_VERTICAL;
-            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, renderflip);
+            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, angle, &CenterPos, SDL_FLIP_VERTICAL);
             break;
         case kBitmapFlippedXY:
             SDL_Texture *tmpTexture2 = SDL_CreateTexture( Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_TARGET, dstrect.w, dstrect.h );
             SDL_SetRenderTarget(Renderer, tmpTexture2);   
-            renderflip = SDL_FLIP_HORIZONTAL;
-            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, 0, NULL, renderflip);
+            SDL_RenderCopyEx(Renderer, bitmap->Tex, NULL, &dstrect, 0, NULL, SDL_FLIP_HORIZONTAL);
             SDL_SetRenderTarget(Renderer, tmpTexture);
-            renderflip = SDL_FLIP_VERTICAL;
-            SDL_RenderCopyEx(Renderer, tmpTexture2, NULL, &dstrect, angle, &CenterPos, renderflip);
+            SDL_RenderCopyEx(Renderer, tmpTexture2, NULL, &dstrect, angle, &CenterPos, SDL_FLIP_VERTICAL);
     }
     
    
     //set target x & y
-    dstrect.x = x + gfxstack[gfxstacktop].drawoffsetx;
-    dstrect.y = y + gfxstack[gfxstacktop].drawoffsety;
+    dstrect.x = x + CurrentGfxContext->drawoffsetx;
+    dstrect.y = y + CurrentGfxContext->drawoffsety;
 
 
     //get Streaming Texture from resulting bitmap
     SDL_Texture* streamingTexture = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, dstrect.w, dstrect.h );
-    //SDL_SetTextureBlendMode(streamingTexture, SDL_BLENDMODE_BLEND);
     if(streamingTexture)
     {
+
         void* streamingPixels;
         int streamingPitch;
         if (SDL_LockTexture(streamingTexture, NULL, &streamingPixels, &streamingPitch) == 0)
         {
-            SDL_RenderReadPixels(Renderer, NULL, pd_api_gfx_PIXELFORMAT, streamingPixels, streamingPitch);
-            SDL_UnlockTexture(streamingTexture);
+             SDL_RenderReadPixels(Renderer, NULL, pd_api_gfx_PIXELFORMAT, streamingPixels, streamingPitch);
+             SDL_UnlockTexture(streamingTexture);
         }
         
         // only needed for xor & nxor
         SDL_Texture* streamingTextureDrawTarget = NULL;
-        bool requiresTargetTexture = (gfxstack[gfxstacktop].BitmapDrawMode == kDrawModeNXOR) || (gfxstack[gfxstacktop].BitmapDrawMode == kDrawModeXOR);
+        bool requiresTargetTexture = (CurrentGfxContext->BitmapDrawMode == kDrawModeNXOR) || (CurrentGfxContext->BitmapDrawMode == kDrawModeXOR);
         if (requiresTargetTexture)
         {
             //get Streaming Texture from drawTarget
-            SDL_SetRenderTarget(Renderer, gfxstack[gfxstacktop].DrawTarget->Tex);
-            streamingTextureDrawTarget = SDL_CreateTexture( Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, gfxstack[gfxstacktop].DrawTarget->w, gfxstack[gfxstacktop].DrawTarget->h );
+            SDL_SetRenderTarget(Renderer, CurrentGfxContext->DrawTarget->Tex);
+            streamingTextureDrawTarget = SDL_CreateTexture( Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, dstrect.w, dstrect.h );
             //SDL_SetTextureBlendMode(streamingTextureDrawTarget, SDL_BLENDMODE_BLEND);
             if(streamingTextureDrawTarget)
             {
@@ -830,10 +857,20 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
                 int streamingPitchDrawTarget;
                 if (SDL_LockTexture(streamingTextureDrawTarget, NULL, &streamingPixelsDrawTarget, &streamingPitchDrawTarget ) == 0)
                 {
-                    SDL_RenderReadPixels(Renderer, NULL, pd_api_gfx_PIXELFORMAT, streamingPixelsDrawTarget, streamingPitchDrawTarget);
+                    //only read from destination rect, 
+                    //make sure we don't read outside the bounds of drawtarget
+                    //todo: is this correct ?
+                    // SDL_Rect tmprect;
+                    // tmprect.x = std::max(0, dstrect.x);
+                    // tmprect.y = std::max(0, dstrect.y);
+                    // tmprect.w = std::min(dstrect.w, gfxstack[gfxstacktop].DrawTarget->w - abs(dstrect.x));
+                    // tmprect.h = std::min(dstrect.h, gfxstack[gfxstacktop].DrawTarget->h - abs(dstrect.y));
+                    // apparantly SDL checks the supplied rect value no need to verify our selfves       
+                    SDL_RenderReadPixels(Renderer, &dstrect, pd_api_gfx_PIXELFORMAT, streamingPixelsDrawTarget, streamingPitchDrawTarget);
                     SDL_UnlockTexture(streamingTextureDrawTarget);
                 }
             }
+            //SDL_SetRenderTarget(Renderer, tmpTexture);
         }
         
 
@@ -853,18 +890,19 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
             Uint32 black = SDL_MapRGBA(tmpsurface->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             Uint32 blackthreshold = SDL_MapRGBA(tmpsurface->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
             Uint32 whitethreshold = SDL_MapRGBA(tmpsurface->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
-        
+            Uint32 alpha = SDL_MapRGBA(tmpsurface->format,0,0,0,0);
+            
             if (clear <= blackthreshold)
-                printf("clear color is lower than black threshold color this is wrong and will cause issues !\n");
+                printfDebug(DebugInfo,"clear color is lower than black threshold color this is wrong and will cause issues !\n");
 
             if (clear >= whitethreshold)
-                printf("clear color is bigger than white threshold color this is wrong and will cause issues !\n");
+                printfDebug(DebugInfo,"clear color is bigger than white threshold color this is wrong and will cause issues !\n");
             
             if (clear >= white)
-                printf("clear color is bigger than white color this is wrong and will cause issues !\n");
+                printfDebug(DebugInfo,"clear color is bigger than white color this is wrong and will cause issues !\n");
             
             if (clear <= black)
-                printf("clear color is lower than white color this is wrong and will cause issues !\n");
+                printfDebug(DebugInfo,"clear color is lower than white color this is wrong and will cause issues !\n");
             
             
             //apply drawmode changes to the current tmpsurface only (we will draw it later with colorkey)
@@ -872,139 +910,169 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
             //in case of xor nxor we also need the target surface to compare values
             //but the result is actually applied to the tmpsurface as well wich we'll draw one more time
             //at the end using regular functions
-            switch (gfxstack[gfxstacktop].BitmapDrawMode)
+            switch (CurrentGfxContext->BitmapDrawMode)
             {           
                 case kDrawModeBlackTransparent:
-                    for (int yy = 0; (yy < dstrect.h) && (yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                {
+                    int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                    int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                    for (int yy = 0; (yy < height); yy++)
                     {
-                        for(int xx = 0; (xx < bitmap->w) && (xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
-                        {
-                            
-                            Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                            if (*(Uint32 *)p < blackthreshold)
-                            {
-                                *(Uint32 *)p = clear;
-                            }
+                        for(int xx = 0; (xx < width); xx++)
+                        {                            
+                            Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                            Uint32 pval = *p;
+                            if ((pval == clear) || (pval == alpha) || (pval >= blackthreshold))
+                                continue;
+                            *p = clear;
                         }
                     }               
                     break;
+                }
                 case kDrawModeWhiteTransparent:
-                    for (int yy = 0; (yy < dstrect.h) && (yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                {
+                    int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                    int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                    for (int yy = 0; (yy < height); yy++)
                     {
-                        for(int xx = 0; (xx < bitmap->w) && (xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
-                        {                   
-                            Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                            if (*(Uint32 *)p > whitethreshold)
-                            {
-                                *(Uint32 *)p = clear;
-                            }
+                        for(int xx = 0; (xx < width); xx++)
+                        {               
+                            Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                            Uint32 pval = *p;
+                            if ((pval == clear) || (pval == alpha) || pval <= whitethreshold)
+                                continue;
+                            *p = clear;
                         }
                     }
                     break;
+                }
                 case kDrawModeFillWhite:
-                    for (int yy = 0; (yy < dstrect.h) && (yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                {
+                    int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                    int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                    for (int yy = 0; (yy < height); yy++)
                     {
-                        for(int xx = 0; (xx < bitmap->w) && (xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
-                        {
-                    
-                            Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                            if (*(Uint32 *)p < blackthreshold)
-                            {
-                                *(Uint32 *)p = white;
-                            }
+                        for(int xx = 0; (xx < width); xx++)
+                        {                   
+                            Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                            Uint32 pval = *p;
+                            if ((pval == clear) || (pval == alpha) || (pval >= blackthreshold))
+                                continue;
+                            *p = white;
                         }
                     }
                     break;            
+                }
                 case kDrawModeFillBlack:
-                    for (int yy = 0; (yy < dstrect.h) && (yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                { 
+                    int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                    int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                    for (int yy = 0; (yy < height); yy++)
                     {
-                        for(int xx = 0; (xx < bitmap->w) && (xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
+                        for(int xx = 0; (xx < width); xx++)
                         {
-                    
-                            Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                            if (*(Uint32 *)p > whitethreshold)
-                            {
-                                *(Uint32 *)p = black;
-                            }
+                            Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                            Uint32 pval = *p;
+                            if ((pval == clear) || (pval == alpha) || (pval <= whitethreshold))
+                                continue;
+                            *p = black; 
                         }
                     }
                     break;
+                }
                 case kDrawModeInverted:
-                    for (int yy = 0; (yy < dstrect.h) && (yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                {
+                    int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                    int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                    for (int yy = 0; (yy < height); yy++)
                     {
-                        for(int xx = 0; (xx < bitmap->w) && (xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
+                        for(int xx = 0; (xx < width); xx++)
                         {
-                    
-                            Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                            if (*(Uint32 *)p > whitethreshold)
+                            Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                            Uint32 pval = *p;
+                            if ((pval == clear) || (pval == alpha))
+                                continue;
+                            if (pval > whitethreshold)
                             {
-                                *(Uint32 *)p = black;
+                                *p = black;
                             }
                             else
                             {
-                                if (*(Uint32 *)p < blackthreshold)
+                                if (pval < blackthreshold)
                                 {
-                                    *(Uint32 *)p = white;
+                                    *p = white;
                                 }   
                             }
                         }
                     }
                     break;
+                }
                 case kDrawModeXOR:
+                {
                     if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
                     {
-                        for (int yy = 0; (yy < dstrect.h) && (dstrect.y + yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                        int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                        int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                        for (int yy = 0; (yy < height); yy++)
                         {
-                            for(int xx = 0; (xx < bitmap->w) && (dstrect.x + xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
+                            for(int xx = 0; (xx < width); xx++)
                             {
-                                Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                                Uint8 *p2 = (Uint8 *)drawtargetsurface->pixels + ((dstrect.y + yy)  * drawtargetsurface->pitch) + ((dstrect.x + xx) * drawtargetsurface->format->BytesPerPixel);
-                                if (((*(Uint32 *)p > whitethreshold) && ((*(Uint32 *)p2 < blackthreshold))) || 
-                                    ((*(Uint32 *)p < blackthreshold) && ((*(Uint32 *)p2 > whitethreshold))))
+                                Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                                Uint32 pval = *p;
+                                if ((pval == clear) || (pval == alpha))
+                                    continue;
+                                Uint32 *p2 = (Uint32*)((Uint8 *)drawtargetsurface->pixels + (yy  * drawtargetsurface->pitch) + (xx * drawtargetsurface->format->BytesPerPixel));
+                                Uint32 p2val = *p2;
+                                if (((pval > whitethreshold) && ((p2val < blackthreshold))) || 
+                                    ((pval < blackthreshold) && ((p2val > whitethreshold))))
                                 {
-                                    *(Uint32 *)p = white;
+                                    *p = white;
                                 }
                                 else
                                 {
-                                    if (*(Uint32 *)p != clear)
-                                    {
-                                        *(Uint32 *)p = black;
-                                    }
+                                    *p = black;
                                 }
                             }
                         }
                     }
                     break;
+                }
                 case kDrawModeNXOR:
+                {
                     if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
                     {
-                        for (int yy = 0; (yy < dstrect.h) && (dstrect.y + yy < gfxstack[gfxstacktop].DrawTarget->h); yy++)
+                        int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
+                        int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+                        for (int yy = 0; (yy < height); yy++)
                         {
-                            for(int xx = 0; (xx < bitmap->w) && (dstrect.x + xx < gfxstack[gfxstacktop].DrawTarget->w); xx++)
+                            for(int xx = 0; (xx < width); xx++)
                             {
-
-                                Uint8 *p = (Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel);
-                                Uint8 *p2 = (Uint8 *)drawtargetsurface->pixels + ((dstrect.y + yy)  * drawtargetsurface->pitch) + ((dstrect.x + xx) * drawtargetsurface->format->BytesPerPixel);
-                                if (((*(Uint32 *)p > whitethreshold) && ((*(Uint32 *)p2 < blackthreshold))) || 
-                                    ((*(Uint32 *)p < blackthreshold) && ((*(Uint32 *)p2 > whitethreshold))))
+                                Uint32 *p = (Uint32*)((Uint8 *)tmpsurface->pixels + (yy * tmpsurface->pitch) + (xx * tmpsurface->format->BytesPerPixel));
+                                Uint32 pval = *p;
+                                if ((pval == clear) || (pval == alpha))
+                                    continue;
+                                Uint32 *p2 = (Uint32*)((Uint8 *)drawtargetsurface->pixels + (yy  * drawtargetsurface->pitch) + (xx * drawtargetsurface->format->BytesPerPixel));
+                                Uint32 p2val = *p2;
+                                if (((pval > whitethreshold) && ((p2val < blackthreshold))) || 
+                                    ((pval < blackthreshold) && ((p2val> whitethreshold))))
                                 {
-                                    *(Uint32 *)p = black;
+                                    *p = black;
                                 }
                                 else
                                 {
                                     if (*(Uint32 *)p != clear)
                                     {
-                                        *(Uint32 *)p = white;
+                                        *p = white;
                                     }
                                 }
                             }
                         }
                     }
                     break;
+                }
                 default: //includes copy, nothing needs changing then
                     break;
             }
-            
             SDL_SetColorKey(tmpsurface, SDL_ENABLE, clear);
             SDL_Texture* newtex = SDL_CreateTextureFromSurface(Renderer, tmpsurface);
             SDL_UnlockTexture(streamingTexture);
@@ -1022,8 +1090,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
             if(newtex)
             {
                 SDL_SetTextureBlendMode(newtex, SDL_BLENDMODE_BLEND);
-            
-                SDL_SetRenderTarget(Renderer, gfxstack[gfxstacktop].DrawTarget->Tex);    
+                SDL_SetRenderTarget(Renderer, CurrentGfxContext->DrawTarget->Tex);
                 SDL_RenderCopy(Renderer, newtex, NULL, &dstrect);
                 SDL_DestroyTexture(newtex);
             }
@@ -1088,31 +1155,47 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
 
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
+    int minx;
+    int maxx;
+    int miny;
+    int maxy;
+
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
+        minx = std::min(x1,x2);
+        maxx = std::max(x1,x2);
+        miny = std::min(y1,y2);
+        maxy = std::max(y1,y2);
+        
+        int width = maxx-minx;
+        int height = maxy-miny;
+        
+        x1 -= minx;
+        x2 -= minx;
+        y1 -= miny;
+        y2 -= miny; 
+
+        bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+        Api->graphics->pushContext(bitmap);
     }
 
     SDL_RenderDrawLine(Renderer, x1, y1, x2, y2);
 
     if (color == kColorXOR)
     {
-        pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
-        pd_api_gfx_popContext();
-        pd_api_gfx_freeBitmap(bitmap);        
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);        
     }
-
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);    
 }
 
 void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCDColor color)
 {
-    SDL_Point points[3];
+    SDL_Point points[4];
     Uint8 r,g,b,a;
     SDL_GetRenderDrawColor(Renderer, &r, &g, & b, &a);
     switch (color)
@@ -1132,21 +1215,58 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
         default:
             break;
     }
-    //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
-    LCDBitmap *bitmap = NULL;
-    if (color == kColorXOR)
-    {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
-    }
+    
     points[0].x = x1;
     points[0].y = y1;
     points[1].x = x2;
     points[1].y = y2;
     points[2].x = x3;
-    points[2].y = x3;
-    SDL_RenderDrawLines(Renderer, points, 3);
+    points[2].y = y3;
+    points[3].x = x1;
+    points[3].y = y1;
+    
+    LCDBitmap *bitmap = NULL;
+    int minx;
+    int maxx;
+    int miny;
+    int maxy;
+    
+    if (color == kColorXOR)
+    {
+        minx = std::min(std::min(points[0].x,points[1].x),points[2].x);
+        maxx = std::max(std::max(points[0].x,points[1].x),points[2].x);
+        miny = std::min(std::min(points[0].y,points[1].y),points[2].y);
+        maxy = std::max(std::max(points[0].y,points[1].y),points[2].y);
+        
+        int width = maxx-minx;
+        int height = maxy-miny;
+        
+        points[0].x -= minx;
+        points[1].x -= minx;
+        points[2].x -= minx;
+        points[3].x -= minx;
+
+        points[0].y -= miny;
+        points[1].y -= miny;
+        points[2].y -= miny;
+        points[3].y -= miny;
+
+        bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+        Api->graphics->pushContext(bitmap);
+    }
+
+    SDL_RenderDrawLines(Renderer, points, 4);
+
+    if (color == kColorXOR)
+    {
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);        
+    }
+
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);
 }
 
@@ -1175,27 +1295,26 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
+        bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+        Api->graphics->pushContext(bitmap);
     }
     
 
     SDL_Rect rect;
-    rect.x = x;
-    rect.y = y;
+    rect.x = color == kColorXOR ? 0: x;
+    rect.y = color == kColorXOR ? 0: y;
     rect.w = width;
     rect.h = height;
     SDL_RenderDrawRect(Renderer, &rect);
 
     if (color == kColorXOR)
     {
-        pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
-        pd_api_gfx_popContext();
-        pd_api_gfx_freeBitmap(bitmap);        
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);        
     }
 
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);
@@ -1227,26 +1346,26 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
+        bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+        Api->graphics->pushContext(bitmap);
     }
     
     SDL_Rect rect;
-    rect.x = x;
-    rect.y = y;
+    rect.x = color == kColorXOR ? 0: x;
+    rect.y = color == kColorXOR ? 0: y;
     rect.w = width;
     rect.h = height;
+
     SDL_RenderFillRect(Renderer, &rect);
 
     if (color == kColorXOR)
     {
-        pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
-        pd_api_gfx_popContext();
-        pd_api_gfx_freeBitmap(bitmap);        
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);
     }
 
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);
@@ -1261,10 +1380,18 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
+        bitmap = Api->graphics->newBitmap(width+1, height+1, kColorClear);
+        Api->graphics->pushContext(bitmap);
     }
+    //SDL's implementation takes double while with and height with playdate api is the with of the bounding rectangle
+    width = width >> 1;
+    height = height >> 1;
+    
+    int oldx = x;
+    int oldy = y;
+
+    x = color == kColorXOR ? width  : x + width;
+    y = color == kColorXOR ? height:  y + height;
     
     switch (color)
     {
@@ -1287,12 +1414,12 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 
     if (color == kColorXOR)
     {
-        pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
-        pd_api_gfx_popContext();
-        pd_api_gfx_freeBitmap(bitmap);        
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);        
     }
 
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);
@@ -1307,12 +1434,21 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_pushContext(bitmap);
-        pd_api_gfx_clear(kColorClear);
+        bitmap = Api->graphics->newBitmap(width+1, height+1, kColorClear);
+        Api->graphics->pushContext(bitmap);
     }
-    
-   switch (color)
+    //SDL's implementation takes double while with and height with playdate api is the with of the bounding rectangle
+    width = width >> 1;
+    height = height >> 1;
+
+    int oldx = x;
+    int oldy = y;
+
+    x = color == kColorXOR ? width  : x + width;
+    y = color == kColorXOR ? height:  y + height;
+
+         
+    switch (color)
     {
         case kColorBlack:
             filledEllipseRGBA(Renderer, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
@@ -1331,14 +1467,14 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     }
     
 
-    if (color == kColorXOR)
+     if (color == kColorXOR)
     {
-        pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(gfxstack[gfxstacktop].DrawTarget);
-        pd_api_gfx_setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
-        pd_api_gfx_popContext();
-        pd_api_gfx_freeBitmap(bitmap);        
+        Api->graphics->popContext();
+        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);        
     }
 
     SDL_SetRenderDrawColor(Renderer, r, g, b, a);
@@ -1358,7 +1494,7 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
     *outErr = loaderror;    
     LCDFont* result = NULL;
-    char* fullpath = malloc((strlen(path) + 7) * sizeof(char));
+    char* fullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
     sprintf(fullpath, "./%s", path);
     char* ext = strrchr(fullpath, '.');
     if (ext)
@@ -1376,13 +1512,13 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
         sprintf(fullpath, "./%s.ttf", path);
 
     //check font list to see if we already loaded the font
-    for (int i = 0; i < fontlistcount; i++)
+    for (auto& font : fontlist)
     {
-        if (strcasecmp(fontlist[i]->path, fullpath) == 0)
+        if (strcasecmp(font->path, fullpath) == 0)
         {
             *outErr = NULL;
             free(fullpath);
-            return fontlist[i]->font;
+            return font->font;
         }
     }
 
@@ -1396,19 +1532,11 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
             result->font = font;
 
-            if(fontlistcount == 0)
-            {
-                fontlist = malloc(sizeof(*fontlist));
-            }
-            else
-            {
-                fontlist = realloc(fontlist, (fontlistcount+1) * sizeof(*fontlist));
-            }
-            fontlist[fontlistcount] = malloc(sizeof(FontListEntry));
-            fontlist[fontlistcount]->path = malloc(strlen(fullpath) + 1);
-            strcpy(fontlist[fontlistcount]->path, fullpath);
-            fontlist[fontlistcount]->font = result;
-            fontlistcount++;
+            FontListEntry* Tmp = new FontListEntry();
+            Tmp->path = (char *) malloc(strlen(fullpath) + 1);
+            strcpy(Tmp->path, fullpath);
+            Tmp->font = result;
+            fontlist.push_back(Tmp);
         }
     }   
 
@@ -1434,10 +1562,12 @@ int pd_api_gfx_getGlyphKerning(LCDFontGlyph* glyph, uint32_t glyphcode, uint32_t
 
 int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStringEncoding encoding, int tracking)
 {
+    if(!font)
+        return 0;
     if(font->font)
     {
-        char *sizedtext = malloc((len + 1) * sizeof(char));
-        strncpy(sizedtext,text, len);
+        char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
+        strncpy(sizedtext,(char *) text, len);
         sizedtext[len] = '\0';
         int w,h;
         TTF_SizeText(font->font, sizedtext, &w, &h);
@@ -1451,16 +1581,15 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 {
     if(len == 0)
         return 0;
-    if(gfxstack[gfxstacktop].font == NULL)
+    if(CurrentGfxContext->font == NULL)
         return -1;
     int result = -1;
-    if (gfxstack[gfxstacktop].font->font)
+    if (CurrentGfxContext->font->font)
     {
-        char *sizedtext = malloc((len + 1) * sizeof(char));
-        strncpy(sizedtext, text, len);
+        char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
+        strncpy(sizedtext, (char *)text, len);
         sizedtext[len] = '\0';
-        int w, h;
-        SDL_Surface* TextSurface = TTF_RenderText_Solid_Wrapped(gfxstack[gfxstacktop].font->font, sizedtext, pd_api_gfx_color_black, 0);
+        SDL_Surface* TextSurface = TTF_RenderText_Solid_Wrapped(CurrentGfxContext->font->font, sizedtext, pd_api_gfx_color_black, 0);
         free(sizedtext);
         if (TextSurface) 
         {
@@ -1497,6 +1626,7 @@ playdate_video* pd_api_gfx_Create_playdate_video()
     Tmp->getError = pd_api_gfx_getError;
     Tmp->getInfo = pd_api_gfx_getInfo;
     Tmp->getContext = pd_api_gfx_getContext;
+    return Tmp;
 }
 
 playdate_graphics* pd_api_gfx_Create_playdate_graphics()
@@ -1504,20 +1634,21 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
     
     _Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
-    
-    gfxstack[gfxstacktop].BackgroundColor = kColorClear;
-    gfxstack[gfxstacktop].BitmapDrawMode = kDrawModeCopy;
-    gfxstack[gfxstacktop].cliprect.x = -1;
-    gfxstack[gfxstacktop].cliprect.y = -1;
-    gfxstack[gfxstacktop].cliprect.w = -1;
-    gfxstack[gfxstacktop].cliprect.h = -1;
-    gfxstack[gfxstacktop].drawoffsetx = 0;
-    gfxstack[gfxstacktop].drawoffsety = 0;
-    gfxstack[gfxstacktop].DrawTarget = _Playdate_Screen;
-    gfxstack[gfxstacktop].font = NULL;
-    gfxstack[gfxstacktop].linecapstyle = kLineCapStyleButt;
-    gfxstack[gfxstacktop].stencil = NULL;
-    gfxstack[gfxstacktop].tracking = 0;
+    CurrentGfxContext = new GfxContext();
+    CurrentGfxContext->BackgroundColor = kColorClear;
+    CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
+    CurrentGfxContext->cliprect.x = -1;
+    CurrentGfxContext->cliprect.y = -1;
+    CurrentGfxContext->cliprect.w = -1;
+    CurrentGfxContext->cliprect.h = -1;
+    CurrentGfxContext->drawoffsetx = 0;
+    CurrentGfxContext->drawoffsety = 0;
+    CurrentGfxContext->DrawTarget = _Playdate_Screen;
+    CurrentGfxContext->font = NULL;
+    CurrentGfxContext->linecapstyle = kLineCapStyleButt;
+    CurrentGfxContext->stencil = NULL;
+    CurrentGfxContext->tracking = 0;
+    gfxstack.push_back(CurrentGfxContext);
 
     SDL_SetRenderTarget(Renderer, _Playdate_Screen->Tex);
     SDL_SetRenderDrawBlendMode(Renderer, SDL_BLENDMODE_BLEND);
@@ -1553,7 +1684,7 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 	Tmp->setTextTracking = pd_api_gfx_setTextTracking;
 	Tmp->pushContext = pd_api_gfx_pushContext;
 	Tmp->popContext = pd_api_gfx_popContext;
-	
+
 	Tmp->drawBitmap = pd_api_gfx_drawBitmap;
 	Tmp->tileBitmap = pd_api_gfx_tileBitmap;
 	Tmp->drawLine = pd_api_gfx_drawLine;
@@ -1612,12 +1743,13 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 
 void _pd_api_gfx_freeFontList()
 {
-    for (int i = 0; i < fontlistcount; i++)
+    for (auto& font:fontlist)
     {
-        if(fontlist[i]->path)
-            free(fontlist[i]->path);
-        if(fontlist[i]->font)
-            if(fontlist[i]->font->font)
-                TTF_CloseFont(fontlist[i]->font->font);
+        if(font->path)
+            free(font->path);
+        if(font->font)
+            if(font->font->font)
+                TTF_CloseFont(font->font->font);
     }
+    fontlist.clear();
 }

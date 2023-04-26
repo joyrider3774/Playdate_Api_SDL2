@@ -16,6 +16,7 @@ typedef int (*lua_CFunction)(lua_State* L);
 
 typedef struct LuaUDObject LuaUDObject;
 typedef struct LCDSprite LCDSprite;
+typedef struct LCDBitmap LCDBitmap;
 
 typedef enum { kInt, kFloat, kStr } l_valtype;
 

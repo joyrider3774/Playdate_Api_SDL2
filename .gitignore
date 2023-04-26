@@ -51,11 +51,35 @@ Module.symvers
 Mkfile.old
 dkms.conf
 /.vscode
+/64bit libs
 /Source_formula1
 /Source_waternet
 /Source_blockdude
+/Source_tetris
+/Source_arkanoid
+/Source_bunnymark
+/Source_chess
+/Source_dunno
+/Source_fish
+/Source_invaders
+/Source_jap_puzzle
+/Source_pong
+/Source_shooter
+/Source_sprite
 /src/srcgame_waternet
 /src/srcgame_blockdude
 /src/srcgame_formula1
-/Source_tetris
-/64bit libs
+/src/srcgame_arkanoid
+/src/srcgame_bunnymark
+/src/srcgame_chess
+/src/srcgame_dunno
+/src/srcgame_fish
+/src/srcgame_invaders
+/src/srcgame_jap_puzzle
+/src/srcgame_pong
+/src/srcgame_shooter
+/src/srcgame_sprite
+/src/srcgame_tetris
+
+
+

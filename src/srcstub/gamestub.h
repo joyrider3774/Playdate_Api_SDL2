@@ -19,6 +19,6 @@ extern SDL_Color pd_api_gfx_color_white;
 extern SDL_Color pd_api_gfx_color_black; 
 extern SDL_Color pd_api_gfx_color_whitetreshold;
 extern SDL_Color pd_api_gfx_color_blacktreshold;
-int main(int argc, char *argv[]);
+int main(int argv, char** args);
 
 #endif

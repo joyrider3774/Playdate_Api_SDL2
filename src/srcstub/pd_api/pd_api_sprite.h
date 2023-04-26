@@ -27,6 +27,9 @@ static inline PDRect PDRectMake(float x, float y, float width, float height)
 	return (PDRect){ .x = x, .y = y, .width = width, .height = height };
 }
 
+
+typedef struct LCDSprite LCDSprite;
+
 #endif
 
 typedef struct {

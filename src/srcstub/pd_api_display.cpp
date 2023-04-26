@@ -11,7 +11,9 @@ int _DisplayFlippedY = 0;
 int _DisplayOffsetDisplayX = 0;
 int _DisplayOffsetDisplayY = 0;
 int _DisplayInverted = 0;
-double _CurrentFps = 0.0f;
+double _CurrentFps = 0.0;
+double _AvgFps = 0.0;
+double _LastFPS = 0.0;
 
 int pd_api_display_getWidth(void)
 {

@@ -1,0 +1,8 @@
+{
+  "execPath": "/usr/bin/g++",
+  "gccDefaultCFlags": "-Wall",
+  "gccDefaultCppFlags": "-Wall -std=c++17 -fsyntax-only",
+  "gccErrorLimit": 15,
+  "gccIncludePaths": ".,./include,./path, ./src, ./build/_deps/googletest-src/googletest/include/, ./build/_deps/googletest-src/googlemock/include/",
+  "gccSuppressWarnings": true
+}

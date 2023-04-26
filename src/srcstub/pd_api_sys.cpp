@@ -3,6 +3,7 @@
 #include "CInput.h"
 #include "gamestubcallbacks.h"
 #include "defines.h"
+#include "gamestub.h"
 
 CInput *_pd_api_sys_input = NULL;
 PDCallbackFunction* _pd_api_sys_DoUpdate;
@@ -41,74 +42,83 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 {
 	if(current != NULL)
 	{
-		*current = 0;
+		int *curr = (int*)current;
+		*curr = 0;
 		if (_pd_api_sys_input->Buttons.ButLeft)
-			*current |= kButtonLeft;
+			*curr |= kButtonLeft;
 
 		if (_pd_api_sys_input->Buttons.ButRight)
-			*current |= kButtonRight;
+			*curr |= kButtonRight;
 
 		if (_pd_api_sys_input->Buttons.ButUp)
-			*current |= kButtonUp;
+			*curr |= kButtonUp;
 
 		if (_pd_api_sys_input->Buttons.ButDown)
-			*current |= kButtonDown;
+			*curr |= kButtonDown;
 
 		if (_pd_api_sys_input->Buttons.ButA)
-			*current |= kButtonA;
+			*curr |= kButtonA;
 
 		if (_pd_api_sys_input->Buttons.ButB)
-			*current |= kButtonB;		
+			*curr |= kButtonB;		
 	}
 	
 	if(pushed != NULL)
 	{
-		*pushed = 0;
+		
+		int *push = (int*)pushed;
+		*push = 0;
 		if ((_pd_api_sys_input->Buttons.ButLeft) && (!_pd_api_sys_input->PrevButtons.ButLeft))
-			*pushed |= kButtonLeft;
+			*push |= kButtonLeft;
 
 		if ((_pd_api_sys_input->Buttons.ButRight) && (!_pd_api_sys_input->PrevButtons.ButRight))
-			*pushed |= kButtonRight;
+			*push |= kButtonRight;
 
 		if ((_pd_api_sys_input->Buttons.ButUp) && (!_pd_api_sys_input->PrevButtons.ButUp))
-			*pushed |= kButtonUp;
+			*push |= kButtonUp;
 
 		if ((_pd_api_sys_input->Buttons.ButDown) && (!_pd_api_sys_input->PrevButtons.ButDown))
-			*pushed |= kButtonDown;
+			*push |= kButtonDown;
 
 		if ((_pd_api_sys_input->Buttons.ButA) && (!_pd_api_sys_input->PrevButtons.ButA))
-			*pushed |= kButtonA;
+			*push |= kButtonA;
 
 		if ((_pd_api_sys_input->Buttons.ButB) && (!_pd_api_sys_input->PrevButtons.ButB))
-			*pushed |= kButtonB;
+			*push |= kButtonB;
 	}
 	
 	if (released != NULL)
 	{
-		*released = 0;
+		int *rel = (int *)released;
+		*rel = 0;
 		if ((!_pd_api_sys_input->Buttons.ButLeft) && (_pd_api_sys_input->PrevButtons.ButLeft))
-			*released |= kButtonLeft;
+			*rel |= kButtonLeft;
 
 		if ((!_pd_api_sys_input->Buttons.ButRight) && (_pd_api_sys_input->PrevButtons.ButRight))
-			*released |= kButtonRight;
+			*rel |= kButtonRight;
 
 		if ((!_pd_api_sys_input->Buttons.ButUp) && (_pd_api_sys_input->PrevButtons.ButUp))
-			*released |= kButtonUp;
+			*rel |= kButtonUp;
 		
 		if ((!_pd_api_sys_input->Buttons.ButDown) && (_pd_api_sys_input->PrevButtons.ButDown))
-			*released |= kButtonDown;
+			*rel |= kButtonDown;
 
 		if ((!_pd_api_sys_input->Buttons.ButA) && (_pd_api_sys_input->PrevButtons.ButA))
-			*released |= kButtonA;
+			*rel |= kButtonA;
 
 		if ((!_pd_api_sys_input->Buttons.ButB) && (_pd_api_sys_input->PrevButtons.ButB))
-			*released |= kButtonB;
+			*rel |= kButtonB;
 	}
 }
 
 void pd_api_sys_drawFPS(int x, int y)
 {
-
+	Api->graphics->pushContext(NULL);
+	char *Text;
+	Api->system->formatString(&Text,"%2.0f", _LastFPS);
+	Api->graphics->drawText(Text, strlen(Text), kASCIIEncoding, x, y);
+	Api->system->realloc(Text, 0);
+	Api->graphics->popContext();
 }
 
 //cranck
@@ -137,7 +147,7 @@ int pd_api_sys_setCrankSoundsDisabled(int flag) // returns previous setting
 
 void pd_api_sys_logToConsole(const char* fmt, ...)
 {
-	char* fmtnewline = malloc(strlen(fmt) + 2);
+	char* fmtnewline = (char*)malloc(strlen(fmt) + 2);
 	strcpy(fmtnewline, fmt);
 	strcat(fmtnewline, "\n");
 
@@ -150,7 +160,7 @@ void pd_api_sys_logToConsole(const char* fmt, ...)
 
 void pd_api_sys_error(const char* fmt, ...)
 {
-	char* fmtnewline = malloc(strlen(fmt) + 2);
+	char* fmtnewline = (char*)malloc(strlen(fmt) + 2);
 	strcpy(fmtnewline, fmt);
 	strcat(fmtnewline, "\n");
 
@@ -181,7 +191,7 @@ int pd_api_sys_formatString(char **ret, const char *fmt, ...)
     va_start(argptr, fmt);
     vsprintf(&Buf[0], fmt, argptr);
     va_end(argptr);
-	*ret = pd_api_sys_realloc(NULL,(strlen(Buf) + 1) * sizeof(char));
+	*ret = (char*) pd_api_sys_realloc(NULL,(strlen(Buf) + 1) * sizeof(char));
 	strcpy(*ret, Buf);
 	return 0;
 
@@ -271,7 +281,7 @@ void pd_api_sys_setMenuItemTitle(PDMenuItem *menuItem, const char *title)
 
 void* pd_api_sys_getMenuItemUserdata(PDMenuItem *menuItem)
 {
-
+	return NULL;
 }
 
 void pd_api_sys_setMenuItemUserdata(PDMenuItem *menuItem, void *ud)

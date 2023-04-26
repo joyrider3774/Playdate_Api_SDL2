@@ -2,13 +2,13 @@
 #include <SDL_ttf.h>
 #include <SDL_mixer.h>
 #include <stdbool.h>
-#include <stdlib.h>
-#include <unistd.h>
 #include <stdint.h>
+#include <unistd.h>
 #include "gamestub.h"
 #include "gamestubcallbacks.h"
 #include "pd_api.h"
 #include "defines.h"
+#include "debug.h"
 
 SDL_Window *SdlWindow;
 SDL_Renderer *Renderer;
@@ -60,7 +60,7 @@ void _pd_api_sys_quitCallBack()
     stubDoQuit = true;
 }
 
-int main(int argc, char *argv[])
+int main(int argv, char** args)
 {
 	bool useSoftwareRenderer = true;
     bool useLinear = false;
@@ -68,7 +68,7 @@ int main(int argc, char *argv[])
     bool useFullScreenAtStartup = false;
     bool useOpenGLHint = false;
     int c;
-    while ((c = getopt(argc, argv, "?lafvo")) != -1) 
+    while ((c = getopt(argv, args, "?lafvo")) != -1) 
     {
         switch (c) 
         {
@@ -82,6 +82,7 @@ Possible options are:\n\
   -a: Use Acclerated Renderer (can cause issues with Directx like blackscreen on window resizes)\n\
   -u: When using Acclerated Renderer set hint to use OpenGl\n\
   -f: Run fullscreen at startup (by default starts up windowed)\n\
+  -o: Set OpenGL Hint in accelerated mode, so it will try to use opengl\n\
   -v: Use VSync\n");
                 exit(0);
                 break;
@@ -162,18 +163,22 @@ Possible options are:\n\
                         Api->graphics = pd_api_gfx_Create_playdate_graphics();
                         Api->sound = pd_api_sound_Create_playdate_sound();
                         Api->file = pd_api_file_Create_playdate_file();
+                        Api->sprite = pd_api_sprite_Create_playdate_sprite();
+                        Api->lua = pd_api_lua_Create_playdate_lua();
+                        Api->scoreboards = pd_api_scoreboards_Create_playdate_scoreboards();
+                        Api->json = pd_api_json_Create_playdate_json();
 
                         //initialize handler
                         eventHandler(Api, kEventInit, 0);
 
-                        Uint64 Delta = 0;
-                        Uint64 Delta2 = 0;
                         Uint64 fpslogticks = SDL_GetPerformanceCounter();
                         stubDoQuit = false;
                         Uint8 r,g,b,a;
                         SDL_Texture* target;
                         double elapsed = 0.0;
                         LCDColor bgColor;
+                        Uint64 _FrameCount = 0;
+                        double _TotalFps = 0.0;
                         while(!stubDoQuit)
                         {
                             Uint64 StartTicks = SDL_GetPerformanceCounter();
@@ -181,24 +186,28 @@ Possible options are:\n\
                             //run the update function    
                             _pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
                             
+                            //clean sprites set as not loaded (delayed delete to prevent issues)
+                            _pd_api_sprite_cleanup_sprites(true);
+                            
                             //clear fullbackground of the real screen (in case display offset is used)
                             target = SDL_GetRenderTarget(Renderer);
                                             
                             SDL_SetRenderTarget(Renderer, NULL);
                             bgColor = getBackgroundDrawColor();
                             SDL_GetRenderDrawColor(Renderer, &r, &g, & b, &a);
+                            //warning i inverted these for testing (see waternet / blockdude)!
                             switch(bgColor)
                             {                       
-                                case kColorWhite:
+                                case kColorBlack:
                                     SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
                                     break;
                                 case kColorClear:
-                                    if(_DisplayInverted)
-                                        SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-                                    else
+                                    if(!_DisplayInverted)
                                         SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+                                    else
+                                        SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
                                     break;
-                                case kColorBlack:
+                                case kColorWhite:
                                     SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
                                     break;
                             }
@@ -210,7 +219,7 @@ Possible options are:\n\
                             //so that clear pixels (cyan's) are made transparant. 
                             //we clear the background of the real screen surface with either white or black
                             //bgColor = getBackgroundDrawColor();
-                            LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
+                            LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, (LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
                             //get the playdate screen bitmap
                             LCDBitmap * playdatescreen = Api->graphics->getDisplayBufferBitmap();
                             //and push it as a context so we can pop it later
@@ -266,24 +275,72 @@ Possible options are:\n\
                             //restore render target
                             SDL_SetRenderTarget(Renderer, target);
 
+                            //for calculating avergage
+                            _FrameCount++;
+
                             //calculate fps & delay
                             elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
                             if ((_DisplayDesiredDelta != 0.0) && (elapsed < _DisplayDesiredDelta))
                             {
                                 SDL_Delay((Uint32)(_DisplayDesiredDelta - (elapsed)));
                             }
-
+                            
                             elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
                             if(elapsed != 0.0)
+                            {
                                 _CurrentFps = 1 / elapsed;
+                                _TotalFps += _CurrentFps;
+                                _AvgFps = _TotalFps / _FrameCount;
+                            }
                             
                             if (((SDL_GetPerformanceFrequency() + fpslogticks)) < SDL_GetPerformanceCounter())
-                            {                        
-                                printf("%2f\n", _CurrentFps);
+                            {  
+                                _TotalFps = 0.0f;
+                                _FrameCount = 0;
+                                _LastFPS = _AvgFps;
+                                printfDebug(DebugFPS, "%2f\n", _LastFPS);
                                 fpslogticks = SDL_GetPerformanceCounter();
                             }                    
                         }
+                        //erase remaining sprites in memory
+                        _pd_api_sprite_cleanup_sprites(false);
+
+                        //free samples & sounds
                         _pd_api_sound_freeSampleList();
+
+                        //free Api
+                        free((void *)Api->system);
+                        free((void *)Api->display); 
+                        free((void *)Api->graphics->video);
+                        free((void *)Api->graphics);
+                        free((void *)Api->sound->source);
+                        free((void *)Api->sound->fileplayer);
+                        free((void *)Api->sound->sample);
+                        free((void *)Api->sound->sampleplayer);
+                        free((void *)Api->sound->signal);
+                        free((void *)Api->sound->lfo);
+                        free((void *)Api->sound->envelope);
+                        free((void *)Api->sound->synth);
+                        free((void *)Api->sound->controlsignal);
+                        free((void *)Api->sound->instrument);
+                        free((void *)Api->sound->track);
+                        free((void *)Api->sound->sequence);
+                        free((void *)Api->sound->channel);
+                        free((void *)Api->sound->effect->bitcrusher);
+                        free((void *)Api->sound->effect->delayline);
+                        free((void *)Api->sound->effect->onepolefilter);
+                        free((void *)Api->sound->effect->twopolefilter);
+                        free((void *)Api->sound->effect->ringmodulator);
+                        free((void *)Api->sound->effect->overdrive);
+                        free((void *)Api->sound->effect);
+                        free((void *)Api->sound);
+                        free((void *)Api->file);
+                        free((void *)Api->sprite);
+                        free((void *)Api->lua);
+                        free((void *)Api->scoreboards);
+                        free((void *)Api->json);
+
+
                         Mix_CloseAudio();
                     }
                     else
@@ -293,6 +350,7 @@ Possible options are:\n\
                     _pd_api_gfx_freeFontList();
                     TTF_Quit();
                     SDL_DestroyRenderer(Renderer);
+                    free(Api);
                 } 
                 else 
                 {
