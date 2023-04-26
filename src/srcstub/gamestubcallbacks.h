@@ -43,6 +43,7 @@ extern void _pd_api_sound_freeSampleList();
 extern void _pd_api_gfx_freeFontList();
 extern void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, const double angle, int centerx, int centery, LCDBitmapFlip flip);
 extern SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
+extern void _pd_api_gfx_drawFPS(int x, int y);
 
 
 extern void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites);

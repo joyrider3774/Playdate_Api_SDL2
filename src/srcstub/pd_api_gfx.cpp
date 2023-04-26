@@ -94,6 +94,18 @@ SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
 {
     return bitmap->Tex;
 }
+void _pd_api_gfx_drawFPS(int x, int y)
+{
+    Api->graphics->pushContext(NULL);
+    char *Text;
+    Api->system->formatString(&Text,"%2.0f", _LastFPS);
+    int w = Api->graphics->getTextWidth(CurrentGfxContext->font, Text, strlen(Text), kASCIIEncoding, 0);
+    int h = Api->graphics->getFontHeight(CurrentGfxContext->font);
+    Api->graphics->fillRect(0, 0, w, h, kColorWhite);
+    Api->graphics->drawText(Text, strlen(Text), kASCIIEncoding, x, y);
+    Api->system->realloc(Text, 0);
+    Api->graphics->popContext();
+}
 
 LCDColor getBackgroundDrawColor()
 {

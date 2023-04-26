@@ -113,12 +113,7 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 
 void pd_api_sys_drawFPS(int x, int y)
 {
-	Api->graphics->pushContext(NULL);
-	char *Text;
-	Api->system->formatString(&Text,"%2.0f", _LastFPS);
-	Api->graphics->drawText(Text, strlen(Text), kASCIIEncoding, x, y);
-	Api->system->realloc(Text, 0);
-	Api->graphics->popContext();
+	_pd_api_gfx_drawFPS(x,y);
 }
 
 //cranck
