@@ -755,11 +755,13 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
 
 uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 {
-    if(font->font)
-    {
-        return TTF_FontHeight(font->font);
-    }
-    return 0;
+    if (!font)
+        return 0;
+
+    if(!font->font)
+        return 0;
+
+    return TTF_FontHeight(font->font);
 }
 	
 // 1.7
@@ -1576,17 +1578,17 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 {
     if(!font)
         return 0;
-    if(font->font)
-    {
-        char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
-        strncpy(sizedtext,(char *) text, len);
-        sizedtext[len] = '\0';
-        int w,h;
-        TTF_SizeText(font->font, sizedtext, &w, &h);
-        free(sizedtext);
-        return w;
-    }
-    return 0;
+        
+    if(!font->font)
+        return 0;
+    
+    char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
+    strncpy(sizedtext,(char *) text, len);
+    sizedtext[len] = '\0';
+    int w,h;
+    TTF_SizeText(font->font, sizedtext, &w, &h);
+    free(sizedtext);
+    return w;
 }
 
 int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding, int x, int y)
