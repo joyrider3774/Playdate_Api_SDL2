@@ -89,6 +89,8 @@ std::vector<GfxContext*> gfxstack;
 
 GfxContext* CurrentGfxContext;
 LCDBitmap* _Playdate_Screen;
+LCDFont* _Default_Font = NULL;
+LCDFont* _FPS_Font = NULL;
 
 SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
 {
@@ -97,11 +99,15 @@ SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
 void _pd_api_gfx_drawFPS(int x, int y)
 {
     Api->graphics->pushContext(NULL);
+    Api->graphics->setDrawMode(kDrawModeCopy);
+    Api->graphics->clearClipRect();
+    Api->graphics->setDrawOffset(0,0);
     char *Text;
     Api->system->formatString(&Text,"%2.0f", _LastFPS);
-    int w = Api->graphics->getTextWidth(CurrentGfxContext->font, Text, strlen(Text), kASCIIEncoding, 0);
-    int h = Api->graphics->getFontHeight(CurrentGfxContext->font);
-    Api->graphics->fillRect(0, 0, w, h, kColorWhite);
+    Api->graphics->setFont(_FPS_Font);
+    int w = Api->graphics->getTextWidth(_FPS_Font, Text, strlen(Text), kASCIIEncoding, 0);
+    int h = Api->graphics->getFontHeight(_FPS_Font);
+    Api->graphics->fillRect(x, y, w, h, kColorWhite);
     Api->graphics->drawText(Text, strlen(Text), kASCIIEncoding, x, y);
     Api->system->realloc(Text, 0);
     Api->graphics->popContext();
@@ -184,8 +190,9 @@ void pd_api_gfx_setLineCapStyle(LCDLineCapStyle endCapStyle)
 void pd_api_gfx_setFont(LCDFont* font)
 {
     if(!font)
-        printfDebug(DebugInfo, "pd_api_gfx_setFont null");
-    CurrentGfxContext->font = font;
+        CurrentGfxContext->font = _Default_Font;
+    else
+        CurrentGfxContext->font = font;
 }
 
 void pd_api_gfx_setTextTracking(int tracking)
@@ -755,13 +762,17 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
 
 uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 {
-    if (!font)
+    LCDFont *f = font;
+    if(!f)
+        f = _Default_Font;
+
+    if(!f)
         return 0;
 
-    if(!font->font)
+    if(!f->font)
         return 0;
 
-    return TTF_FontHeight(font->font);
+    return TTF_FontHeight(f->font);
 }
 	
 // 1.7
@@ -1120,7 +1131,7 @@ void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotatio
     if (bitmap == NULL)
         return;
     
-    _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, rotation, (int)centerx, (int)centery, kBitmapUnflipped);
+    _pd_api_gfx_drawBitmapAll(bitmap, x, y,xscale, yscale, rotation, (int)centerx, (int)centery, kBitmapUnflipped);
 }
 
 void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
@@ -1576,17 +1587,21 @@ int pd_api_gfx_getGlyphKerning(LCDFontGlyph* glyph, uint32_t glyphcode, uint32_t
 
 int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStringEncoding encoding, int tracking)
 {
-    if(!font)
+    LCDFont *f = font;
+    if(!f)
+        f = _Default_Font;
+    
+    if(!f)
         return 0;
-        
-    if(!font->font)
+    
+    if(!f->font)
         return 0;
     
     char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
     strncpy(sizedtext,(char *) text, len);
     sizedtext[len] = '\0';
     int w,h;
-    TTF_SizeText(font->font, sizedtext, &w, &h);
+    TTF_SizeText(f->font, sizedtext, &w, &h);
     free(sizedtext);
     return w;
 }
@@ -1595,8 +1610,12 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 {
     if(len == 0)
         return 0;
+
     if(CurrentGfxContext->font == NULL)
+    {
         return -1;
+    }
+
     int result = -1;
     if (CurrentGfxContext->font->font)
     {
@@ -1647,7 +1666,11 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 {
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
     
+    const char* err;
     _Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
+    _Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light.ttf", &err);
+    _FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold.ttf", &err);
+    
     CurrentGfxContext = new GfxContext();
     CurrentGfxContext->BackgroundColor = kColorClear;
     CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
@@ -1658,7 +1681,7 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
     CurrentGfxContext->drawoffsetx = 0;
     CurrentGfxContext->drawoffsety = 0;
     CurrentGfxContext->DrawTarget = _Playdate_Screen;
-    CurrentGfxContext->font = NULL;
+    CurrentGfxContext->font = _Default_Font;
     CurrentGfxContext->linecapstyle = kLineCapStyleButt;
     CurrentGfxContext->stencil = NULL;
     CurrentGfxContext->tracking = 0;

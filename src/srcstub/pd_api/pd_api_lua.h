@@ -94,8 +94,8 @@ struct playdate_lua
 	LuaUDObject* (*retainObject)(LuaUDObject* obj);
 	void (*releaseObject)(LuaUDObject* obj);
 	
-	void (*setObjectValue)(LuaUDObject* obj, int slot); // sets item on top of stack and pops it
-	int (*getObjectValue)(LuaUDObject* obj, int slot); // pushes item at slot to top of stack, returns stack position
+	void (*setUserValue)(LuaUDObject* obj, unsigned int slot); // sets item on top of stack and pops it
+	int (*getUserValue)(LuaUDObject* obj, unsigned int slot); // pushes item at slot to top of stack, returns stack position
 
 	// calling lua from C has some overhead. use sparingly!
 	void (*callFunction_deprecated)(const char* name, int nargs);

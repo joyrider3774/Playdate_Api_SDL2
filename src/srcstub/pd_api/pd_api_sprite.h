@@ -24,7 +24,8 @@ typedef struct
 
 static inline PDRect PDRectMake(float x, float y, float width, float height)
 {
-	return (PDRect){ .x = x, .y = y, .width = width, .height = height };
+	PDRect r = { .x = x, .y = y, .width = width, .height = height };
+	return r;
 }
 
 
@@ -85,13 +86,13 @@ struct playdate_sprite
 	LCDSprite* (*newSprite)(void);
 	void (*freeSprite)(LCDSprite *sprite);
 	LCDSprite* (*copy)(LCDSprite *sprite);
-	
+
 	void (*addSprite)(LCDSprite *sprite);
 	void (*removeSprite)(LCDSprite *sprite);
 	void (*removeSprites)(LCDSprite **sprites, int count);
 	void (*removeAllSprites)(void);
 	int (*getSpriteCount)(void);
-	
+
 	void (*setBounds)(LCDSprite *sprite, PDRect bounds);
 	PDRect (*getBounds)(LCDSprite *sprite);
 	void (*moveTo)(LCDSprite *sprite, float x, float y);
@@ -102,17 +103,17 @@ struct playdate_sprite
 	void (*setSize)(LCDSprite *s, float width, float height);
 	void (*setZIndex)(LCDSprite *sprite, int16_t zIndex);
 	int16_t (*getZIndex)(LCDSprite *sprite);
-	
+
 	void (*setDrawMode)(LCDSprite *sprite, LCDBitmapDrawMode mode);
 	void (*setImageFlip)(LCDSprite *sprite, LCDBitmapFlip flip);
 	LCDBitmapFlip (*getImageFlip)(LCDSprite *sprite);
 	void (*setStencil)(LCDSprite *sprite, LCDBitmap* stencil); // deprecated in favor of setStencilImage()
-	
+
 	void (*setClipRect)(LCDSprite *sprite, LCDRect clipRect);
 	void (*clearClipRect)(LCDSprite *sprite);
 	void (*setClipRectsInRange)(LCDRect clipRect, int startZ, int endZ);
 	void (*clearClipRectsInRange)(int startZ, int endZ);
-	
+
 	void (*setUpdatesEnabled)(LCDSprite *sprite, int flag);
 	int (*updatesEnabled)(LCDSprite *sprite);
 	void (*setCollisionsEnabled)(LCDSprite *sprite, int flag);
@@ -121,24 +122,24 @@ struct playdate_sprite
 	int (*isVisible)(LCDSprite *sprite);
 	void (*setOpaque)(LCDSprite *sprite, int flag);
 	void (*markDirty)(LCDSprite *sprite);
-	
+
 	void (*setTag)(LCDSprite *sprite, uint8_t tag);
 	uint8_t (*getTag)(LCDSprite *sprite);
-	
+
 	void (*setIgnoresDrawOffset)(LCDSprite *sprite, int flag);
-	
+
 	void (*setUpdateFunction)(LCDSprite *sprite, LCDSpriteUpdateFunction *func);
 	void (*setDrawFunction)(LCDSprite *sprite, LCDSpriteDrawFunction *func);
-	
+
 	void (*getPosition)(LCDSprite *sprite, float *x, float *y);
 
 	// Collisions
 	void (*resetCollisionWorld)(void);
-	
+
 	void (*setCollideRect)(LCDSprite *sprite, PDRect collideRect);
 	PDRect (*getCollideRect)(LCDSprite *sprite);
 	void (*clearCollideRect)(LCDSprite *sprite);
-	
+
 	// caller is responsible for freeing the returned array for all collision methods
 	void (*setCollisionResponseFunction)(LCDSprite *sprite, LCDSpriteCollisionFilterProc *func);
 	SpriteCollisionInfo* (*checkCollisions)(LCDSprite *sprite, float goalX, float goalY, float *actualX, float *actualY, int *len);			// access results using SpriteCollisionInfo *info = &results[i];
@@ -156,7 +157,7 @@ struct playdate_sprite
 
 	void (*setUserdata)(LCDSprite* sprite, void* userdata);
 	void* (*getUserdata)(LCDSprite* sprite);
-	
+
 	// added in 1.10
 	void (*setStencilImage)(LCDSprite *sprite, LCDBitmap* stencil, int tile);
 };

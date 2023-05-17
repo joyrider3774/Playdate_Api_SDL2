@@ -29,7 +29,8 @@ static inline LCDRect LCDMakeRect(int x, int y, int width, int height)
 
 static inline LCDRect LCDRect_translate(LCDRect r, int dx, int dy)
 {
-	return (LCDRect){ .left = r.left + dx, .right = r.right + dx, .top = r.top + dy, .bottom = r.bottom + dy };
+	LCDRect rect = { .left = r.left + dx, .right = r.right + dx, .top = r.top + dy, .bottom = r.bottom + dy };
+	return rect;
 }
 
 #define LCD_COLUMNS	400
@@ -137,7 +138,7 @@ struct playdate_graphics
 	void (*setTextTracking)(int tracking);
 	void (*pushContext)(LCDBitmap* target);
 	void (*popContext)(void);
-	
+
 	void (*drawBitmap)(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip);
 	void (*tileBitmap)(LCDBitmap* bitmap, int x, int y, int width, int height, LCDBitmapFlip flip);
 	void (*drawLine)(int x1, int y1, int x2, int y2, int width, LCDColor color);
@@ -184,14 +185,14 @@ struct playdate_graphics
 	// misc util.
 	void (*setColorToPattern)(LCDColor* color, LCDBitmap* bitmap, int x, int y);
 	int (*checkMaskCollision)(LCDBitmap* bitmap1, int x1, int y1, LCDBitmapFlip flip1, LCDBitmap* bitmap2, int x2, int y2, LCDBitmapFlip flip2, LCDRect rect);
-	
+
 	// 1.1
 	void (*setScreenClipRect)(int x, int y, int width, int height);
-	
+
 	// 1.1.1
 	void (*fillPolygon)(int nPoints, int* coords, LCDColor color, LCDPolygonFillRule fillrule);
 	uint8_t (*getFontHeight)(LCDFont* font);
-	
+
 	// 1.7
 	LCDBitmap* (*getDisplayBufferBitmap)(void);
 	void (*drawRotatedBitmap)(LCDBitmap* bitmap, int x, int y, float rotation, float centerx, float centery, float xscale, float yscale);
@@ -200,10 +201,10 @@ struct playdate_graphics
 	// 1.8
 	int (*setBitmapMask)(LCDBitmap* bitmap, LCDBitmap* mask);
 	LCDBitmap* (*getBitmapMask)(LCDBitmap* bitmap);
-	
+
 	// 1.10
 	void (*setStencilImage)(LCDBitmap* stencil, int tile);
-	
+
 	// 1.12
 	LCDFont* (*makeFontFromData)(LCDFontData* data, int wide);
 };

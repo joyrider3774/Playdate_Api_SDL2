@@ -33,6 +33,17 @@ typedef enum
 
 #endif
 
+struct PDDateTime
+{
+	uint16_t year;
+	uint8_t month; // 1-12
+	uint8_t day; // 1-31
+	uint8_t weekday; // 1=monday-7=sunday
+	uint8_t hour; // 0-23
+	uint8_t minute;
+	uint8_t second;
+};
+
 typedef struct PDMenuItem PDMenuItem;
 
 typedef enum
@@ -92,6 +103,12 @@ struct playdate_sys
 	// 1.4
 	float (*getBatteryPercentage)(void);
 	float (*getBatteryVoltage)(void);
+	
+	// 1.13
+	int32_t (*getTimezoneOffset)(void);
+	int (*shouldDisplay24HourTime)(void);
+	void (*convertEpochToDateTime)(uint32_t epoch, struct PDDateTime* datetime);
+	uint32_t (*convertDateTimeToEpoch)(struct PDDateTime* datetime);
 };
 
 #endif /* pdext_sys_h */

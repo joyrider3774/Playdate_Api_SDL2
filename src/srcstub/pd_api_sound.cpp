@@ -1003,14 +1003,14 @@ SoundChannel* pd_api_sound_getDefaultChannel(void)
     return Api->sound->channel->newChannel();
 }
 	
-void pd_api_sound_addChannel(SoundChannel* channel)
+int pd_api_sound_addChannel(SoundChannel* channel)
 {
-
+	return 0;
 }
 
-void pd_api_sound_removeChannel(SoundChannel* channel)
+int pd_api_sound_removeChannel(SoundChannel* channel)
 {
-
+	return 0;
 }
 	
 void pd_api_sound_setMicCallback(RecordCallback* callback, void* context, int forceInternal)
@@ -1029,12 +1029,11 @@ void pd_api_sound_setOutputsActive(int headphone, int speaker)
 }
 	
 // 1.5
-void pd_api_sound_removeSource(SoundSource* source)
+int pd_api_sound_removeSource(SoundSource* source)
 {
-    
+	return 0; 
 }
 	
-
 void _pd_api_sound_freeSampleList()
 {
     for (int i = 0; i < SampleListCount; i++)
@@ -1417,7 +1416,11 @@ int pd_api_sound_isPlayingPDSynth(PDSynth* synth)
     return 0;
 }
 
-
+PDSynthEnvelope* pd_api_sound_getEnvelopePDSynth(PDSynth* synth) // synth keeps ownership--don't free this!
+{
+	PDSynthEnvelope* Tmp = (PDSynthEnvelope*) malloc(sizeof(*Tmp));
+	return Tmp;
+}
 
 // PDSynth extends SoundSource
 playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
@@ -1449,6 +1452,8 @@ playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
 	Tmp->setVolume = pd_api_sound_setVolumePDSynth;
 	Tmp->getVolume = pd_api_sound_getVolumePDSynth;
 	Tmp->isPlaying = pd_api_sound_isPlayingPDSynth;
+	// 1.13
+	Tmp->getEnvelope = pd_api_sound_getEnvelopePDSynth;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_synth end\n");
     return Tmp;
 };
@@ -2420,8 +2425,7 @@ playdate_sound* pd_api_sound_Create_playdate_sound()
     Tmp->setMicCallback = pd_api_sound_setMicCallback;
     Tmp->getHeadphoneState = pd_api_sound_getHeadphoneState;
     Tmp->setOutputsActive = pd_api_sound_setOutputsActive;
-    // 1.5
-    Tmp->removeSource = pd_api_sound_removeSource;	
+
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound end\n");
     return Tmp;
 }

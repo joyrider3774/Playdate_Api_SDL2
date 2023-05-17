@@ -44,16 +44,16 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 	{
 		int *curr = (int*)current;
 		*curr = 0;
-		if (_pd_api_sys_input->Buttons.ButLeft)
+		if (_pd_api_sys_input->Buttons.ButLeft || _pd_api_sys_input->Buttons.ButDpadLeft)
 			*curr |= kButtonLeft;
 
-		if (_pd_api_sys_input->Buttons.ButRight)
+		if (_pd_api_sys_input->Buttons.ButRight || _pd_api_sys_input->Buttons.ButDpadRight)
 			*curr |= kButtonRight;
 
-		if (_pd_api_sys_input->Buttons.ButUp)
+		if (_pd_api_sys_input->Buttons.ButUp || _pd_api_sys_input->Buttons.ButDpadUp)
 			*curr |= kButtonUp;
 
-		if (_pd_api_sys_input->Buttons.ButDown)
+		if (_pd_api_sys_input->Buttons.ButDown || _pd_api_sys_input->Buttons.ButDpadDown)
 			*curr |= kButtonDown;
 
 		if (_pd_api_sys_input->Buttons.ButA)
@@ -68,16 +68,20 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 		
 		int *push = (int*)pushed;
 		*push = 0;
-		if ((_pd_api_sys_input->Buttons.ButLeft) && (!_pd_api_sys_input->PrevButtons.ButLeft))
+		if (((_pd_api_sys_input->Buttons.ButLeft) && (!_pd_api_sys_input->PrevButtons.ButLeft)) ||
+			((_pd_api_sys_input->Buttons.ButDpadLeft) && (!_pd_api_sys_input->PrevButtons.ButDpadLeft)))
 			*push |= kButtonLeft;
 
-		if ((_pd_api_sys_input->Buttons.ButRight) && (!_pd_api_sys_input->PrevButtons.ButRight))
+		if (((_pd_api_sys_input->Buttons.ButRight) && (!_pd_api_sys_input->PrevButtons.ButRight)) ||
+			((_pd_api_sys_input->Buttons.ButDpadRight) && (!_pd_api_sys_input->PrevButtons.ButDpadRight)))
 			*push |= kButtonRight;
 
-		if ((_pd_api_sys_input->Buttons.ButUp) && (!_pd_api_sys_input->PrevButtons.ButUp))
+		if (((_pd_api_sys_input->Buttons.ButUp) && (!_pd_api_sys_input->PrevButtons.ButUp)) ||
+			((_pd_api_sys_input->Buttons.ButDpadUp) && (!_pd_api_sys_input->PrevButtons.ButDpadUp)))
 			*push |= kButtonUp;
 
-		if ((_pd_api_sys_input->Buttons.ButDown) && (!_pd_api_sys_input->PrevButtons.ButDown))
+		if (((_pd_api_sys_input->Buttons.ButDown) && (!_pd_api_sys_input->PrevButtons.ButDown)) ||
+			((_pd_api_sys_input->Buttons.ButDpadDown) && (!_pd_api_sys_input->PrevButtons.ButDpadDown)))
 			*push |= kButtonDown;
 
 		if ((_pd_api_sys_input->Buttons.ButA) && (!_pd_api_sys_input->PrevButtons.ButA))
@@ -91,16 +95,20 @@ void pd_api_sys_getButtonState(PDButtons* current, PDButtons* pushed, PDButtons*
 	{
 		int *rel = (int *)released;
 		*rel = 0;
-		if ((!_pd_api_sys_input->Buttons.ButLeft) && (_pd_api_sys_input->PrevButtons.ButLeft))
+		if (((!_pd_api_sys_input->Buttons.ButLeft) && (_pd_api_sys_input->PrevButtons.ButLeft)) ||
+			((!_pd_api_sys_input->Buttons.ButDpadLeft) && (_pd_api_sys_input->PrevButtons.ButDpadLeft)))
 			*rel |= kButtonLeft;
 
-		if ((!_pd_api_sys_input->Buttons.ButRight) && (_pd_api_sys_input->PrevButtons.ButRight))
+		if (((!_pd_api_sys_input->Buttons.ButRight) && (_pd_api_sys_input->PrevButtons.ButRight)) ||
+			((!_pd_api_sys_input->Buttons.ButDpadRight) && (_pd_api_sys_input->PrevButtons.ButDpadRight)))
 			*rel |= kButtonRight;
 
-		if ((!_pd_api_sys_input->Buttons.ButUp) && (_pd_api_sys_input->PrevButtons.ButUp))
+		if (((!_pd_api_sys_input->Buttons.ButUp) && (_pd_api_sys_input->PrevButtons.ButUp)) ||
+			((!_pd_api_sys_input->Buttons.ButDpadUp) && (_pd_api_sys_input->PrevButtons.ButDpadUp)))
 			*rel |= kButtonUp;
 		
-		if ((!_pd_api_sys_input->Buttons.ButDown) && (_pd_api_sys_input->PrevButtons.ButDown))
+		if (((!_pd_api_sys_input->Buttons.ButDown) && (_pd_api_sys_input->PrevButtons.ButDown)) ||
+			((!_pd_api_sys_input->Buttons.ButDpadDown) && (_pd_api_sys_input->PrevButtons.ButDpadDown)))
 			*rel |= kButtonDown;
 
 		if ((!_pd_api_sys_input->Buttons.ButA) && (_pd_api_sys_input->PrevButtons.ButA))
@@ -310,6 +318,26 @@ float pd_api_sys_getBatteryVoltage(void)
 	return 5.0f;
 }
 
+// 1.13
+int32_t pd_api_sys_getTimezoneOffset(void)
+{
+	return 0;
+}
+
+int pd_api_sys_shouldDisplay24HourTime(void)
+{
+	return 0;
+}
+
+void pd_api_sys_convertEpochToDateTime(uint32_t epoch, struct PDDateTime* datetime)
+{
+
+}
+
+uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime)
+{
+	return 0;
+}
 
 playdate_sys* pd_api_sys_Create_playdate_sys()
 {
@@ -352,6 +380,12 @@ playdate_sys* pd_api_sys_Create_playdate_sys()
 	// 1.4
 	tmp->getBatteryPercentage = pd_api_sys_getBatteryPercentage;
 	tmp->getBatteryVoltage = pd_api_sys_getBatteryVoltage;
+
+	// 1.13
+	tmp->getTimezoneOffset = pd_api_sys_getTimezoneOffset;
+	tmp->shouldDisplay24HourTime = pd_api_sys_shouldDisplay24HourTime;
+	tmp->convertEpochToDateTime = pd_api_sys_convertEpochToDateTime;
+	tmp->convertDateTimeToEpoch = pd_api_sys_convertDateTimeToEpoch;
 
 
 	return tmp;

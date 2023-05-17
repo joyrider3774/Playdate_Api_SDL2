@@ -196,6 +196,11 @@ struct playdate_sound_envelope
 	void (*setRetrigger)(PDSynthEnvelope* lfo, int flag);
 
 	float (*getValue)(PDSynthEnvelope* env);
+	
+	// 1.13
+	void (*setCurvature)(PDSynthEnvelope* env, float amount);
+	void (*setVelocitySensitivity)(PDSynthEnvelope* env, float velsens);
+	void (*setRateScaling)(PDSynthEnvelope* env, float scaling, MIDINote start, MIDINote end);
 };
 
 
@@ -266,6 +271,9 @@ struct playdate_sound_synth // PDSynth extends SoundSource
 	void (*getVolume)(PDSynth* synth, float* left, float* right);
 	
 	int (*isPlaying)(PDSynth* synth);
+	
+	// 1.13
+	PDSynthEnvelope* (*getEnvelope)(PDSynth* synth); // synth keeps ownership--don't free this!
 };
 
 
@@ -551,15 +559,15 @@ struct playdate_sound
 
 	SoundChannel* (*getDefaultChannel)(void);
 	
-	void (*addChannel)(SoundChannel* channel);
-	void (*removeChannel)(SoundChannel* channel);
+	int (*addChannel)(SoundChannel* channel);
+	int (*removeChannel)(SoundChannel* channel);
 	
 	void (*setMicCallback)(RecordCallback* callback, void* context, int forceInternal);
 	void (*getHeadphoneState)(int* headphone, int* headsetmic, void (*changeCallback)(int headphone, int mic));
 	void (*setOutputsActive)(int headphone, int speaker);
 	
 	// 1.5
-	void (*removeSource)(SoundSource* source);
+	int (*removeSource)(SoundSource* source);
 	
 	// 1.12
 	const struct playdate_sound_signal* signal;

@@ -222,7 +222,7 @@ void pd_api_sprite_updateAndDrawSprites(void)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_updateAndDrawSprites\n");
 	_pd_api_sprite_SortList();
-	Api->graphics->clear(kColorClear);
+	//Api->graphics->clear(kColorClear);
 	int c = 0;
 	for (auto& spritePtr : spriteList)
 	{	

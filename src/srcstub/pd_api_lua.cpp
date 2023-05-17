@@ -153,12 +153,12 @@ void pd_api_lua_releaseObject(LuaUDObject* obj)
 
 }
 
-void pd_api_lua_setObjectValue(LuaUDObject* obj, int slot) // sets item on top of stack and pops it
+void pd_api_lua_setUserValue(LuaUDObject* obj, unsigned int slot) // sets item on top of stack and pops it
 {
 
 } 
 
-int pd_api_lua_getObjectValue(LuaUDObject* obj, int slot) // pushes item at slot to top of stack, returns stack position
+int pd_api_lua_getUserValue(LuaUDObject* obj, unsigned int slot) // pushes item at slot to top of stack, returns stack position
 {
     return 0;
 } 
@@ -215,8 +215,8 @@ playdate_lua* pd_api_lua_Create_playdate_lua()
 	Tmp->retainObject = pd_api_lua_retainObject;
 	Tmp->releaseObject = pd_api_lua_releaseObject;
 	
-	Tmp->setObjectValue = pd_api_lua_setObjectValue;
-	Tmp->getObjectValue = pd_api_lua_getObjectValue;
+	Tmp->setUserValue = pd_api_lua_setUserValue;
+	Tmp->getUserValue = pd_api_lua_getUserValue;
 
 	// calling lua from C has some overhead. use sparingly!
 	Tmp->callFunction_deprecated = pd_api_lua_callFunction_deprecated;
