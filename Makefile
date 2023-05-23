@@ -1,6 +1,6 @@
 DEBUG = 0
 
-SRC_CPP_DIR = src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
+SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame 
 OBJ_DIR = ./obj
 OUT_DIR = ./Source
@@ -23,7 +23,9 @@ CFLAGS = -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --
 LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm 
 
 ifeq ($(DEBUG), 1)
+ifeq ($(OS),Windows_NT)
 LDLIBS += -mconsole
+endif
 CFLAGS += -g
 OPT_LEVEL =
 endif

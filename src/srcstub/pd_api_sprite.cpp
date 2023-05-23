@@ -198,8 +198,11 @@ void pd_api_sprite_drawSprites(void)
 		LCDSprite* sprite = spritePtr.get();
 	 	if(sprite->Loaded && sprite->LoadedInList && (sprite->Visible || _pd_api_sprite_AlwaysRedraw))
 	 	{
-			c++;			
-	 		sprite->DrawFunction(sprite, sprite->BoundsRect, sprite->BoundsRect);
+			c++;	
+			LCDBitmapDrawMode tmpDrawMode = _pd_api_gfx_getCurrentDrawMode();
+	 		Api->graphics->setDrawMode(sprite->DrawMode);
+			sprite->DrawFunction(sprite, sprite->BoundsRect, sprite->BoundsRect);
+			Api->graphics->setDrawMode(tmpDrawMode);
 			//Api->graphics->drawRect(sprite->BoundsRect.x, sprite->BoundsRect.y, sprite->BoundsRect.width, sprite->BoundsRect.height, kColorBlack);
 			//Api->graphics->drawRect(sprite->BoundsRect.x + sprite->CollideRect.x, sprite->BoundsRect.y + sprite->CollideRect.y, sprite->CollideRect.width, sprite->CollideRect.height, kColorBlack);		
 			if(sprite)

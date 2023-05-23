@@ -41,8 +41,9 @@ extern void* _pd_api_sys_DoUpdateuserdata;
 extern void _pd_api_sys_UpdateInput();
 extern void _pd_api_sound_freeSampleList();
 extern void _pd_api_gfx_freeFontList();
-extern void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, const double angle, int centerx, int centery, LCDBitmapFlip flip);
-extern SDL_Texture* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
+extern void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip);
+extern LCDBitmapDrawMode _pd_api_gfx_getCurrentDrawMode();
+extern SDL_Surface* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
 extern void _pd_api_gfx_drawFPS(int x, int y);
 
 

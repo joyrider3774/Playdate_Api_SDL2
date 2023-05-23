@@ -9,6 +9,9 @@
 #include "pd_api.h"
 #include "defines.h"
 #include "debug.h"
+#include <math.h>
+#include <thread>
+#include <chrono>
 
 SDL_Window *SdlWindow;
 SDL_Renderer *Renderer;
@@ -33,7 +36,6 @@ SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
 
 void _pd_api_sys_fullScreenCallBack()
 {
-    //return;
     Uint32 FullscreenFlag = SDL_WINDOW_FULLSCREEN_DESKTOP;
     bool IsFullscreen = SDL_GetWindowFlags(SdlWindow) & FullscreenFlag;
     // reset window size first before we go fullscreen
@@ -60,6 +62,37 @@ void _pd_api_sys_quitCallBack()
     stubDoQuit = true;
 }
 
+//https://blog.bearcats.nl/accurate-sleep-function/
+void preciseSleep(double seconds) {
+    using namespace std;
+    using namespace chrono;
+
+    static double estimate = 5e-3;
+    static double mean = 5e-3;
+    static double m2 = 0;
+    static int64_t count = 1;
+
+    while (seconds > estimate) {
+        auto start = high_resolution_clock::now();
+        this_thread::sleep_for(milliseconds(1));
+        auto end = high_resolution_clock::now();
+
+        double observed = (end - start).count() / 1e9;
+        seconds -= observed;
+
+        ++count;
+        double delta = observed - mean;
+        mean += delta / count;
+        m2   += delta * (observed - mean);
+        double stddev = sqrt(m2 / (count - 1));
+        estimate = mean + stddev;
+    }
+
+    // spin lock
+    auto start = high_resolution_clock::now();
+    while ((high_resolution_clock::now() - start).count() / 1e9 < seconds);
+}
+
 int main(int argv, char** args)
 {
 	bool useSoftwareRenderer = true;
@@ -79,8 +112,7 @@ Usage: Game.exe [Options]\n\n\
 Possible options are:\n\
   -?: show this help message\n\
   -l: enable linear filtering (only works when hardware renderer is used)\n\
-  -a: Use Acclerated Renderer (can cause issues with Directx like blackscreen on window resizes)\n\
-  -u: When using Acclerated Renderer set hint to use OpenGl\n\
+  -a: Use Acclerated Renderer\n\
   -f: Run fullscreen at startup (by default starts up windowed)\n\
   -o: Set OpenGL Hint in accelerated mode, so it will try to use opengl\n\
   -v: Use VSync\n");
@@ -179,6 +211,8 @@ Possible options are:\n\
                         LCDColor bgColor;
                         Uint64 _FrameCount = 0;
                         double _TotalFps = 0.0;
+						SDL_Texture* TexScreen = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, LCD_COLUMNS, LCD_ROWS);
+
                         while(!stubDoQuit)
                         {
                             Uint64 StartTicks = SDL_GetPerformanceCounter();
@@ -255,20 +289,21 @@ Possible options are:\n\
                                 }
                             }
                             //draw using the newly added all around function
-                            _pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _DisplayScale, _DisplayScale, 0, 0, 0, flip);
+                            _pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _DisplayScale, _DisplayScale, false, 0, 0, 0, flip);
                             Api->graphics->popContext();
 
                             //now we just need to blit this bitmap to the screen, but i could not access screen->tex so added another function
                             //to get the sdl texture                  
                             SDL_SetRenderTarget(Renderer, NULL);
-                            SDL_Texture* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
+                            SDL_Surface* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
+							SDL_UpdateTexture(TexScreen, NULL, Tex->pixels, Tex->pitch);
                             SDL_Rect Dest;                    
                             Dest.x = _DisplayOffsetDisplayX;
                             Dest.y = _DisplayOffsetDisplayY;
                             Dest.w = LCD_COLUMNS;
                             Dest.h = LCD_ROWS;
-                            SDL_RenderCopy(Renderer, Tex, NULL, &Dest);
-                            SDL_RenderPresent(Renderer);
+                            SDL_RenderCopy(Renderer, TexScreen, NULL, &Dest);
+							SDL_RenderPresent(Renderer);
 
                             Api->graphics->freeBitmap(screen);
 
@@ -282,25 +317,26 @@ Possible options are:\n\
                             elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
                             if ((_DisplayDesiredDelta != 0.0) && (elapsed < _DisplayDesiredDelta))
                             {
-                                SDL_Delay((Uint32)(_DisplayDesiredDelta - (elapsed)));
+                                //SDL_Delay((Uint32)(_DisplayDesiredDelta - elapsed));
+								preciseSleep((_DisplayDesiredDelta - elapsed) / 1000.0);
                             }
-                            
-                            elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
+
+							elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
                             if(elapsed != 0.0)
                             {
-                                _CurrentFps = 1 / elapsed;
+                                _CurrentFps = 1.0 / elapsed;
                                 _TotalFps += _CurrentFps;
-                                _AvgFps = _TotalFps / _FrameCount;
+                                _AvgFps = _TotalFps / (double)_FrameCount;
                             }
                             
                             if (((SDL_GetPerformanceFrequency() + fpslogticks)) < SDL_GetPerformanceCounter())
                             {  
-                                _TotalFps = 0.0f;
+                                _TotalFps = 0.0;
                                 _FrameCount = 0;
                                 _LastFPS = _AvgFps;
                                 printfDebug(DebugFPS, "%2f\n", _LastFPS);
                                 fpslogticks = SDL_GetPerformanceCounter();
-                            }                    
+                            }
                         }
                         //erase remaining sprites in memory
                         _pd_api_sprite_cleanup_sprites(false);
@@ -339,7 +375,7 @@ Possible options are:\n\
                         free((void *)Api->lua);
                         free((void *)Api->scoreboards);
                         free((void *)Api->json);
-
+						SDL_DestroyTexture(TexScreen);
 
                         Mix_CloseAudio();
                     }
