@@ -1,13 +1,15 @@
-#include <SDL.h>
-#include <SDL_image.h>
-#include <SDL_rotate.h>
-#include "gfx_primitives_surface/SDL_gfxPrimitivesSurface.h"
-#include "sdl_rotate/SDL_rotate.h"
-#include <SDL2_rotozoom.h>
-#include <SDL_ttf.h>
 #include <string.h>
 #include <dirent.h>
 #include <vector>
+#include <SDL_rect.h>
+#include <SDL_blendmode.h>
+#include <SDL.h>
+#include <SDL_image.h>
+#include <SDL_rotate.h>
+#include <SDL2_rotozoom.h>
+#include <SDL_ttf.h>
+#include "gfx_primitives_surface/SDL_gfxPrimitivesSurface.h"
+#include "sdl_rotate/SDL_rotate.h"
 #include "pd_api/pd_api_gfx.h"
 #include "gamestubcallbacks.h"
 #include "gamestub.h"
@@ -206,7 +208,28 @@ void pd_api_gfx_setTextTracking(int tracking)
 void pd_api_gfx_pushContext(LCDBitmap* target)
 {	
     GfxContext* Tmp = new GfxContext();
-	Tmp->Assign(CurrentGfxContext);
+	//bitmap drawmode remains same
+	Tmp->BitmapDrawMode = CurrentGfxContext->BitmapDrawMode;
+	//font is not changed it seems
+	Tmp->font = CurrentGfxContext->font;
+	//background color seems to be set to white on a push
+	Tmp->BackgroundColor = kColorWhite; 
+	//draw offset is reset
+	Tmp->drawoffsetx = 0;
+	Tmp->drawoffsety = 0;
+	//need to verify these 3 below like its possible they get reset to some fixed value
+	Tmp->linecapstyle = CurrentGfxContext->linecapstyle;
+	Tmp->stencil = CurrentGfxContext->stencil;
+	Tmp->tracking = CurrentGfxContext->tracking;
+	//collisionworld ?
+	//displaylist ?
+	//invert
+	//scale
+	//mosaicx
+	//mosaicy
+	//offsetx
+	//offsety 
+	//need to assign the draw target
 	if(target)
     {
         Tmp->DrawTarget = target;
@@ -215,7 +238,7 @@ void pd_api_gfx_pushContext(LCDBitmap* target)
     {
         Tmp->DrawTarget = _Playdate_Screen;
     }
-	//save the cliprect for the new drawtarget
+	//save the cliprect it is the cliprect from the target bitmap
 	SDL_Rect clipRect;
 	SDL_GetClipRect(Tmp->DrawTarget->Tex, &clipRect);
 	Tmp->cliprect = clipRect; 
@@ -1235,6 +1258,13 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
         bitmap = Api->graphics->newBitmap(width, height, kColorClear);
         Api->graphics->pushContext(bitmap);
     }
+	else
+	{
+		x1 += CurrentGfxContext->drawoffsetx;
+		y1 += CurrentGfxContext->drawoffsety;
+		x2 += CurrentGfxContext->drawoffsetx;
+		y2 += CurrentGfxContext->drawoffsety;
+	}
 	
 	switch (color)
     {
@@ -1307,6 +1337,18 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
         bitmap = Api->graphics->newBitmap(width, height, kColorClear);
         Api->graphics->pushContext(bitmap);
     }
+	else
+	{
+		points[0].x += CurrentGfxContext->drawoffsetx;
+		points[1].x += CurrentGfxContext->drawoffsetx;
+		points[2].x += CurrentGfxContext->drawoffsetx;
+		points[3].x += CurrentGfxContext->drawoffsetx;
+		
+		points[0].y += CurrentGfxContext->drawoffsety;
+		points[1].y += CurrentGfxContext->drawoffsety;
+		points[2].y += CurrentGfxContext->drawoffsety;
+		points[3].y += CurrentGfxContext->drawoffsety;
+	}
 
 	
 	switch (color)
@@ -1351,8 +1393,8 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     
 
     SDL_Rect rect;
-    rect.x = color == kColorXOR ? 0: x;
-    rect.y = color == kColorXOR ? 0: y;
+    rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
+    rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
     rect.w = width;
     rect.h = height;
     
@@ -1416,8 +1458,8 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
     }
     
     SDL_Rect rect;
-    rect.x = color == kColorXOR ? 0: x;
-    rect.y = color == kColorXOR ? 0: y;
+    rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
+    rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
     rect.w = width;
     rect.h = height;
 
@@ -1450,8 +1492,8 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width;
-    y = color == kColorXOR ? height:  y + height;
+    x = color == kColorXOR ? width  : x + width + CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? height:  y + height + CurrentGfxContext->drawoffsety;
     
     switch (color)
     {
@@ -1500,8 +1542,8 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width;
-    y = color == kColorXOR ? height:  y + height;
+    x = color == kColorXOR ? width  : x + width + CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? height:  y + height + CurrentGfxContext->drawoffsety;
 
          
     switch (color)
