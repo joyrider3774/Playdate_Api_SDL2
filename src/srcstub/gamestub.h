@@ -11,7 +11,6 @@ extern SDL_Renderer *Renderer;
 extern PlaydateAPI *Api;
 extern LCDBitmap* _Playdate_Screen;
 extern bool stubDoQuit;
-extern SDL_Texture* getPlaydateScreenTexture();
 extern LCDColor getBackgroundDrawColor();
 extern SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT;
 extern SDL_Color pd_api_gfx_color_clear; 

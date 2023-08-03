@@ -177,7 +177,7 @@ Possible options are:\n\
                 SDL_Log("Succesfully Created Buffer\n");
 
                 SDL_SetRenderTarget(Renderer, NULL);
-                SDL_SetRenderDrawColor(Renderer, 0x00, 0x00, 0x00, 0xFF);
+                SDL_SetRenderDrawColor(Renderer, 0xFF, 0xFF, 0xFF, 0xFF);
                 SDL_RenderClear(Renderer);
                 SDL_RenderPresent(Renderer);
 
@@ -229,22 +229,36 @@ Possible options are:\n\
                             SDL_SetRenderTarget(Renderer, NULL);
                             bgColor = getBackgroundDrawColor();
                             SDL_GetRenderDrawColor(Renderer, &r, &g, & b, &a);
-                            //warning i inverted these for testing (see waternet / blockdude)!
+							
+							if(bgColor == kColorClear)
+							{
+								if (_DisplayInverted)
+									bgColor = kColorBlack;
+								else
+									bgColor = kColorWhite;
+							}
+							else
+							{
+								if (_DisplayInverted)
+								{
+									if(bgColor == kColorBlack)
+										bgColor = kColorWhite;
+									else
+										if(bgColor == kColorWhite)
+											bgColor = kColorBlack;
+								}
+							}
+
                             switch(bgColor)
                             {                       
                                 case kColorBlack:
-                                    SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-                                    break;
-                                case kColorClear:
-                                    if(!_DisplayInverted)
-                                        SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
-                                    else
-                                        SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+									SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
                                     break;
                                 case kColorWhite:
-                                    SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+                                    SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
                                     break;
                             }
+
                             SDL_RenderClear(Renderer);
                             SDL_SetRenderDrawColor(Renderer, r, g, b, a);
 
@@ -253,7 +267,7 @@ Possible options are:\n\
                             //so that clear pixels (cyan's) are made transparant. 
                             //we clear the background of the real screen surface with either white or black
                             //bgColor = getBackgroundDrawColor();
-                            LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, (LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
+                            LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, _DisplayInverted? kColorBlack:kColorWhite);//(LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
                             //get the playdate screen bitmap
                             LCDBitmap * playdatescreen = Api->graphics->getDisplayBufferBitmap();
                             //and push it as a context so we can pop it later
@@ -309,6 +323,8 @@ Possible options are:\n\
 
                             //restore render target
                             SDL_SetRenderTarget(Renderer, target);
+
+							Api->graphics->clearClipRect();
 
                             //for calculating avergage
                             _FrameCount++;

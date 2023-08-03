@@ -19,8 +19,11 @@
 
 const char loaderror[] = "Failed loading!";
 
+struct LCDBitmap;
+
 struct LCDBitmap {
     SDL_Surface* Tex;
+	LCDBitmap* Mask;
     int w;
     int h;
 };
@@ -133,7 +136,14 @@ LCDColor getBackgroundDrawColor()
 void pd_api_gfx_clear(LCDColor color)
 {
     if (color == kColorXOR)
-        return;
+	{
+		return;
+	}
+
+	//clear clears entire screen so need to remove cliprect temporary
+	SDL_Rect rect;
+	SDL_GetClipRect(CurrentGfxContext->DrawTarget->Tex, &rect);
+	SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, NULL);
 
     switch (color)
     {
@@ -149,6 +159,7 @@ void pd_api_gfx_clear(LCDColor color)
         default:
             break;
     }
+	SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &rect);
 }
 
 void pd_api_gfx_setBackgroundColor(LCDSolidColor color)
@@ -175,8 +186,8 @@ void pd_api_gfx_setDrawOffset(int dx, int dy)
 void pd_api_gfx_setClipRect(int x, int y, int width, int height)
 {
 	SDL_Rect cliprect;
-    cliprect.x = x;
-    cliprect.y = y;
+    cliprect.x = x + CurrentGfxContext->drawoffsetx;
+    cliprect.y = y + CurrentGfxContext->drawoffsety;
     cliprect.w = width;
     cliprect.h = height;
     SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &cliprect);
@@ -221,6 +232,7 @@ void pd_api_gfx_pushContext(LCDBitmap* target)
 	Tmp->linecapstyle = CurrentGfxContext->linecapstyle;
 	Tmp->stencil = CurrentGfxContext->stencil;
 	Tmp->tracking = CurrentGfxContext->tracking;
+
 	//collisionworld ?
 	//displaylist ?
 	//invert
@@ -269,6 +281,7 @@ LCDBitmap* pd_api_gfx_Create_LCDBitmap()
 {
     LCDBitmap* tmp = (LCDBitmap* ) malloc(sizeof(*tmp));
     tmp->Tex = NULL;
+	tmp->Mask = NULL;
     tmp->w = 0;
     tmp->h = 0;
     return tmp;
@@ -285,7 +298,9 @@ void pd_api_gfx_clearBitmap(LCDBitmap* bitmap, LCDColor bgcolor)
 	{
         return;
 	}
-
+	SDL_Rect rect;
+	SDL_GetClipRect(bitmap->Tex, &rect);
+	SDL_SetClipRect(bitmap->Tex, NULL);
 	switch (bgcolor)
     {
         case kColorBlack:
@@ -300,6 +315,7 @@ void pd_api_gfx_clearBitmap(LCDBitmap* bitmap, LCDColor bgcolor)
         default:
             break;
     }
+	SDL_SetClipRect(bitmap->Tex, &rect);
 }
 
 LCDBitmap* pd_api_gfx_newBitmap(int width, int height, LCDColor bgcolor)
@@ -308,7 +324,6 @@ LCDBitmap* pd_api_gfx_newBitmap(int width, int height, LCDColor bgcolor)
     if(result)
     {
         result->Tex = SDL_CreateRGBSurfaceWithFormat(0, width, height, 32, pd_api_gfx_PIXELFORMAT);
-	
 		//SDL_SetSurfaceRLE(result->Tex, SDL_RLEACCEL);
 		result->w = width;
         result->h = height;
@@ -374,8 +389,10 @@ LCDBitmap* pd_api_gfx_copyBitmap(LCDBitmap* bitmap)
     LCDBitmap* result = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorClear);
     if(result->Tex)
 		SDL_FreeSurface(result->Tex);
+
 	result->Tex = SDL_ConvertSurfaceFormat(bitmap->Tex, pd_api_gfx_PIXELFORMAT, 0);
-	
+	result->Mask = bitmap->Mask;
+
     return result;
 }
 
@@ -710,7 +727,12 @@ int pd_api_gfx_checkMaskCollision(LCDBitmap* bitmap1, int x1, int y1, LCDBitmapF
 // 1.1
 void pd_api_gfx_setScreenClipRect(int x, int y, int width, int height)
 {
-
+	SDL_Rect cliprect;
+    cliprect.x = x;
+    cliprect.y = y;
+    cliprect.w = width;
+    cliprect.h = height;
+    SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &cliprect);
 }
 	
 // 1.1.1
@@ -792,12 +814,18 @@ void pd_api_gfx_setTextLeading(int lineHeightAdustment)
 // 1.8
 int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 {
-    return 0;
+	if(!mask || !bitmap)
+		return 0;
+
+	bitmap->Mask = mask;
+	return 1;
 }
 
 LCDBitmap* pd_api_gfx_getBitmapMask(LCDBitmap* bitmap)
 {
-    return NULL;
+	if(!bitmap)
+		return NULL;
+	return bitmap->Mask;
 }
 	
 // 1.10
@@ -1194,9 +1222,56 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 		}
 	}
 
-	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
-	SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
-	SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
+	if(bitmap->Mask)
+	{
+		SDL_Surface *tmpTexture2 = SDL_ConvertSurfaceFormat(tmpTexture, pd_api_gfx_PIXELFORMAT, 0);
+		
+		bool tmpTexture2Unlocked = true;
+		bool maskUnlocked = true;
+
+		if (SDL_MUSTLOCK(tmpTexture2))
+			tmpTexture2Unlocked = SDL_LockSurface(tmpTexture2) == 0;
+		if (SDL_MUSTLOCK(bitmap->Mask->Tex))
+			maskUnlocked = SDL_LockSurface(bitmap->Mask->Tex) == 0;
+		
+		if (tmpTexture2Unlocked && maskUnlocked) 
+		{
+			Uint32 clear = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+			Uint32 blackthreshold = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
+			int width = std::min(tmpTexture2->w, bitmap->Mask->Tex->w);
+			int height = std::min(tmpTexture2->h, bitmap->Mask->Tex->h);
+			for (int yy = 0; (yy < height); yy++)
+			{
+				for(int xx = 0; (xx < width); xx++)
+				{
+					Uint32 *p = (Uint32*)((Uint8 *)tmpTexture2->pixels + (yy * tmpTexture2->pitch) + (xx * tmpTexture2->format->BytesPerPixel));
+					Uint32 *p2 = (Uint32*)((Uint8 *)bitmap->Mask->Tex->pixels + (yy  * bitmap->Mask->Tex->pitch) + (xx * bitmap->Mask->Tex->format->BytesPerPixel));
+					Uint32 p2val = *p2;
+					if (p2val < blackthreshold)
+					{
+						*p = clear;
+					}
+				}
+			}
+
+			if (SDL_MUSTLOCK(tmpTexture2))
+				SDL_UnlockSurface(tmpTexture2);
+			if (SDL_MUSTLOCK(bitmap->Mask->Tex))
+				SDL_UnlockSurface(bitmap->Mask->Tex);
+		
+		}
+
+		Uint32 cclear = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
+		SDL_SetColorKey(tmpTexture2, SDL_TRUE, cclear);
+		SDL_BlitSurface(tmpTexture2, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
+		SDL_FreeSurface(tmpTexture2);
+	}
+	else
+	{
+		Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
+		SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
+		SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
+	}
 
 	if(!isOrginalTexture)
 		SDL_FreeSurface(tmpTexture);
@@ -1733,12 +1808,12 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
     
     const char* err;
-    _Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
+    _Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorWhite);
     _Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light.ttf", &err);
     _FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold.ttf", &err);
     
     CurrentGfxContext = new GfxContext();
-    CurrentGfxContext->BackgroundColor = kColorClear;
+    CurrentGfxContext->BackgroundColor = kColorWhite;
     CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
     CurrentGfxContext->cliprect.x = -1;
     CurrentGfxContext->cliprect.y = -1;
