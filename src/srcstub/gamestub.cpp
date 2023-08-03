@@ -32,6 +32,7 @@ SDL_Color  pd_api_gfx_color_whitetreshold = {155, 155, 155, SDL_ALPHA_OPAQUE};
 SDL_Color  pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
 
 bool stubDoQuit;
+bool pd_api_gfx_disable_masks = true; // THEY DO NOT WORK ! i only added it for my puzzleland game which is basic usage
 SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
 
 void _pd_api_sys_fullScreenCallBack()

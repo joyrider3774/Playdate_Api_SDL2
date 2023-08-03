@@ -24,6 +24,7 @@ struct LCDBitmap;
 struct LCDBitmap {
     SDL_Surface* Tex;
 	LCDBitmap* Mask;
+	SDL_Surface* MaskedTex;
     int w;
     int h;
 };
@@ -99,6 +100,63 @@ GfxContext* CurrentGfxContext;
 LCDBitmap* _Playdate_Screen;
 LCDFont* _Default_Font = NULL;
 LCDFont* _FPS_Font = NULL;
+
+void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
+{
+	if (pd_api_gfx_disable_masks)
+		return;
+	if(bitmap->Mask)
+	{
+		if(bitmap->MaskedTex)
+			SDL_FreeSurface(bitmap->MaskedTex);
+		bitmap->MaskedTex = SDL_ConvertSurfaceFormat(bitmap->Tex, pd_api_gfx_PIXELFORMAT, 0);
+		SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
+		SDL_Surface* tmpMask = bitmap->Mask->Tex;
+
+		bool MaskedTextureUnlocked = true;
+		bool maskUnlocked = true;
+
+		if (SDL_MUSTLOCK(bitmap->MaskedTex))
+			MaskedTextureUnlocked = SDL_LockSurface(bitmap->MaskedTex) == 0;
+		if (SDL_MUSTLOCK(tmpMask))
+			maskUnlocked = SDL_LockSurface(tmpMask) == 0;
+		
+		if (MaskedTextureUnlocked && maskUnlocked) 
+		{
+			Uint32 black = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+			Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+			Uint32 blackthreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
+			Uint32 whitethreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
+			int width = std::min(bitmap->MaskedTex->w, tmpMask->w);
+			int height = std::min(bitmap->MaskedTex->h, tmpMask->h);
+			for (int yy = 0; (yy < height); yy++)
+			{
+				for(int xx = 0; (xx < width); xx++)
+				{
+					Uint32 *p = (Uint32*)((Uint8 *)bitmap->MaskedTex->pixels + (yy * bitmap->MaskedTex->pitch) + (xx * bitmap->MaskedTex->format->BytesPerPixel));
+					Uint32 *p2 = (Uint32*)((Uint8 *)tmpMask->pixels + (yy  * tmpMask->pitch) + (xx * tmpMask->format->BytesPerPixel));
+					Uint32 p2val = *p2;
+					Uint32 pval = *p;
+					if (p2val < blackthreshold)
+					{
+						*p = clear;
+					}
+					else if ((p2val > whitethreshold) && (pval == clear))
+					{
+						*p = black;
+					}
+				}
+			}
+
+			if (SDL_MUSTLOCK(bitmap->MaskedTex))
+				SDL_UnlockSurface(bitmap->MaskedTex);
+			if (SDL_MUSTLOCK(tmpMask))
+				SDL_UnlockSurface(tmpMask);
+		
+		}
+	}
+}
+
 
 SDL_Surface* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap)
 {
@@ -282,6 +340,7 @@ LCDBitmap* pd_api_gfx_Create_LCDBitmap()
     LCDBitmap* tmp = (LCDBitmap* ) malloc(sizeof(*tmp));
     tmp->Tex = NULL;
 	tmp->Mask = NULL;
+	tmp->MaskedTex = NULL;
     tmp->w = 0;
     tmp->h = 0;
     return tmp;
@@ -336,8 +395,23 @@ LCDBitmap* pd_api_gfx_newBitmap(int width, int height, LCDColor bgcolor)
 void pd_api_gfx_freeBitmap(LCDBitmap* Bitmap)
 {
     if(Bitmap == NULL)
+	{
         return;
-    SDL_FreeSurface(Bitmap->Tex);
+	}
+
+	if(Bitmap->Mask)
+	{
+		pd_api_gfx_freeBitmap(Bitmap->Mask);
+	}
+
+	if(Bitmap->MaskedTex)
+	{
+		SDL_FreeSurface(Bitmap->MaskedTex);
+		Bitmap->MaskedTex = NULL;
+	}
+
+	SDL_FreeSurface(Bitmap->Tex);
+
     free(Bitmap);
     Bitmap = NULL;
 }
@@ -391,7 +465,10 @@ LCDBitmap* pd_api_gfx_copyBitmap(LCDBitmap* bitmap)
 		SDL_FreeSurface(result->Tex);
 
 	result->Tex = SDL_ConvertSurfaceFormat(bitmap->Tex, pd_api_gfx_PIXELFORMAT, 0);
-	result->Mask = bitmap->Mask;
+	if(bitmap->Mask)
+		result->Mask = pd_api_gfx_copyBitmap(bitmap->Mask);
+	if(bitmap->MaskedTex)
+		result->MaskedTex = SDL_ConvertSurfaceFormat(bitmap->MaskedTex, pd_api_gfx_PIXELFORMAT, 0);
 
     return result;
 }
@@ -814,17 +891,34 @@ void pd_api_gfx_setTextLeading(int lineHeightAdustment)
 // 1.8
 int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 {
+	if(pd_api_gfx_disable_masks)
+		return 0;
+
 	if(!mask || !bitmap)
 		return 0;
 
-	bitmap->Mask = mask;
+	if (!mask->Tex || !bitmap->Tex)
+		return 0;
+
+	if ((mask->Tex->w != bitmap->Tex->w) || (mask->Tex->h != bitmap->Tex->h))
+		return 0;
+
+	//the mask seems to be a copy
+	if(bitmap->Mask)
+		pd_api_gfx_freeBitmap(bitmap->Mask);
+	
+	bitmap->Mask = pd_api_gfx_copyBitmap(mask);
+	
+	pd_api_gfx_recreatemaskedimage(bitmap);
+	
 	return 1;
 }
 
 LCDBitmap* pd_api_gfx_getBitmapMask(LCDBitmap* bitmap)
 {
-	if(!bitmap)
+	if(!bitmap || pd_api_gfx_disable_masks)
 		return NULL;
+
 	return bitmap->Mask;
 }
 	
@@ -853,7 +947,11 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 	SDL_Surface *tmpTexture1 = NULL;
 	SDL_Surface *tmpTexture = NULL;
 
-	tmpTexture = bitmap->Tex;
+	if(bitmap->MaskedTex)
+		tmpTexture = bitmap->MaskedTex;
+	else
+		tmpTexture = bitmap->Tex;
+
 	bool isOrginalTexture = true;
 
 	
@@ -870,7 +968,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				if(!isOrginalTexture)
 					SDL_FreeSurface(tmpTexture);
 				tmpTexture = tmpTexture1;
-				isOrginalTexture = false;
+				 isOrginalTexture = false;
 				break;
 			case kBitmapFlippedY:
 				tmpTexture1 = rotozoomSurfaceXY(tmpTexture, 0, 1, -1, 0);
@@ -1095,7 +1193,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 							}
 							if ((pval == clear) || (pval <= whitethreshold))
 								continue;
-							*p = black; 
+							*p = black;
 						}
 					}
 					break;
@@ -1222,56 +1320,10 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 		}
 	}
 
-	if(bitmap->Mask)
-	{
-		SDL_Surface *tmpTexture2 = SDL_ConvertSurfaceFormat(tmpTexture, pd_api_gfx_PIXELFORMAT, 0);
-		
-		bool tmpTexture2Unlocked = true;
-		bool maskUnlocked = true;
+	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
+	SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
+	SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
 
-		if (SDL_MUSTLOCK(tmpTexture2))
-			tmpTexture2Unlocked = SDL_LockSurface(tmpTexture2) == 0;
-		if (SDL_MUSTLOCK(bitmap->Mask->Tex))
-			maskUnlocked = SDL_LockSurface(bitmap->Mask->Tex) == 0;
-		
-		if (tmpTexture2Unlocked && maskUnlocked) 
-		{
-			Uint32 clear = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
-			Uint32 blackthreshold = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
-			int width = std::min(tmpTexture2->w, bitmap->Mask->Tex->w);
-			int height = std::min(tmpTexture2->h, bitmap->Mask->Tex->h);
-			for (int yy = 0; (yy < height); yy++)
-			{
-				for(int xx = 0; (xx < width); xx++)
-				{
-					Uint32 *p = (Uint32*)((Uint8 *)tmpTexture2->pixels + (yy * tmpTexture2->pitch) + (xx * tmpTexture2->format->BytesPerPixel));
-					Uint32 *p2 = (Uint32*)((Uint8 *)bitmap->Mask->Tex->pixels + (yy  * bitmap->Mask->Tex->pitch) + (xx * bitmap->Mask->Tex->format->BytesPerPixel));
-					Uint32 p2val = *p2;
-					if (p2val < blackthreshold)
-					{
-						*p = clear;
-					}
-				}
-			}
-
-			if (SDL_MUSTLOCK(tmpTexture2))
-				SDL_UnlockSurface(tmpTexture2);
-			if (SDL_MUSTLOCK(bitmap->Mask->Tex))
-				SDL_UnlockSurface(bitmap->Mask->Tex);
-		
-		}
-
-		Uint32 cclear = SDL_MapRGBA(tmpTexture2->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
-		SDL_SetColorKey(tmpTexture2, SDL_TRUE, cclear);
-		SDL_BlitSurface(tmpTexture2, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
-		SDL_FreeSurface(tmpTexture2);
-	}
-	else
-	{
-		Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
-		SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
-		SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
-	}
 
 	if(!isOrginalTexture)
 		SDL_FreeSurface(tmpTexture);
@@ -1540,7 +1592,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 
     SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, &rect, RealColor);
 
-    if (color == kColorXOR)
+	if (color == kColorXOR)
     {
         Api->graphics->popContext();
         Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
