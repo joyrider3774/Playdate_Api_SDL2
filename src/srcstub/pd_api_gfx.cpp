@@ -109,22 +109,30 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 	{
 		if(bitmap->MaskedTex)
 			SDL_FreeSurface(bitmap->MaskedTex);
-		bitmap->MaskedTex = SDL_ConvertSurfaceFormat(bitmap->Tex, pd_api_gfx_PIXELFORMAT, 0);
+		SDL_BlendMode blendMode;
+		bitmap->MaskedTex = SDL_CreateRGBSurfaceWithFormat(0, bitmap->Tex->w, bitmap->Tex->h, bitmap->Tex->format->BitsPerPixel, bitmap->Tex->format->format);
 		SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
+		Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+		SDL_FillRect(bitmap->MaskedTex, NULL, clear);
 		SDL_Surface* tmpMask = bitmap->Mask->Tex;
+		SDL_Surface* tmpTex = bitmap->Tex;
 
 		bool MaskedTextureUnlocked = true;
 		bool maskUnlocked = true;
+		bool texUnlocked = true;
 
 		if (SDL_MUSTLOCK(bitmap->MaskedTex))
 			MaskedTextureUnlocked = SDL_LockSurface(bitmap->MaskedTex) == 0;
 		if (SDL_MUSTLOCK(tmpMask))
 			maskUnlocked = SDL_LockSurface(tmpMask) == 0;
+		if (SDL_MUSTLOCK(tmpTex))
+			texUnlocked = SDL_LockSurface(tmpTex) == 0;
 		
-		if (MaskedTextureUnlocked && maskUnlocked) 
+		if (MaskedTextureUnlocked && maskUnlocked && texUnlocked) 
 		{
 			Uint32 black = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
-			Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+			Uint32 white = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+			
 			Uint32 blackthreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
 			Uint32 whitethreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
 			int width = std::min(bitmap->MaskedTex->w, tmpMask->w);
@@ -135,15 +143,12 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 				{
 					Uint32 *p = (Uint32*)((Uint8 *)bitmap->MaskedTex->pixels + (yy * bitmap->MaskedTex->pitch) + (xx * bitmap->MaskedTex->format->BytesPerPixel));
 					Uint32 *p2 = (Uint32*)((Uint8 *)tmpMask->pixels + (yy  * tmpMask->pitch) + (xx * tmpMask->format->BytesPerPixel));
+					Uint32 *p3 = (Uint32*)((Uint8 *)tmpTex->pixels + (yy  * tmpTex->pitch) + (xx * tmpTex->format->BytesPerPixel));
 					Uint32 p2val = *p2;
 					Uint32 pval = *p;
-					if (p2val < blackthreshold)
+					if(p2val > whitethreshold)
 					{
-						*p = clear;
-					}
-					else if ((p2val > whitethreshold) && (pval == clear))
-					{
-						*p = black;
+						*p = *p3;
 					}
 				}
 			}
@@ -152,6 +157,8 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 				SDL_UnlockSurface(bitmap->MaskedTex);
 			if (SDL_MUSTLOCK(tmpMask))
 				SDL_UnlockSurface(tmpMask);
+			if (SDL_MUSTLOCK(tmpTex))
+				SDL_UnlockSurface(tmpTex);
 		
 		}
 	}
