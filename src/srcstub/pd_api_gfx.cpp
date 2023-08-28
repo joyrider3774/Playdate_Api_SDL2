@@ -118,20 +118,20 @@ LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 	{
 		Uint32 black = SDL_MapRGBA(result->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
 		Uint32 white = SDL_MapRGBA(mask->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-			
+
 		for (int y = 0; y < 8; y++)
 		{
 			for(int x = 0; x< 8; x++)
 			{
 				Uint32 *p = (Uint32*)((Uint8 *)result->Tex->pixels + ((y) * result->Tex->pitch) + (x * result->Tex->format->BytesPerPixel));
-				if (Pattern[7-y] & (1 << (7-x)))
+				if (Pattern[y] & (1 << (7-x)))
 					*p = white;
 				else
 					*p = black;
 
 				
 				Uint32 *p2 = (Uint32*)((Uint8 *)mask->Tex->pixels + ((y)  * mask->Tex->pitch) + (x * mask->Tex->format->BytesPerPixel));
-				if (Pattern[15-y] & (1 << (7-x)))
+				if (Pattern[y] & (1 << (7-x)))
 					*p2 = white;
 				else
 					*p2 = black;				
@@ -1644,13 +1644,15 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
     
 	if(pattern)
 	{
-		int tilesx = (width /  8)+1;
-		int tilesy = (height / 8)+1;
+		int yoffset = y % 8;
+		int xoffset = x % 8;
+		int tilesx = ((width +xoffset) /  8)+1;
+		int tilesy = ((height + yoffset) / 8)+1;
 		bitmap = Api->graphics->newBitmap(width, height, kColorClear);
 		Api->graphics->pushContext(bitmap);
-		for (int y = 0; y < tilesy; y++)
-			for (int x = 0; x < tilesx; x++)
-				Api->graphics->drawBitmap(pattern, x*8, y*8, kBitmapUnflipped);
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				Api->graphics->drawBitmap(pattern, xx*8 -xoffset, yy*8 -yoffset, kBitmapUnflipped);
 		Api->graphics->popContext();
 		Api->graphics->drawBitmap(bitmap,x + CurrentGfxContext->drawoffsetx,  y + CurrentGfxContext->drawoffsety, kBitmapUnflipped);
 		Api->graphics->freeBitmap(bitmap);
