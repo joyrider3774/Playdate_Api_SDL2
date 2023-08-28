@@ -101,6 +101,54 @@ LCDBitmap* _Playdate_Screen;
 LCDFont* _Default_Font = NULL;
 LCDFont* _FPS_Font = NULL;
 
+LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
+{
+	LCDBitmap* result = Api->graphics->newBitmap(8, 8, kColorClear);
+	LCDBitmap* mask = Api->graphics->newBitmap(8, 8, kColorBlack);
+	bool surfaceLocked = true;
+	bool maskLocked = true;
+	if(SDL_MUSTLOCK(result->Tex))
+		surfaceLocked = SDL_LockSurface(result->Tex);
+
+	if(SDL_MUSTLOCK(mask->Tex))
+		maskLocked = SDL_LockSurface(mask->Tex);
+
+	
+	if(surfaceLocked && maskLocked)
+	{
+		Uint32 black = SDL_MapRGBA(result->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+		Uint32 white = SDL_MapRGBA(mask->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+			
+		for (int y = 0; y < 8; y++)
+		{
+			for(int x = 0; x< 8; x++)
+			{
+				Uint32 *p = (Uint32*)((Uint8 *)result->Tex->pixels + ((y) * result->Tex->pitch) + (x * result->Tex->format->BytesPerPixel));
+				if (Pattern[7-y] & (1 << (7-x)))
+					*p = white;
+				else
+					*p = black;
+
+				
+				Uint32 *p2 = (Uint32*)((Uint8 *)mask->Tex->pixels + ((y)  * mask->Tex->pitch) + (x * mask->Tex->format->BytesPerPixel));
+				if (Pattern[15-y] & (1 << (7-x)))
+					*p2 = white;
+				else
+					*p2 = black;				
+			}
+		}
+	}
+
+	if(SDL_MUSTLOCK(result->Tex))
+		SDL_UnlockSurface(result->Tex);
+
+	if(SDL_MUSTLOCK(mask->Tex))
+		SDL_UnlockSurface(mask->Tex);
+
+	Api->graphics->setBitmapMask(result, mask);
+	return result;
+}
+
 void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 {
 	if (pd_api_gfx_disable_masks)
@@ -113,7 +161,7 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 		bitmap->MaskedTex = SDL_CreateRGBSurfaceWithFormat(0, bitmap->Tex->w, bitmap->Tex->h, bitmap->Tex->format->BitsPerPixel, bitmap->Tex->format->format);
 		SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
 		Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
-		SDL_FillRect(bitmap->MaskedTex, NULL, clear);
+		//SDL_FillRect(bitmap->MaskedTex, NULL, clear);
 		SDL_Surface* tmpMask = bitmap->Mask->Tex;
 		SDL_Surface* tmpTex = bitmap->Tex;
 
@@ -1563,6 +1611,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 
 void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 {
+	LCDBitmap *pattern = NULL;
 	Uint32 RealColor;
 	switch (color)
     {
@@ -1579,8 +1628,10 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
             RealColor = SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
+			//assume lcd pattern
 			RealColor = 0;
-            break;
+			pattern = pd_api_gfx_PatternToBitmap((uint8_t*)color);
+			break;
     }
 
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
@@ -1591,13 +1642,30 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->pushContext(bitmap);
     }
     
-    SDL_Rect rect;
-    rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
-    rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
-    rect.w = width;
-    rect.h = height;
+	if(pattern)
+	{
+		int tilesx = (width /  8)+1;
+		int tilesy = (height / 8)+1;
+		bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+		Api->graphics->pushContext(bitmap);
+		for (int y = 0; y < tilesy; y++)
+			for (int x = 0; x < tilesx; x++)
+				Api->graphics->drawBitmap(pattern, x*8, y*8, kBitmapUnflipped);
+		Api->graphics->popContext();
+		Api->graphics->drawBitmap(bitmap,x + CurrentGfxContext->drawoffsetx,  y + CurrentGfxContext->drawoffsety, kBitmapUnflipped);
+		Api->graphics->freeBitmap(bitmap);
+		Api->graphics->freeBitmap(pattern);
+	}
+    else
+	{
+		SDL_Rect rect;
+    	rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
+    	rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
+    	rect.w = width;
+    	rect.h = height;
 
-    SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, &rect, RealColor);
+    	SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, &rect, RealColor);
+	}
 
 	if (color == kColorXOR)
     {
