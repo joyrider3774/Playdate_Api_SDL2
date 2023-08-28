@@ -131,7 +131,7 @@ LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 
 				
 				Uint32 *p2 = (Uint32*)((Uint8 *)mask->Tex->pixels + ((y)  * mask->Tex->pitch) + (x * mask->Tex->format->BytesPerPixel));
-				if (Pattern[y] & (1 << (7-x)))
+				if (Pattern[y+8] & (1 << (7-x)))
 					*p2 = white;
 				else
 					*p2 = black;				
@@ -159,7 +159,8 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 			SDL_FreeSurface(bitmap->MaskedTex);
 		SDL_BlendMode blendMode;
 		bitmap->MaskedTex = SDL_CreateRGBSurfaceWithFormat(0, bitmap->Tex->w, bitmap->Tex->h, bitmap->Tex->format->BitsPerPixel, bitmap->Tex->format->format);
-		SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
+		//must use blendmode_blend otherwise alpha does not work
+		//SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
 		Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 		//SDL_FillRect(bitmap->MaskedTex, NULL, clear);
 		SDL_Surface* tmpMask = bitmap->Mask->Tex;
@@ -180,7 +181,8 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 		{
 			Uint32 black = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
 			Uint32 white = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-			
+			Uint32 alpha = SDL_MapRGBA(bitmap->MaskedTex->format, 0,0,0,0);
+
 			Uint32 blackthreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
 			Uint32 whitethreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
 			int width = std::min(bitmap->MaskedTex->w, tmpMask->w);
@@ -1646,13 +1648,13 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 	{
 		int yoffset = y % 8;
 		int xoffset = x % 8;
-		int tilesx = ((width +xoffset) /  8)+1;
-		int tilesy = ((height + yoffset) / 8)+1;
+		int tilesx = (width /  8)+2;
+		int tilesy = (height / 8)+2;
 		bitmap = Api->graphics->newBitmap(width, height, kColorClear);
 		Api->graphics->pushContext(bitmap);
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				Api->graphics->drawBitmap(pattern, xx*8 -xoffset, yy*8 -yoffset, kBitmapUnflipped);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -xoffset, (yy*8) -yoffset, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
 		Api->graphics->popContext();
 		Api->graphics->drawBitmap(bitmap,x + CurrentGfxContext->drawoffsetx,  y + CurrentGfxContext->drawoffsety, kBitmapUnflipped);
 		Api->graphics->freeBitmap(bitmap);
