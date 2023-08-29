@@ -101,6 +101,52 @@ LCDBitmap* _Playdate_Screen;
 LCDFont* _Default_Font = NULL;
 LCDFont* _FPS_Font = NULL;
 
+void pd_api_gfx_MakeSurfaceBlackAndWhite(SDL_Surface *Img)
+{
+	if (Img)
+	{
+		bool unlocked = true;
+		if (SDL_MUSTLOCK(Img))
+			unlocked = SDL_LockSurface(Img);
+		if(unlocked)
+		{
+			Uint32 white = SDL_MapRGBA(Img->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+			Uint32 black = SDL_MapRGBA(Img->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+			Uint32 transparant = SDL_MapRGBA(Img->format, 0, 0, 0, 0);
+			Uint8 r,g,b,a;
+			float lum;
+			//how does pdc.exe calculate this when converting images to pdi ??
+			for (int y = 0; y < Img->h; y++)
+			{
+				for(int x = 0; x< Img->w; x++)
+				{
+					Uint32 *p = (Uint32*)((Uint8 *)Img->pixels + ((y) * Img->pitch) + (x * Img->format->BytesPerPixel));
+					if(*p == transparant)
+						continue;
+					// Convert the pixel value to grayscale i.e. intensity
+					SDL_GetRGBA(*p, Img->format, &r, &g, &b, &a);
+					lum = 0.212671f  *r + 0.715160f  * g + 0.072169f  *b;
+					//everything lower than half transparant make fully transparant
+					if(a < COLORCONVERSIONALPHATHRESHOLD)
+					{
+						*p = transparant;
+					}
+					//otherwise check the luminance value and put to fully black or fully white
+					else
+					{
+						if(lum < COLORCONVERSIONWHITETHRESHOLD)
+							*p = black;
+						else
+							*p = white;
+					}
+				}
+			}
+			if (SDL_MUSTLOCK(Img))
+				SDL_UnlockSurface(Img);
+		}
+	}
+}
+
 LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 {
 	LCDBitmap* result = Api->graphics->newBitmap(8, 8, kColorClear);
@@ -151,18 +197,15 @@ LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 
 void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 {
-	if (pd_api_gfx_disable_masks)
+	if (!ENABLEBITMAPMASKS)
 		return;
 	if(bitmap->Mask)
 	{
 		if(bitmap->MaskedTex)
 			SDL_FreeSurface(bitmap->MaskedTex);
-		SDL_BlendMode blendMode;
 		bitmap->MaskedTex = SDL_CreateRGBSurfaceWithFormat(0, bitmap->Tex->w, bitmap->Tex->h, bitmap->Tex->format->BitsPerPixel, bitmap->Tex->format->format);
 		//must use blendmode_blend otherwise alpha does not work
 		//SDL_SetSurfaceBlendMode(bitmap->MaskedTex, SDL_BLENDMODE_NONE);
-		Uint32 clear = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
-		//SDL_FillRect(bitmap->MaskedTex, NULL, clear);
 		SDL_Surface* tmpMask = bitmap->Mask->Tex;
 		SDL_Surface* tmpTex = bitmap->Tex;
 
@@ -179,11 +222,6 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 		
 		if (MaskedTextureUnlocked && maskUnlocked && texUnlocked) 
 		{
-			Uint32 black = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
-			Uint32 white = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-			Uint32 alpha = SDL_MapRGBA(bitmap->MaskedTex->format, 0,0,0,0);
-
-			Uint32 blackthreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
 			Uint32 whitethreshold = SDL_MapRGBA(bitmap->MaskedTex->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
 			int width = std::min(bitmap->MaskedTex->w, tmpMask->w);
 			int height = std::min(bitmap->MaskedTex->h, tmpMask->h);
@@ -195,7 +233,6 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 					Uint32 *p2 = (Uint32*)((Uint8 *)tmpMask->pixels + (yy  * tmpMask->pitch) + (xx * tmpMask->format->BytesPerPixel));
 					Uint32 *p3 = (Uint32*)((Uint8 *)tmpTex->pixels + (yy  * tmpTex->pitch) + (xx * tmpTex->format->BytesPerPixel));
 					Uint32 p2val = *p2;
-					Uint32 pval = *p;
 					if(p2val > whitethreshold)
 					{
 						*p = *p3;
@@ -496,27 +533,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		SDL_Surface* Img2 = SDL_ConvertSurfaceFormat(Img, pd_api_gfx_PIXELFORMAT, 0);
 		if (Img2)
 		{
-			bool unlocked = true;
-			if (SDL_MUSTLOCK(Img2))
-				unlocked = SDL_LockSurface(Img2);
-			if(unlocked)
-			{
-				Uint32 transparant = SDL_MapRGBA(Img2->format, 0, 0, 0, 0);
-				Uint8 r,g,b,a;
-				for (int y = 0; y < Img2->h; y++)
-				{
-					for(int x = 0; x< Img2->w; x++)
-					{
-						Uint32 *p = (Uint32*)((Uint8 *)Img2->pixels + ((y) * Img2->pitch) + (x * Img2->format->BytesPerPixel));
-						SDL_GetRGBA(*p, Img2->format, &r, &g, &b, &a);
-						if(a < 255)
-							*p = transparant;
-					}
-				}
-				if (SDL_MUSTLOCK(Img2))
-					SDL_UnlockSurface(Img2);
-			}
-			
+			pd_api_gfx_MakeSurfaceBlackAndWhite(Img2);
 			result = pd_api_gfx_newBitmap(Img2->w, Img2->h, kColorClear);
 			if(result)
 			{
@@ -741,6 +758,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                 result = pd_api_gfx_Create_LCDBitmapTable();
                 if(result)
                 {
+					pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
                     result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
                     *outerr = NULL;
                     result->w = w;
@@ -969,7 +987,7 @@ void pd_api_gfx_setTextLeading(int lineHeightAdustment)
 // 1.8
 int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 {
-	if(pd_api_gfx_disable_masks)
+	if(!ENABLEBITMAPMASKS)
 		return 0;
 
 	if(!mask || !bitmap)
@@ -994,7 +1012,7 @@ int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 
 LCDBitmap* pd_api_gfx_getBitmapMask(LCDBitmap* bitmap)
 {
-	if(!bitmap || pd_api_gfx_disable_masks)
+	if(!bitmap || !ENABLEBITMAPMASKS)
 		return NULL;
 
 	return bitmap->Mask;
