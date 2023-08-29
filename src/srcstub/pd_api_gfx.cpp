@@ -496,6 +496,27 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		SDL_Surface* Img2 = SDL_ConvertSurfaceFormat(Img, pd_api_gfx_PIXELFORMAT, 0);
 		if (Img2)
 		{
+			bool unlocked = true;
+			if (SDL_MUSTLOCK(Img2))
+				unlocked = SDL_LockSurface(Img2);
+			if(unlocked)
+			{
+				Uint32 transparant = SDL_MapRGBA(Img2->format, 0, 0, 0, 0);
+				Uint8 r,g,b,a;
+				for (int y = 0; y < Img2->h; y++)
+				{
+					for(int x = 0; x< Img2->w; x++)
+					{
+						Uint32 *p = (Uint32*)((Uint8 *)Img2->pixels + ((y) * Img2->pitch) + (x * Img2->format->BytesPerPixel));
+						SDL_GetRGBA(*p, Img2->format, &r, &g, &b, &a);
+						if(a < 255)
+							*p = transparant;
+					}
+				}
+				if (SDL_MUSTLOCK(Img2))
+					SDL_UnlockSurface(Img2);
+			}
+			
 			result = pd_api_gfx_newBitmap(Img2->w, Img2->h, kColorClear);
 			if(result)
 			{
