@@ -25,6 +25,8 @@ struct LCDBitmap {
     SDL_Surface* Tex;
 	LCDBitmap* Mask;
 	SDL_Surface* MaskedTex;
+	bool MaskDirty;
+	bool BitmapDirty;
     int w;
     int h;
 };
@@ -197,10 +199,13 @@ LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 
 void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 {
-	if (!ENABLEBITMAPMASKS)
+	if (!bitmap || !ENABLEBITMAPMASKS)
 		return;
-	if(bitmap->Mask)
+
+	if(bitmap->Mask && (bitmap->MaskDirty || bitmap->BitmapDirty))
 	{
+		bitmap->MaskDirty = false;
+		bitmap->BitmapDirty = false;
 		if(bitmap->MaskedTex)
 			SDL_FreeSurface(bitmap->MaskedTex);
 		bitmap->MaskedTex = SDL_CreateRGBSurfaceWithFormat(0, bitmap->Tex->w, bitmap->Tex->h, bitmap->Tex->format->BitsPerPixel, bitmap->Tex->format->format);
@@ -1004,9 +1009,8 @@ int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 		pd_api_gfx_freeBitmap(bitmap->Mask);
 	
 	bitmap->Mask = pd_api_gfx_copyBitmap(mask);
-	
-	pd_api_gfx_recreatemaskedimage(bitmap);
-	
+	bitmap->MaskDirty = true;
+
 	return 1;
 }
 
@@ -1034,6 +1038,7 @@ int printcount = 1;
 
 void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip)
 {
+	pd_api_gfx_recreatemaskedimage(bitmap);
     SDL_Rect dstrect;
     dstrect.x = x +  CurrentGfxContext->drawoffsetx;
     dstrect.y = y +  CurrentGfxContext->drawoffsety;
@@ -1423,6 +1428,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 
 	if(!isOrginalTexture)
 		SDL_FreeSurface(tmpTexture);
+	
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotation, float centerx, float centery, float xscale, float yscale)
@@ -1516,6 +1523,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCDColor color)
@@ -1602,6 +1610,7 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
@@ -1648,6 +1657,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
@@ -1719,6 +1729,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, float startAngle, float endAngle, LCDColor color) // stroked inside the rect
@@ -1768,6 +1779,7 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngle, float endAngle, LCDColor color)
@@ -1818,6 +1830,7 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
+	CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 
