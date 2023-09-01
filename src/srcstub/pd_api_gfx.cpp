@@ -1916,20 +1916,66 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 {
     LCDFont *f = font;
     if(!f)
+	{
         f = _Default_Font;
+	}
     
     if(!f)
+	{
         return 0;
+	}
     
     if(!f->font)
+	{
         return 0;
-    
-    char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
-    strncpy(sizedtext,(char *) text, len);
+	}
+	
+	if(len == 0)
+	{
+		return 0;
+	}
+
+	if(strlen((char*)text) == 0)
+	{
+		return 0;
+	}
+
+	char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
+    char *sizedtexttmp = (char *) malloc((len + 1) * sizeof(char));
+	strncpy(sizedtext,(char *) text, len);
     sizedtext[len] = '\0';
-    int w,h;
-    TTF_SizeText(f->font, sizedtext, &w, &h);
+    int w, wtmp, htmp;
+	char *p = sizedtext;
+	char *ptmp = sizedtexttmp;
+	w = 0;
+	while(*p != '\0')
+	{
+		if(*p == '\n')
+		{
+			*ptmp = '\0';
+			if(strlen(sizedtexttmp) > 0)
+			{
+				TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
+				if(wtmp > w)
+					w = wtmp;
+			}
+			ptmp = sizedtexttmp;
+		}
+		else
+			*ptmp = *p;
+		ptmp++;
+		p++;
+	}
+	//in case '\n' was last char sizedtextmp was reset to initial position and does not contain 0 char
+	*ptmp = '\0';
+	if(strlen(sizedtexttmp) > 0)
+	{
+		TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
+		if(wtmp > w)
+			w = wtmp;
+	}
     free(sizedtext);
+	free(sizedtexttmp);
     return w;
 }
 
