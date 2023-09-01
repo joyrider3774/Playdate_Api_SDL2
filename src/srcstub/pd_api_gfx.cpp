@@ -1962,8 +1962,10 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 			ptmp = sizedtexttmp;
 		}
 		else
+		{
 			*ptmp = *p;
-		ptmp++;
+			ptmp++;
+		}
 		p++;
 	}
 	//in case '\n' was last char sizedtextmp was reset to initial position and does not contain 0 char
