@@ -1,10 +1,16 @@
 DEBUG = 0
+CPP_BUILD ?= 0
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
-SRC_C_DIR = src/srcgame 
+SRC_C_DIR = src/srcgame
 OBJ_DIR = ./obj
 OUT_DIR = ./Source
 EXE=game
+
+ifeq ($(CPP_BUILD), 1)
+SRC_CPP_DIR += src/srcgame
+SRC_C_DIR =
+endif
 
 
 INC = $(wildcard *.h $(foreach fd, $(SRC_C_DIR), $(fd)/*.h)) $(wildcard *.hpp $(foreach fd, $(SRC_CPP_DIR), $(fd)/*.hpp))
@@ -19,8 +25,8 @@ INC_DIRS = -I./ $(addprefix -I, $(SRC_C_DIR)) $(addprefix -I, $(SRC_CPP_DIR))
 OPT_LEVEL ?= -O2
 CC = gcc
 CPP = g++
-CFLAGS = -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
-LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm 
+CFLAGS = -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
+LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
 
 ifeq ($(DEBUG), 1)
 ifeq ($(OS),Windows_NT)
