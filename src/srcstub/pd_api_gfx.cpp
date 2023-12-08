@@ -1,3 +1,4 @@
+#include <memory>
 #include <string.h>
 #include <dirent.h>
 #include <vector>
@@ -25,6 +26,8 @@ struct LCDBitmap {
     SDL_Surface* Tex;
 	LCDBitmap* Mask;
 	SDL_Surface* MaskedTex;
+	uint8_t *BitmapDataMask;
+	uint8_t *BitmapDataData;
 	bool MaskDirty;
 	bool BitmapDirty;
     int w;
@@ -102,6 +105,19 @@ GfxContext* CurrentGfxContext;
 LCDBitmap* _Playdate_Screen;
 LCDFont* _Default_Font = NULL;
 LCDFont* _FPS_Font = NULL;
+
+// Determine pixel at x, y is black or white.
+#define pd_api_gfx_samplepixel(data, x, y, rowbytes) (((data[(y)*rowbytes+(x)/8] & (1 << (uint8_t)(7 - ((x) % 8)))) != 0) ? kColorWhite : kColorBlack)
+
+// Set the pixel at x, y to black.
+#define pd_api_gfx_setpixel(data, x, y, rowbytes) (data[(y)*rowbytes+(x)/8] &= ~(1 << (uint8_t)(7 - ((x) % 8))))
+
+// Set the pixel at x, y to white.
+#define pd_api_gfx_clearpixel(data, x, y, rowbytes) (data[(y)*rowbytes+(x)/8] |= (1 << (uint8_t)(7 - ((x) % 8))))
+
+// Set the pixel at x, y to the specified color.
+#define pd_api_gfx_drawpixel(data, x, y, rowbytes, color) (((color) == kColorBlack) ? pd_api_gfx_setpixel((data), (x), (y), (rowbytes)) : pd_api_gfx_clearpixel((data), (x), (y), (rowbytes)))
+
 
 void pd_api_gfx_MakeSurfaceBlackAndWhite(SDL_Surface *Img)
 {
@@ -252,7 +268,7 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 			if (SDL_MUSTLOCK(tmpTex))
 				SDL_UnlockSurface(tmpTex);
 		
-		}
+	}
 	}
 }
 
@@ -422,6 +438,7 @@ void pd_api_gfx_popContext(void)
     {
 		//restore the cliprect of the current drawtarget first (we had it store in pushcontext)
 		SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &CurrentGfxContext->cliprect);
+		delete gfxstack[gfxstack.size()-1];
 		gfxstack.pop_back();
         CurrentGfxContext = gfxstack[gfxstack.size()-1];
         //restore drawtarget
@@ -440,6 +457,8 @@ LCDBitmap* pd_api_gfx_Create_LCDBitmap()
     tmp->Tex = NULL;
 	tmp->Mask = NULL;
 	tmp->MaskedTex = NULL;
+	tmp->BitmapDataMask = NULL;
+	tmp->BitmapDataData = NULL;
     tmp->w = 0;
     tmp->h = 0;
     return tmp;
@@ -509,6 +528,18 @@ void pd_api_gfx_freeBitmap(LCDBitmap* Bitmap)
 		Bitmap->MaskedTex = NULL;
 	}
 
+	if(Bitmap->BitmapDataData)
+	{
+		free(Bitmap->BitmapDataData);
+		Bitmap->BitmapDataData = NULL;
+	}
+
+	if(Bitmap->BitmapDataMask)
+	{
+		free(Bitmap->BitmapDataMask);
+		Bitmap->BitmapDataMask = NULL;
+	}
+
 	SDL_FreeSurface(Bitmap->Tex);
 
     free(Bitmap);
@@ -547,7 +578,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 				SDL_BlitSurface(Img2, NULL, result->Tex, NULL);				
 				SDL_SetSurfaceBlendMode(result->Tex, SDL_BLENDMODE_NONE);
 				//SDL_SetSurfaceRLE(result->Tex, SDL_RLEACCEL);
-			}
+				}
 			SDL_FreeSurface(Img2);
 		}
 		SDL_FreeSurface(Img);
@@ -578,16 +609,9 @@ void pd_api_gfx_loadIntoBitmap(const char* path, LCDBitmap* bitmap, const char**
     bitmap = pd_api_gfx_loadBitmap(path, outerr);
 }
 
+//mask and data changes are not applied to the bitmap but they can be read
 void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* rowbytes, uint8_t** mask, uint8_t** data)
 {
-    if(mask)
-    {
-        *mask = NULL;
-    }
-    if(data)
-    {
-        *data = NULL;
-    }
     if(width)
     {
         *width = 0;
@@ -604,9 +628,75 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
             *height = bitmap->h;
         }
     }
+	int rb = (int)ceil(bitmap->w /8);
     if(rowbytes)
     {
-        rowbytes = 0;
+        *rowbytes = rb;
+    }
+
+	if(mask)
+    {
+		if(!bitmap->BitmapDataMask)
+			bitmap->BitmapDataMask = (uint8_t*) malloc(rb*bitmap->h * sizeof(uint8_t));
+		*mask = bitmap->BitmapDataMask;
+    }
+
+    if(data)
+    {
+		if(!bitmap->BitmapDataData)
+			bitmap->BitmapDataData = (uint8_t*) malloc(rb*bitmap->h * sizeof(uint8_t));
+		*data = bitmap->BitmapDataData;
+	}
+	
+	if(mask || data)
+	{
+		if(mask)
+			memset(*mask, 0, rb*bitmap->h);
+		if(data)
+			memset(*data, 0, rb*bitmap->h);
+		bool unlocked = true;
+		if (SDL_MUSTLOCK(bitmap->Tex))
+			unlocked = SDL_LockSurface(bitmap->Tex) == 0;
+		if (unlocked)
+		{
+			Uint32 clear = SDL_MapRGBA(bitmap->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+			Uint32 whitethreshold = SDL_MapRGBA(bitmap->Tex->format, pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g, pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
+			Uint32 blackthreshold = SDL_MapRGBA(bitmap->Tex->format, pd_api_gfx_color_blacktreshold.r, pd_api_gfx_color_blacktreshold.g, pd_api_gfx_color_blacktreshold.b, pd_api_gfx_color_blacktreshold.a);
+			Uint32 alpha = SDL_MapRGBA(bitmap->Tex->format,0,0,0,0);
+			for (int y = 0; y < bitmap->h; y++)
+				for (int x = 0; x < bitmap->w; x++)
+				{
+					Uint32 *p = (Uint32*)((Uint8 *)bitmap->Tex->pixels + (y * bitmap->Tex->pitch) + (x * bitmap->Tex->format->BytesPerPixel));
+					Uint32 pval = *p;
+					if ((pval == alpha) || (pval == clear))
+					{
+						if(mask)
+							pd_api_gfx_drawpixel(*mask, x, y, rb, kColorBlack); 
+					}
+					else
+					{
+						if(mask)
+							pd_api_gfx_drawpixel(*mask, x, y, rb, kColorWhite); 
+						
+						if(data)
+						{
+							if(pval >= whitethreshold)
+							{
+
+								pd_api_gfx_drawpixel(*data, x, y, rb, kColorWhite); 
+							}
+							else if(pval <= blackthreshold)
+							{
+								pd_api_gfx_drawpixel(*data, x, y, rb, kColorBlack); 
+							}
+						}
+					}
+
+				}
+
+			if(SDL_MUSTLOCK(bitmap->Tex))
+				SDL_UnlockSurface(bitmap->Tex);
+		}
     }
 }
 
@@ -1421,7 +1511,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 		}
 	}
 
-	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);						               
+	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 	SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
 	SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
 
@@ -2157,8 +2247,17 @@ void _pd_api_gfx_freeFontList()
         if(font->path)
             free(font->path);
         if(font->font)
+		{
             if(font->font->font)
                 TTF_CloseFont(font->font->font);
+			free(font->font);
+		}
+		delete font;
     }
     fontlist.clear();
+}
+
+void _pd_api_gfx_cleanUp()
+{
+	Api->graphics->freeBitmap(_Playdate_Screen);
 }

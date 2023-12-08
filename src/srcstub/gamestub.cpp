@@ -355,11 +355,15 @@ Possible options are:\n\
                                 fpslogticks = SDL_GetPerformanceCounter();
                             }
                         }
-                        //erase remaining sprites in memory
+                        eventHandler(Api, kEventTerminate, 0);
+
+						//erase remaining sprites in memory
                         _pd_api_sprite_cleanup_sprites(false);
 
                         //free samples & sounds
                         _pd_api_sound_freeSampleList();
+
+						_pd_api_gfx_cleanUp();
 
                         //free Api
                         free((void *)Api->system);
