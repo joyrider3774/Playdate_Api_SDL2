@@ -25,7 +25,8 @@ INC_DIRS = -I./ $(addprefix -I, $(SRC_C_DIR)) $(addprefix -I, $(SRC_CPP_DIR))
 OPT_LEVEL ?= -O2
 CC = gcc
 CPP = g++
-CFLAGS = -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
+CPP_VERSION = c++17
+CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
 LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
 
 ifeq ($(DEBUG), 1)
@@ -47,11 +48,11 @@ endif
 all: $(EXE)
 
 $(EXE): $(OBJS) $(INC)
-	$(CPP) -o $(OUT_DIR)/$@ $(OBJS) $(LDLIBS)
+	$(CPP) -o $(OUT_DIR)/$@ -std=$(CPP_VERSION) $(OBJS) $(LDLIBS)
 
 $(OBJ_DIR)/%.o: %.cpp
 	mkdir -p $(@D)
-	$(CPP) -o $@ $(OPT_LEVEL) $(CFLAGS) -c $< $(INC_DIRS)
+	$(CPP) -o $@ -std=$(CPP_VERSION) $(OPT_LEVEL) $(CFLAGS) -c $< $(INC_DIRS)
 
 $(OBJ_DIR)/%.o: %.c
 	mkdir -p $(@D)
