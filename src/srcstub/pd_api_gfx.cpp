@@ -1094,6 +1094,12 @@ int pd_api_gfx_setBitmapMask(LCDBitmap* bitmap, LCDBitmap* mask)
 	if ((mask->Tex->w != bitmap->Tex->w) || (mask->Tex->h != bitmap->Tex->h))
 		return 0;
 
+	if (bitmap->Mask == mask)
+	{
+		bitmap->MaskDirty = true;
+		return 1;
+	}
+
 	//the mask seems to be a copy
 	if(bitmap->Mask)
 		pd_api_gfx_freeBitmap(bitmap->Mask);
