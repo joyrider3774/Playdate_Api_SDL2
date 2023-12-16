@@ -22,28 +22,6 @@ PlaydateAPI *Api;
 
 
 
-#ifdef __EMSCRIPTEN__
-    Uint16 audio_format = MIX_DEFAULT_FORMAT;
-	int audio_channels = MIX_DEFAULT_CHANNELS;
-	int audio_buffers = 4096;
-	int const audio_rate = EM_ASM_INT_V({
-        var context;
-        try {
-            context = new AudioContext();
-        } catch (e) {
-            context = new webkitAudioContext();
-        }
-        return context.sampleRate;
-    });
-#else
-    int const audio_rate = 44100;
-	Uint16 audio_format = AUDIO_S16SYS; 
-	int audio_channels = 2;
-	int audio_buffers = 256;
-#endif
-
-
-
 Uint64 pd_api_fpslogticks;
 Uint64 pd_api_FrameCount;
 double pd_api_TotalFps;
@@ -370,8 +348,24 @@ Possible options are:\n\
                 {
                     SDL_Log("Succesfully Initialized SDL_TTF\n");
 				#ifdef __EMSCRIPTEN__
+    				Uint16 audio_format = MIX_DEFAULT_FORMAT;
+					int audio_channels = MIX_DEFAULT_CHANNELS;
+					int audio_buffers = 4096;
+					int const audio_rate = EM_ASM_INT_V({
+        				var context;
+        				try {
+            				context = new AudioContext();
+        				} catch (e) {
+            				context = new webkitAudioContext();
+        				}
+        				return context.sampleRate;
+    				});
 					if(Mix_OpenAudioDevice(audio_rate, audio_format, audio_channels, audio_buffers, NULL, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) == 0)
 				#else
+    				int const audio_rate = 44100;
+					Uint16 audio_format = AUDIO_S16SYS; 
+					int audio_channels = 2;
+					int audio_buffers = 256;
                     if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) == 0)
 				#endif
                     {
