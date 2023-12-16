@@ -36,10 +36,11 @@ CPP = em++
 OPT_LEVEL = -O3
 CFLAGS = -sUSE_SDL=2 -sUSE_SDL_TTF=2 -sUSE_SDL_GFX=2 -sUSE_SDL_MIXER=2 -sUSE_SDL_IMAGE=2 -sSDL2_IMAGE_FORMATS='["png"]' -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter
 LDLIBS = 
+EMSCRIPTEN_MEMORY_SIZE=536870912
 ifeq ($(EMSCRIPTEN_ASYNCIFY), 1)
 LDLIBS += -sASYNCIFY
 endif
-LDLIBS += -sINITIAL_MEMORY=536870912 $(CFLAGS) --preload-file Source@
+LDLIBS += -sINITIAL_MEMORY=$(EMSCRIPTEN_MEMORY_SIZE) $(CFLAGS) --preload-file Source@
 else
 CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
 LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
