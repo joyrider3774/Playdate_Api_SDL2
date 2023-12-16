@@ -355,8 +355,11 @@ Possible options are:\n\
                 if(TTF_Init() == 0)
                 {
                     SDL_Log("Succesfully Initialized SDL_TTF\n");
-
-                    if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) == 0) 
+				#ifdef __EMSCRIPTEN__
+					if(Mix_OpenAudioDevice(NULL, 0, frequency, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) == 0)
+				#else
+                    if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) == 0)
+				#endif
                     {
                         SDL_Log("Succesfully Initialized SDL_MIXER\n");
                         //initialiaze playdate api
