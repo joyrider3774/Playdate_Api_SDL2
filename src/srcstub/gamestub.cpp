@@ -360,7 +360,7 @@ Possible options are:\n\
         				}
         				return context.sampleRate;
     				});
-					if(Mix_OpenAudioDevice(audio_rate, audio_format, audio_channels, audio_buffers, NULL, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) == 0)
+					if(Mix_OpenAudioDevice(audio_rate, audio_format, audio_channels, audio_buffers, NULL, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE | SDL_AUDIO_ALLOW_FORMAT_CHANGE) == 0)
 				#else
     				int const audio_rate = 44100;
 					Uint16 audio_format = AUDIO_S16SYS; 
