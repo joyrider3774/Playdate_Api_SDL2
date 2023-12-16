@@ -935,7 +935,7 @@ void pd_api_gfx_markUpdatedRows(int start, int end)
 
 void pd_api_gfx_display(void)
 {
-
+	_pd_api_display();
 }
 
 //video

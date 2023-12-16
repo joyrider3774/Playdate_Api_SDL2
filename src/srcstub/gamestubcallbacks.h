@@ -47,8 +47,10 @@ extern LCDBitmapDrawMode _pd_api_gfx_getCurrentDrawMode();
 extern SDL_Surface* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
 extern void _pd_api_gfx_drawFPS(int x, int y);
 
-
 extern void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites);
+
+//stub display screen
+extern void _pd_api_display();
 
 extern float _DisplayFps;
 extern double _DisplayDesiredDelta;

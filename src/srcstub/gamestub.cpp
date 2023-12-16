@@ -34,6 +34,7 @@ SDL_Color  pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
 bool stubDoQuit;
 
 SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
+SDL_Texture* _pd_api_TexScreen;
 
 void _pd_api_sys_fullScreenCallBack()
 {
@@ -92,6 +93,114 @@ void preciseSleep(double seconds) {
     // spin lock
     auto start = high_resolution_clock::now();
     while ((high_resolution_clock::now() - start).count() / 1e9 < seconds);
+}
+
+void _pd_api_display()
+{
+	Uint8 r,g,b,a;
+	SDL_Texture* target;
+	LCDColor bgColor;
+	
+	//clear fullbackground of the real screen (in case display offset is used)
+	target = SDL_GetRenderTarget(Renderer);
+					
+	SDL_SetRenderTarget(Renderer, NULL);
+	bgColor = getBackgroundDrawColor();
+	SDL_GetRenderDrawColor(Renderer, &r, &g, & b, &a);
+	
+	if(bgColor == kColorClear)
+	{
+		if (_DisplayInverted)
+			bgColor = kColorBlack;
+		else
+			bgColor = kColorWhite;
+	}
+	else
+	{
+		if (_DisplayInverted)
+		{
+			if(bgColor == kColorBlack)
+				bgColor = kColorWhite;
+			else
+				if(bgColor == kColorWhite)
+					bgColor = kColorBlack;
+		}
+	}
+
+	switch(bgColor)
+	{                       
+		case kColorBlack:
+			SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+			break;
+		case kColorWhite:
+			SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+			break;
+	}
+
+	SDL_RenderClear(Renderer);
+	SDL_SetRenderDrawColor(Renderer, r, g, b, a);
+
+						
+	//draw the fake screen to the real screen but loop it through custom made _pd_api_gfx_drawBitmapAll
+	//so that clear pixels (cyan's) are made transparant. 
+	//we clear the background of the real screen surface with either white or black
+	//bgColor = getBackgroundDrawColor();
+	LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, _DisplayInverted? kColorBlack:kColorWhite);//(LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
+	//get the playdate screen bitmap
+	LCDBitmap * playdatescreen = Api->graphics->getDisplayBufferBitmap();
+	//and push it as a context so we can pop it later
+	Api->graphics->pushContext(screen);
+	//also reset all current option to normal
+	//so it does not affect this screen bitmap drawing
+	Api->graphics->setDrawMode(kDrawModeCopy);
+	Api->graphics->clearClipRect();
+	Api->graphics->setDrawOffset(0,0);
+	//apply inverted mode
+	if (_DisplayInverted)
+	{
+		Api->graphics->setDrawMode(kDrawModeInverted);
+	}
+	//set flip mode
+	LCDBitmapFlip flip = kBitmapUnflipped;
+	if (_DisplayFlippedX && _DisplayFlippedY)
+	{
+		flip = kBitmapFlippedXY;
+	}
+	else
+	{
+		if (_DisplayFlippedX)
+		{
+			flip = kBitmapFlippedX;
+		}
+		else
+		{
+			if(_DisplayFlippedY)
+			{
+				flip = kBitmapFlippedY;
+			}
+		}
+	}
+	//draw using the newly added all around function
+	_pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _DisplayScale, _DisplayScale, false, 0, 0, 0, flip);
+	Api->graphics->popContext();
+
+	//now we just need to blit this bitmap to the screen, but i could not access screen->tex so added another function
+	//to get the sdl texture                  
+	SDL_SetRenderTarget(Renderer, NULL);
+	SDL_Surface* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
+	SDL_UpdateTexture(_pd_api_TexScreen, NULL, Tex->pixels, Tex->pitch);
+	SDL_Rect Dest;                    
+	Dest.x = _DisplayOffsetDisplayX;
+	Dest.y = _DisplayOffsetDisplayY;
+	Dest.w = LCD_COLUMNS;
+	Dest.h = LCD_ROWS;
+	SDL_RenderCopy(Renderer, _pd_api_TexScreen, NULL, &Dest);
+	SDL_RenderPresent(Renderer);
+
+	Api->graphics->freeBitmap(screen);
+
+	//restore render target
+	SDL_SetRenderTarget(Renderer, target);
 }
 
 int main(int argv, char** args)
@@ -206,128 +315,31 @@ Possible options are:\n\
 
                         Uint64 fpslogticks = SDL_GetPerformanceCounter();
                         stubDoQuit = false;
-                        Uint8 r,g,b,a;
-                        SDL_Texture* target;
                         double elapsed = 0.0;
-                        LCDColor bgColor;
                         Uint64 _FrameCount = 0;
                         double _TotalFps = 0.0;
-						SDL_Texture* TexScreen = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, LCD_COLUMNS, LCD_ROWS);
+						_pd_api_TexScreen = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, LCD_COLUMNS, LCD_ROWS);
 
                         while(!stubDoQuit)
                         {
                             Uint64 StartTicks = SDL_GetPerformanceCounter();
-                            _pd_api_sys_UpdateInput();
-                            //run the update function    
+
+							//update input handler
+							_pd_api_sys_UpdateInput();
+
+							//run the update function
                             _pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
+
+							//clean sprites set as not loaded (delayed delete to prevent issues)
+							_pd_api_sprite_cleanup_sprites(true);
                             
-                            //clean sprites set as not loaded (delayed delete to prevent issues)
-                            _pd_api_sprite_cleanup_sprites(true);
-                            
-                            //clear fullbackground of the real screen (in case display offset is used)
-                            target = SDL_GetRenderTarget(Renderer);
-                                            
-                            SDL_SetRenderTarget(Renderer, NULL);
-                            bgColor = getBackgroundDrawColor();
-                            SDL_GetRenderDrawColor(Renderer, &r, &g, & b, &a);
-							
-							if(bgColor == kColorClear)
-							{
-								if (_DisplayInverted)
-									bgColor = kColorBlack;
-								else
-									bgColor = kColorWhite;
-							}
-							else
-							{
-								if (_DisplayInverted)
-								{
-									if(bgColor == kColorBlack)
-										bgColor = kColorWhite;
-									else
-										if(bgColor == kColorWhite)
-											bgColor = kColorBlack;
-								}
-							}
+							//flip / display screen
+							_pd_api_display();
 
-                            switch(bgColor)
-                            {                       
-                                case kColorBlack:
-									SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
-                                    break;
-                                case kColorWhite:
-                                    SDL_SetRenderDrawColor(Renderer, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-                                    break;
-                            }
-
-                            SDL_RenderClear(Renderer);
-                            SDL_SetRenderDrawColor(Renderer, r, g, b, a);
-
-                                                
-                            //draw the fake screen to the real screen but loop it through custom made _pd_api_gfx_drawBitmapAll
-                            //so that clear pixels (cyan's) are made transparant. 
-                            //we clear the background of the real screen surface with either white or black
-                            //bgColor = getBackgroundDrawColor();
-                            LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, _DisplayInverted? kColorBlack:kColorWhite);//(LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
-                            //get the playdate screen bitmap
-                            LCDBitmap * playdatescreen = Api->graphics->getDisplayBufferBitmap();
-                            //and push it as a context so we can pop it later
-                            Api->graphics->pushContext(screen);
-                            //also reset all current option to normal
-                            //so it does not affect this screen bitmap drawing
-                            Api->graphics->setDrawMode(kDrawModeCopy);
-                            Api->graphics->clearClipRect();
-                            Api->graphics->setDrawOffset(0,0);
-                            //apply inverted mode
-                            if (_DisplayInverted)
-                            {
-                                Api->graphics->setDrawMode(kDrawModeInverted);
-                            }
-                            //set flip mode
-                            LCDBitmapFlip flip = kBitmapUnflipped;
-                            if (_DisplayFlippedX && _DisplayFlippedY)
-                            {
-                                flip = kBitmapFlippedXY;
-                            }
-                            else
-                            {
-                                if (_DisplayFlippedX)
-                                {
-                                    flip = kBitmapFlippedX;
-                                }
-                                else
-                                {
-                                    if(_DisplayFlippedY)
-                                    {
-                                        flip = kBitmapFlippedY;
-                                    }
-                                }
-                            }
-                            //draw using the newly added all around function
-                            _pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _DisplayScale, _DisplayScale, false, 0, 0, 0, flip);
-                            Api->graphics->popContext();
-
-                            //now we just need to blit this bitmap to the screen, but i could not access screen->tex so added another function
-                            //to get the sdl texture                  
-                            SDL_SetRenderTarget(Renderer, NULL);
-                            SDL_Surface* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
-							SDL_UpdateTexture(TexScreen, NULL, Tex->pixels, Tex->pitch);
-                            SDL_Rect Dest;                    
-                            Dest.x = _DisplayOffsetDisplayX;
-                            Dest.y = _DisplayOffsetDisplayY;
-                            Dest.w = LCD_COLUMNS;
-                            Dest.h = LCD_ROWS;
-                            SDL_RenderCopy(Renderer, TexScreen, NULL, &Dest);
-							SDL_RenderPresent(Renderer);
-
-                            Api->graphics->freeBitmap(screen);
-
-                            //restore render target
-                            SDL_SetRenderTarget(Renderer, target);
-
+							//cliprects are cleared after a frame
 							Api->graphics->clearClipRect();
 
-                            //for calculating avergage
+							//for calculating avergage
                             _FrameCount++;
 
                             //calculate fps & delay
@@ -355,6 +367,7 @@ Possible options are:\n\
                                 fpslogticks = SDL_GetPerformanceCounter();
                             }
                         }
+
                         eventHandler(Api, kEventTerminate, 0);
 
 						//erase remaining sprites in memory
@@ -396,7 +409,7 @@ Possible options are:\n\
                         free((void *)Api->lua);
                         free((void *)Api->scoreboards);
                         free((void *)Api->json);
-						SDL_DestroyTexture(TexScreen);
+						SDL_DestroyTexture(_pd_api_TexScreen);
 
                         Mix_CloseAudio();
                     }
