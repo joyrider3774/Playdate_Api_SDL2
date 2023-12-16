@@ -356,7 +356,7 @@ Possible options are:\n\
                 {
                     SDL_Log("Succesfully Initialized SDL_TTF\n");
 				#ifdef __EMSCRIPTEN__
-					if(Mix_OpenAudioDevice(NULL, 0, frequency, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) == 0)
+					if(Mix_OpenAudioDevice(NULL, 0, audio_rate, MIX_DEFAULT_FORMAT, MIX_DEFAULT_CHANNELS, 4096, SDL_AUDIO_ALLOW_FREQUENCY_CHANGE) == 0)
 				#else
                     if(Mix_OpenAudio(audio_rate, audio_format, audio_channels, audio_buffers) == 0)
 				#endif
