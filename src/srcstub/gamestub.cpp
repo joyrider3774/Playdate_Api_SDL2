@@ -12,15 +12,28 @@
 #include <math.h>
 #include <thread>
 #include <chrono>
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
 
 SDL_Window *SdlWindow;
 SDL_Renderer *Renderer;
 PlaydateAPI *Api;
 
+
 int audio_rate = 44100; 
 Uint16 audio_format = AUDIO_S16SYS; 
 int audio_channels = 2; 
+#ifdef __EMSCRIPTEN__
+int audio_buffers = 2048;
+#else
 int audio_buffers = 256;
+#endif
+
+Uint64 pd_api_fpslogticks;
+Uint64 pd_api_FrameCount;
+double pd_api_TotalFps;
+double pd_api_elapsed;
 
 
 //mapped value of clear must lie between black and white and its value may not be bigger than whitethreshold or lower than blackthreshold
@@ -203,6 +216,54 @@ void _pd_api_display()
 	SDL_SetRenderTarget(Renderer, target);
 }
 
+void runMainLoop()
+{
+	Uint64 StartTicks = SDL_GetPerformanceCounter();
+
+	//update input handler
+	_pd_api_sys_UpdateInput();
+
+	//run the update function
+	_pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
+
+	//clean sprites set as not loaded (delayed delete to prevent issues)
+	_pd_api_sprite_cleanup_sprites(true);
+	
+	//flip / display screen
+	_pd_api_display();
+
+	//cliprects are cleared after a frame
+	Api->graphics->clearClipRect();
+
+	//for calculating avergage
+	pd_api_FrameCount++;
+
+	//calculate fps & delay
+	pd_api_elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
+	if ((_DisplayDesiredDelta != 0.0) && (pd_api_elapsed < _DisplayDesiredDelta))
+	{
+		//SDL_Delay((Uint32)(_DisplayDesiredDelta - elapsed));
+		preciseSleep((_DisplayDesiredDelta - pd_api_elapsed) / 1000.0);
+	}
+
+	pd_api_elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
+	if(pd_api_elapsed != 0.0)
+	{
+		_CurrentFps = 1.0 / pd_api_elapsed;
+		pd_api_TotalFps += _CurrentFps;
+		_AvgFps = pd_api_TotalFps / (double)pd_api_FrameCount;
+	}
+	
+	if (((SDL_GetPerformanceFrequency() + pd_api_fpslogticks)) < SDL_GetPerformanceCounter())
+	{  
+		pd_api_TotalFps = 0.0;
+		pd_api_FrameCount = 0;
+		_LastFPS = _AvgFps;
+		printfDebug(DebugFPS, "%2f\n", _LastFPS);
+		pd_api_fpslogticks = SDL_GetPerformanceCounter();
+	}
+}
+
 int main(int argv, char** args)
 {
 	bool useSoftwareRenderer = true;
@@ -313,61 +374,21 @@ Possible options are:\n\
                         //initialize handler
                         eventHandler(Api, kEventInit, 0);
 
-                        Uint64 fpslogticks = SDL_GetPerformanceCounter();
+                        pd_api_fpslogticks = SDL_GetPerformanceCounter();
                         stubDoQuit = false;
-                        double elapsed = 0.0;
-                        Uint64 _FrameCount = 0;
-                        double _TotalFps = 0.0;
+                        pd_api_elapsed = 0.0;
+                        pd_api_FrameCount = 0;
+                        pd_api_TotalFps = 0.0;
 						_pd_api_TexScreen = SDL_CreateTexture(Renderer, pd_api_gfx_PIXELFORMAT, SDL_TEXTUREACCESS_STREAMING, LCD_COLUMNS, LCD_ROWS);
 
-                        while(!stubDoQuit)
-                        {
-                            Uint64 StartTicks = SDL_GetPerformanceCounter();
-
-							//update input handler
-							_pd_api_sys_UpdateInput();
-
-							//run the update function
-                            _pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
-
-							//clean sprites set as not loaded (delayed delete to prevent issues)
-							_pd_api_sprite_cleanup_sprites(true);
-                            
-							//flip / display screen
-							_pd_api_display();
-
-							//cliprects are cleared after a frame
-							Api->graphics->clearClipRect();
-
-							//for calculating avergage
-                            _FrameCount++;
-
-                            //calculate fps & delay
-                            elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
-                            if ((_DisplayDesiredDelta != 0.0) && (elapsed < _DisplayDesiredDelta))
-                            {
-                                //SDL_Delay((Uint32)(_DisplayDesiredDelta - elapsed));
-								preciseSleep((_DisplayDesiredDelta - elapsed) / 1000.0);
-                            }
-
-							elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
-                            if(elapsed != 0.0)
-                            {
-                                _CurrentFps = 1.0 / elapsed;
-                                _TotalFps += _CurrentFps;
-                                _AvgFps = _TotalFps / (double)_FrameCount;
-                            }
-                            
-                            if (((SDL_GetPerformanceFrequency() + fpslogticks)) < SDL_GetPerformanceCounter())
-                            {  
-                                _TotalFps = 0.0;
-                                _FrameCount = 0;
-                                _LastFPS = _AvgFps;
-                                printfDebug(DebugFPS, "%2f\n", _LastFPS);
-                                fpslogticks = SDL_GetPerformanceCounter();
-                            }
-                        }
-
+						#ifdef __EMSCRIPTEN__
+  							emscripten_set_main_loop([]() { runMainLoop(); }, 0, true);
+						#else
+     			    	while(!stubDoQuit)
+						{
+							runMainLoop();
+						}
+						#endif
                         eventHandler(Api, kEventTerminate, 0);
 
 						//erase remaining sprites in memory
