@@ -164,10 +164,14 @@ AudioSample* pd_api_sound_loadSample(const char* path)
 
     if (needextension)
     {
-        struct stat lstats;   
-        sprintf(fullpath,"./%s.mp3", path);
+        struct stat lstats;
+        sprintf(fullpath,"./%s.ogg", path);
         if(stat(fullpath, &lstats) != 0)
-            sprintf(fullpath,"./%s.wav", path);
+		{
+			sprintf(fullpath,"./%s.mp3", path);
+        	if(stat(fullpath, &lstats) != 0)
+            	sprintf(fullpath,"./%s.wav", path);
+		}
     }
     else
         sprintf(fullpath, "./%s", path);
