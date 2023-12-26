@@ -11,6 +11,6 @@ i've used this to create windows (and linux) binaries to for my playdate game's 
 5. if all goes well compiled binary should be named game(.exe) in Source directory
 
 # credits
-Playdate api headers (contained in PD_API directory) are copyright by panic inc
-bump.hpp by Polynominal (https://github.com/Polynominal/bump.hpp)
+- Playdate api headers (contained in PD_API directory) are copyright by panic inc
+- bump.hpp by Polynominal (https://github.com/Polynominal/bump.hpp)
 
