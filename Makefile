@@ -4,6 +4,13 @@ rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 DEBUG = 0
 CPP_BUILD ?= 0
 EMSCRIPTEN_BUILD ?= 0
+DEFAULTSOURCEDIR ?= 0
+#default is 400x240 but you can lower the values to cut out / crop the screen
+#can be handy if a game is not using the full 400x240 resolution and draws everything in the center
+SCREENRESX ?= 400 
+SCREENRESY ?= 240
+#to set the window's default size it's the resultion times this value 
+WINDOWSCALE ?= 1
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame
@@ -51,7 +58,7 @@ EMSCRIPTEN_MEMORY_SIZE=536870912
 LDLIBS = 
 #might be needed to prevent stutters or use sleep statements in emscripten
 ifeq ($(EMSCRIPTEN_ASYNCIFY), 1)
-LDLIBS += -sASYNCIFY
+LDLIBS += -sASYNCIFY -lidbfs.js -s FORCE_FILESYSTEM
 endif
 #provide memory and assets folder
 LDLIBS += -sINITIAL_MEMORY=$(EMSCRIPTEN_MEMORY_SIZE) $(CFLAGS) --preload-file $(OUTPUT_ASSETS_DIR)@
@@ -82,6 +89,8 @@ ifeq ($(EMSCRIPTEN_BUILD),0)
 LDLIBS += -lX11
 endif
 endif
+
+CFLAGS += -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
 
 .PHONY: all clean
 

@@ -9,4 +9,15 @@
 #define COLORCONVERSIONALPHATHRESHOLD 128 //255 = fully opaque
 #define COLORCONVERSIONWHITETHRESHOLD 128 //255 = fully white 0 = fully black
 #define ENABLEBITMAPMASKS true // THEY DO NOT WORK FULLY ! i only added it for my puzzleland and retrotime game which is basic usage (it only creates a masked image when calling setmask)
-
+#ifndef SCREENRESX
+	#define SCREENRESX 400
+#endif
+#ifndef SCREENRESY
+	#define SCREENRESY 240
+#endif
+#ifndef WINDOWSCALE
+	#define WINDOWSCALE 1
+#endif
+#ifndef DEFAULTSOURCEDIR
+	#define DEFAULTSOURCEDIR 0
+#endif

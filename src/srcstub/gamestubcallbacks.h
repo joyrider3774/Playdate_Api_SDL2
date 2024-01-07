@@ -34,6 +34,7 @@ typedef struct playdate_sound_synth playdate_sound_synth;
 extern void _pd_api_sys_fullScreenCallBack();
 extern void _pd_api_sys_renderResetCallBack();
 extern void _pd_api_sys_quitCallBack();
+extern void _pd_api_sys_nextSourceDirCallback();
 
 //sys
 extern PDCallbackFunction* _pd_api_sys_DoUpdate;
@@ -46,31 +47,32 @@ extern void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xsc
 extern LCDBitmapDrawMode _pd_api_gfx_getCurrentDrawMode();
 extern SDL_Surface* _pd_api_gfx_GetSDLTextureFromBitmap(LCDBitmap* bitmap);
 extern void _pd_api_gfx_drawFPS(int x, int y);
-
+extern void _pd_api_gfx_loadDefaultFonts();
+extern void _pd_api_gfx_resetContext();
 extern void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites);
 
 //stub display screen
 extern void _pd_api_display();
 
-extern float _DisplayFps;
-extern double _DisplayDesiredDelta;
-extern unsigned int _DisplayScale;
-extern unsigned int _DisplayMosaicX;
-extern unsigned int _DisplayMosaicY;
-extern int _DisplayFlippedX;
-extern int _DisplayFlippedY;
-extern int _DisplayOffsetDisplayX;
-extern int _DisplayOffsetDisplayY;
-extern int _DisplayInverted;
-extern double _CurrentFps;
-extern double _AvgFps;
-extern double _LastFPS;
+extern float _pd_api_display_Fps;
+extern double _pd_api_display_DesiredDelta;
+extern unsigned int _pd_api_display_Scale;
+extern unsigned int _pd_api_display_MosaicX;
+extern unsigned int _pd_api_display_MosaicY;
+extern int _pd_api_display_FlippedX;
+extern int _pd_api_display_FlippedY;
+extern int _pd_api_display_OffsetDisplayX;
+extern int _pd_api_display_OffsetDisplayY;
+extern int _pd_api_display_Inverted;
+extern double _pd_api_display_CurrentFps;
+extern double _pd_api_display_AvgFps;
+extern double _pd_api_display_LastFPS;
 
 //sys
 extern int _CranckSoundDisabled;
 extern int _CranckDocked;
-
-
+extern const char * _pd_api_get_current_source_dir();
+extern int _pd_current_source_dir;
 extern playdate_sys* pd_api_sys_Create_playdate_sys();
 extern playdate_display* pd_api_display_Create_playdate_display();
 extern playdate_graphics* pd_api_gfx_Create_playdate_graphics();

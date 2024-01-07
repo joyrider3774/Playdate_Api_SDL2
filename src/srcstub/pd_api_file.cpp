@@ -10,6 +10,91 @@
 #include "pd_api/pd_api_file.h"
 #include "gamestubcallbacks.h"
 #include "defines.h"
+#include "pdxinfo_parser.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+char _pd_api_file_save_path_cache[MAXPATH] = {0};
+
+char * _pd_api_file_save_path()
+{
+	#ifdef __EMSCRIPTEN__
+		sprintf(_pd_api_file_save_path_cache, "/saveddata.%s", pdx_info_parser_bundleID());
+	#else
+		char *EnvHome = getenv("HOME");
+		char *EnvHomeDrive = getenv("HOMEDRIVE");
+		char *EnvHomePath = getenv("HOMEPATH");
+
+		sprintf(_pd_api_file_save_path_cache, "./saveddata");
+		if (EnvHome) //linux systems normally
+		{
+			sprintf(_pd_api_file_save_path_cache, "%s/.saveddata.%s", EnvHome, pdx_info_parser_bundleID());
+		}
+		else
+		{
+			if(EnvHomeDrive && EnvHomePath) //windows systems normally
+			{
+				sprintf(_pd_api_file_save_path_cache, "%s%s/.saveddata.%s", EnvHomeDrive, EnvHomePath, pdx_info_parser_bundleID());
+			}
+		}
+	#endif
+	return _pd_api_file_save_path_cache;
+}
+
+void _pd_api_file_init_emscripten()
+{
+
+	#ifdef __EMSCRIPTEN__
+	// EM_ASM is a macro to call in-line JavaScript code.
+	EM_ASM({
+		_pd_api_file_init_emscripten_done = 0;
+		// Make a directory other than '/'
+		FS.mkdir('/saveddata.' + UTF8ToString($0));
+		// Then mount with IDBFS type
+		FS.mount(IDBFS, {}, '/saveddata.' + UTF8ToString($0));
+		// Then sync
+		FS.syncfs(true, function (err) {
+			// Error
+			if (err)
+				console.log(err);
+			_pd_api_file_init_emscripten_done = 1;
+		});
+	}, pdx_info_parser_bundleID());
+	
+	int x = EM_ASM_INT(return _pd_api_file_init_emscripten_done);
+	while(x == 0)
+	{
+		emscripten_sleep(1);
+		x = EM_ASM_INT(return _pd_api_file_init_emscripten_done);
+	}
+	#endif
+}
+
+void _pd_api_file_sync_emscripten()
+{
+	#ifdef __EMSCRIPTEN__
+	// EM_ASM is a macro to call in-line JavaScript code.
+	EM_ASM(
+		_pd_api_file_sync_emscripten_done = 0;
+		// Then sync
+		FS.syncfs(false, function (err) {
+			// Error
+			if (err)
+				console.log("Error syncing files: " + err);
+			_pd_api_file_sync_emscripten_done = 1;
+		});
+	);
+
+	
+	int x = EM_ASM_INT(return _pd_api_file_sync_emscripten_done);
+	while(x == 0)
+	{
+		emscripten_sleep(1);
+		x = EM_ASM_INT(return _pd_api_file_sync_emscripten_done);
+	}
+	#endif
+}
 
 const char* pd_api_file_geterr(void)
 {
@@ -21,7 +106,7 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
     int result = -1;
     struct stat lstats;
     char filename[MAXPATH];
-    sprintf(filename, "./saveddata/%s", path);
+	sprintf(filename, "%s/%s", _pd_api_file_save_path(), path);
     if(stat(filename, &lstats) == 0)
     {
         stats->isdir = S_ISDIR(lstats.st_mode);
@@ -38,7 +123,7 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
     }
     else
     {
-        sprintf(filename, "./%s", path);
+        sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
         if(stat(filename, &lstats) == 0)
         {
             stats->isdir = S_ISDIR(lstats.st_mode);
@@ -53,6 +138,24 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
             stats->m_year = 1900+dt.tm_year;
             result = 0;
         }   
+		else
+		{
+			sprintf(filename, "./%s", path);
+			if(stat(filename, &lstats) == 0)
+			{
+				stats->isdir = S_ISDIR(lstats.st_mode);
+				stats->size = lstats.st_size;
+				struct tm dt;
+				dt = *(gmtime(&lstats.st_mtime));
+				stats->m_day = dt.tm_mday;
+				stats->m_hour = dt.tm_hour;
+				stats->m_minute = dt.tm_min;
+				stats->m_month = dt.tm_mon;
+				stats->m_second = dt.tm_sec;
+				stats->m_year = 1900+dt.tm_year;
+				result = 0;
+			}
+		}
     }
     return result;
 }
@@ -70,7 +173,7 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
     char **filenamelist = (char **) malloc(listsize * sizeof (*filenamelist));
 
     //saved data folder
-    sprintf(filename, "./saveddata/%s", path);
+	sprintf(filename, "%s/%s",_pd_api_file_save_path(), path);
     DIR *dir = opendir(filename);
     if (dir != NULL) 
     {
@@ -102,9 +205,15 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
         closedir(dir);
     }
 
-    //current folder
-    sprintf(filename, "./%s", path);
-    dir = opendir(filename);
+	//current folder
+	sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
+	dir = opendir(filename);
+	if (dir == NULL) 
+	{
+    	//current folder
+    	sprintf(filename, "./%s", path);
+		dir = opendir(filename);
+	}
     if (dir != NULL) 
     {
         while ((entry = readdir(dir)) != NULL) 
@@ -148,12 +257,15 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
 int	pd_api_file_mkdir(const char* path)
 {
     char filename[MAXPATH];
-    sprintf(filename, "./saveddata/%s", path);
+	sprintf(filename, "%s/%s", _pd_api_file_save_path(), path);
+	int result = 0;
     #if defined(_WIN32)
-    return mkdir(filename);
+    result = mkdir(filename);
     #else 
-    return mkdir(filename, 0777);
+    result = mkdir(filename, 0777);
     #endif
+	_pd_api_file_sync_emscripten();
+	return result;
 }
 
 int	pd_api_file_unlink(const char* name, int recursive)
@@ -169,7 +281,7 @@ int	pd_api_file_unlink(const char* name, int recursive)
         char filename[MAXPATH];
         char filename2[(2*MAXPATH) + 1];
         char filename3[(2*MAXPATH) + 1];
-        sprintf(filename, "./saveddata/%s", name);
+		sprintf(filename, "%s/%s", _pd_api_file_save_path(), name);
         if(stat(filename, &lstats) == 0)
         {
             if(S_ISDIR(lstats.st_mode))
@@ -224,6 +336,7 @@ int	pd_api_file_unlink(const char* name, int recursive)
             }
         }
     }
+	_pd_api_file_sync_emscripten();
     return result;
 }
 
@@ -231,9 +344,11 @@ int	pd_api_file_rename(const char* from, const char* to)
 {
     char filename[MAXPATH];
     char filenameTo[MAXPATH];
-    sprintf(filename, "./saveddata/%s", from);
-    sprintf(filenameTo, "./saveddata/%s", to);
-    return rename(filename, filenameTo);
+    sprintf(filename, "%s/%s", _pd_api_file_save_path(), from);
+    sprintf(filenameTo, "%s/%s", _pd_api_file_save_path(), to);
+	int result = rename(filename, filenameTo);
+	_pd_api_file_sync_emscripten();
+	return result;
 }
 
 SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
@@ -243,12 +358,17 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
     FILE *LastFile = NULL;
     if (((mode & kFileWrite) == kFileWrite) || ((mode & kFileAppend) == kFileAppend) || ((mode & kFileReadData) == kFileReadData))
     {
-        pd_api_file_mkdir("");
-        sprintf(filename, "./saveddata/%s", name);
+		#ifndef __EMSCRIPTEN__
+        	pd_api_file_mkdir("");
+		#endif
+        sprintf(filename, "%s/%s", _pd_api_file_save_path(), name);
     }
     else
     {
-        sprintf(filename, "./%s", name);
+        sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), name);
+		struct stat lstats;
+		if(stat(filename, &lstats) != 0)
+			sprintf(filename, "./%s", name);
     }
 
     if ((mode & kFileWrite) == kFileWrite)
@@ -281,8 +401,13 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
                 LastFile = fopen(filename, modestr);
                 if(!LastFile)
                 {
-                    sprintf(filename, "./%s", name);
-                    LastFile = fopen(filename, modestr);
+                    sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), name);
+					LastFile = fopen(filename, modestr);
+					if(!LastFile)
+					{
+						sprintf(filename, "./%s", name);
+                    	LastFile = fopen(filename, modestr);
+					}
                 }
             }
             else
@@ -314,7 +439,12 @@ int	pd_api_file_SDFileread(SDFile* file, void* buf, unsigned int len)
 
 int	pd_api_file_SDFilewrite(SDFile* file, const void* buf, unsigned int len)
 {
-    return fwrite(buf, 1, len, (FILE*)file);
+    int result = fwrite(buf, 1, len, (FILE*)file);
+	#ifdef __EMSCRIPTEN__
+	fflush((FILE*)file);
+	#endif
+	_pd_api_file_sync_emscripten();
+	return result;
 }
 
 int	pd_api_file_SDFileflush(SDFile* file)
@@ -349,5 +479,7 @@ playdate_file* pd_api_file_Create_playdate_file()
 	Tmp->flush = pd_api_file_SDFileflush;
 	Tmp->tell = pd_api_file_SDFiletell;
 	Tmp->seek = pd_api_file_SDFileseek;
-    return Tmp;
+    
+	_pd_api_file_init_emscripten();
+	return Tmp;
 }

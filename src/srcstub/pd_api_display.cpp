@@ -1,19 +1,19 @@
 #include "pd_api/pd_api_display.h"
 #include "gamestubcallbacks.h"
 
-float _DisplayFps = 50.0f;
-double _DisplayDesiredDelta = 1000.0 / 50.0;
-unsigned int _DisplayScale = 1;
-unsigned int _DisplayMosaicX = 0;
-unsigned int _DisplayMosaicY = 0;
-int _DisplayFlippedX = 0;
-int _DisplayFlippedY = 0;
-int _DisplayOffsetDisplayX = 0;
-int _DisplayOffsetDisplayY = 0;
-int _DisplayInverted = 0;
-double _CurrentFps = 0.0;
-double _AvgFps = 0.0;
-double _LastFPS = 0.0;
+float _pd_api_display_Fps = 50.0f;
+double _pd_api_display_DesiredDelta = 1000.0 / 50.0;
+unsigned int _pd_api_display_Scale = 1;
+unsigned int _pd_api_display_MosaicX = 0;
+unsigned int _pd_api_display_MosaicY = 0;
+int _pd_api_display_FlippedX = 0;
+int _pd_api_display_FlippedY = 0;
+int _pd_api_display_OffsetDisplayX = 0;
+int _pd_api_display_OffsetDisplayY = 0;
+int _pd_api_display_Inverted = 0;
+double _pd_api_display_CurrentFps = 0.0;
+double _pd_api_display_AvgFps = 0.0;
+double _pd_api_display_LastFPS = 0.0;
 
 int pd_api_display_getWidth(void)
 {
@@ -30,39 +30,39 @@ void pd_api_display_setRefreshRate(float rate)
     float tmp = rate;
     if(tmp > 50)
         tmp = 50;
-    _DisplayFps = tmp;
+    _pd_api_display_Fps = tmp;
     if (tmp > 0)
-        _DisplayDesiredDelta = 1000.0 / (double)_DisplayFps;
+        _pd_api_display_DesiredDelta = 1000.0 / (double)_pd_api_display_Fps;
     else
-        _DisplayDesiredDelta = 0.0;
+        _pd_api_display_DesiredDelta = 0.0;
 }
 
 void pd_api_display_setInverted(int flag)
 {
-    _DisplayInverted = flag;
+    _pd_api_display_Inverted = flag;
 }
 
 void pd_api_display_setScale(unsigned int s)
 {
-    _DisplayScale = s;
+    _pd_api_display_Scale = s;
 }
 
 void pd_api_display_setMosaic(unsigned int x, unsigned int y)
 {
-    _DisplayMosaicX = x;
-    _DisplayMosaicY = y;
+    _pd_api_display_MosaicX = x;
+    _pd_api_display_MosaicY = y;
 }
 
 void pd_api_display_setFlipped(int x, int y)
 {
-    _DisplayFlippedX = x;
-    _DisplayFlippedY = y;
+    _pd_api_display_FlippedX = x;
+    _pd_api_display_FlippedY = y;
 }
 
 void pd_api_display_setDisplayOffset(int x, int y)
 {
-    _DisplayOffsetDisplayX = x;
-    _DisplayOffsetDisplayY = y;
+    _pd_api_display_OffsetDisplayX = x;
+    _pd_api_display_OffsetDisplayY = y;
 }
 
 playdate_display* pd_api_display_Create_playdate_display()

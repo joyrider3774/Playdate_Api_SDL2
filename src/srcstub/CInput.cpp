@@ -109,6 +109,7 @@ void CInput_ResetButtons(CInput* cinput)
 	cinput->Buttons.ButRight2 = false;
 	cinput->Buttons.ButUp2 = false;
 	cinput->Buttons.ButDown2 = false;
+	cinput->Buttons.NextSource = false;
 	cinput->PrevButtons = cinput->Buttons;
 }
 
@@ -164,13 +165,16 @@ void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value)
 		case SDLK_F4:
 			cinput->Buttons.ButQuit = Value;
 			break;
-        case SDLK_f:
+        case SDLK_F3:
+			cinput->Buttons.NextSource = Value;
+			break;
+		case SDLK_f:
 			cinput->Buttons.ButFullscreen = Value;
 			break;
-        case SDLK_PAGEDOWN:
+        case SDLK_F8:
 			cinput->Buttons.ButRB = Value;
 			break;
-        case SDLK_PAGEUP:
+        case SDLK_F7:
 			cinput->Buttons.ButLB = Value;
 			break;
 		case SDLK_UP:
@@ -212,10 +216,10 @@ void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value)
 		case SDLK_d:
 			cinput->Buttons.ButY = Value;
 			break;
-		case SDLK_z:
+		case SDLK_F5:
 			cinput->Buttons.ButLT = Value;
 			break;
-		case SDLK_e:
+		case SDLK_F6:
 			cinput->Buttons.ButRT = Value;
 			break;
 		default:

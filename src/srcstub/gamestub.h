@@ -9,7 +9,7 @@
 extern SDL_Window *SdlWindow;
 extern SDL_Renderer *Renderer;
 extern PlaydateAPI *Api;
-extern LCDBitmap* _Playdate_Screen;
+extern LCDBitmap* _pd_api_gfx_Playdate_Screen;
 extern bool stubDoQuit;
 extern LCDColor getBackgroundDrawColor();
 extern SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT;

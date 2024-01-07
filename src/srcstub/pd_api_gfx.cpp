@@ -9,6 +9,7 @@
 #include <SDL_rotate.h>
 #include <SDL2_rotozoom.h>
 #include <SDL_ttf.h>
+#include <sys/stat.h>
 #include "gfx_primitives_surface/SDL_gfxPrimitivesSurface.h"
 #include "sdl_rotate/SDL_rotate.h"
 #include "pd_api/pd_api_gfx.h"
@@ -101,10 +102,10 @@ class FontListEntry {
 std::vector<FontListEntry*> fontlist;
 std::vector<GfxContext*> gfxstack;
 
-GfxContext* CurrentGfxContext;
-LCDBitmap* _Playdate_Screen;
-LCDFont* _Default_Font = NULL;
-LCDFont* _FPS_Font = NULL;
+GfxContext* _pd_api_gfx_CurrentGfxContext;
+LCDBitmap* _pd_api_gfx_Playdate_Screen;
+LCDFont* _pd_api_gfx_Default_Font = NULL;
+LCDFont* _pd_api_gfx_FPS_Font = NULL;
 
 // Determine pixel at x, y is black or white.
 #define pd_api_gfx_samplepixel(data, x, y, rowbytes) (((data[(y)*rowbytes+(x)/8] & (1 << (uint8_t)(7 - ((x) % 8)))) != 0) ? kColorWhite : kColorBlack)
@@ -117,7 +118,6 @@ LCDFont* _FPS_Font = NULL;
 
 // Set the pixel at x, y to the specified color.
 #define pd_api_gfx_drawpixel(data, x, y, rowbytes, color) (((color) == kColorBlack) ? pd_api_gfx_setpixel((data), (x), (y), (rowbytes)) : pd_api_gfx_clearpixel((data), (x), (y), (rowbytes)))
-
 
 void pd_api_gfx_MakeSurfaceBlackAndWhite(SDL_Surface *Img)
 {
@@ -210,6 +210,9 @@ LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 		SDL_UnlockSurface(mask->Tex);
 
 	Api->graphics->setBitmapMask(result, mask);
+	//setBitmapMask makes a copy currently of the mask in my api
+	//so need to free the current mask bitmap
+	Api->graphics->freeBitmap(mask);
 	return result;
 }
 
@@ -285,10 +288,10 @@ void _pd_api_gfx_drawFPS(int x, int y)
     Api->graphics->clearClipRect();
     Api->graphics->setDrawOffset(0,0);
     char *Text;
-    Api->system->formatString(&Text,"%2.0f", _LastFPS);
-    Api->graphics->setFont(_FPS_Font);
-    int w = Api->graphics->getTextWidth(_FPS_Font, Text, strlen(Text), kASCIIEncoding, 0);
-    int h = Api->graphics->getFontHeight(_FPS_Font);
+    Api->system->formatString(&Text,"%2.0f", _pd_api_display_LastFPS);
+    Api->graphics->setFont(_pd_api_gfx_FPS_Font);
+    int w = Api->graphics->getTextWidth(_pd_api_gfx_FPS_Font, Text, strlen(Text), kASCIIEncoding, 0);
+    int h = Api->graphics->getFontHeight(_pd_api_gfx_FPS_Font);
     Api->graphics->fillRect(x, y, w, h, kColorWhite);
     Api->graphics->drawText(Text, strlen(Text), kASCIIEncoding, x, y);
     Api->system->realloc(Text, 0);
@@ -297,12 +300,12 @@ void _pd_api_gfx_drawFPS(int x, int y)
 
 LCDBitmapDrawMode _pd_api_gfx_getCurrentDrawMode()
 {
-	return CurrentGfxContext->BitmapDrawMode;
+	return _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
 }
 
 LCDColor getBackgroundDrawColor()
 {
-    return CurrentGfxContext->BackgroundColor;
+    return _pd_api_gfx_CurrentGfxContext->BackgroundColor;
 }
 
 // Drawing Functions
@@ -315,96 +318,96 @@ void pd_api_gfx_clear(LCDColor color)
 
 	//clear clears entire screen so need to remove cliprect temporary
 	SDL_Rect rect;
-	SDL_GetClipRect(CurrentGfxContext->DrawTarget->Tex, &rect);
-	SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, NULL);
+	SDL_GetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &rect);
+	SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, NULL);
 
     switch (color)
     {
         case kColorBlack:
-            SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+            SDL_FillRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
             break;
         case kColorWhite:
-            SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a));
+            SDL_FillRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a));
             break;
         case kColorClear:
-            SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a));
+            SDL_FillRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, NULL, SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a));
             break;
         default:
             break;
     }
-	SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &rect);
+	SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &rect);
 }
 
 void pd_api_gfx_setBackgroundColor(LCDSolidColor color)
 {
-    CurrentGfxContext->BackgroundColor = color;
+    _pd_api_gfx_CurrentGfxContext->BackgroundColor = color;
 }
 
 void pd_api_gfx_setStencil(LCDBitmap* stencil) // deprecated in favor of setStencilImage, which adds a "tile" flag
 {
-    CurrentGfxContext->stencil = stencil;
+    _pd_api_gfx_CurrentGfxContext->stencil = stencil;
 }
 
 void pd_api_gfx_setDrawMode(LCDBitmapDrawMode mode)
 {
-    CurrentGfxContext->BitmapDrawMode = mode;
+    _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = mode;
 }
 
 void pd_api_gfx_setDrawOffset(int dx, int dy)
 {
-    CurrentGfxContext->drawoffsetx = dx;
-    CurrentGfxContext->drawoffsety = dy;
+    _pd_api_gfx_CurrentGfxContext->drawoffsetx = dx;
+    _pd_api_gfx_CurrentGfxContext->drawoffsety = dy;
 }
 
 void pd_api_gfx_setClipRect(int x, int y, int width, int height)
 {
 	SDL_Rect cliprect;
-    cliprect.x = x + CurrentGfxContext->drawoffsetx;
-    cliprect.y = y + CurrentGfxContext->drawoffsety;
+    cliprect.x = x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    cliprect.y = y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     cliprect.w = width;
     cliprect.h = height;
-    SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &cliprect);
+    SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &cliprect);
 }
 
 void pd_api_gfx_clearClipRect(void)
 {
-    SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, NULL);
+    SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, NULL);
 }
 
 void pd_api_gfx_setLineCapStyle(LCDLineCapStyle endCapStyle)
 {
-    CurrentGfxContext->linecapstyle = endCapStyle;
+    _pd_api_gfx_CurrentGfxContext->linecapstyle = endCapStyle;
 }
 
 void pd_api_gfx_setFont(LCDFont* font)
 {
     if(!font)
-        CurrentGfxContext->font = _Default_Font;
+        _pd_api_gfx_CurrentGfxContext->font = _pd_api_gfx_Default_Font;
     else
-        CurrentGfxContext->font = font;
+        _pd_api_gfx_CurrentGfxContext->font = font;
 }
 
 void pd_api_gfx_setTextTracking(int tracking)
 {
-    CurrentGfxContext->tracking = tracking;
+    _pd_api_gfx_CurrentGfxContext->tracking = tracking;
 }
 
 void pd_api_gfx_pushContext(LCDBitmap* target)
 {	
     GfxContext* Tmp = new GfxContext();
 	//bitmap drawmode remains same
-	Tmp->BitmapDrawMode = CurrentGfxContext->BitmapDrawMode;
+	Tmp->BitmapDrawMode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
 	//font is not changed it seems
-	Tmp->font = CurrentGfxContext->font;
+	Tmp->font = _pd_api_gfx_CurrentGfxContext->font;
 	//background color seems to be set to white on a push
 	Tmp->BackgroundColor = kColorWhite; 
 	//draw offset is reset
 	Tmp->drawoffsetx = 0;
 	Tmp->drawoffsety = 0;
 	//need to verify these 3 below like its possible they get reset to some fixed value
-	Tmp->linecapstyle = CurrentGfxContext->linecapstyle;
-	Tmp->stencil = CurrentGfxContext->stencil;
-	Tmp->tracking = CurrentGfxContext->tracking;
+	Tmp->linecapstyle = _pd_api_gfx_CurrentGfxContext->linecapstyle;
+	Tmp->stencil = _pd_api_gfx_CurrentGfxContext->stencil;
+	Tmp->tracking = _pd_api_gfx_CurrentGfxContext->tracking;
 
 	//collisionworld ?
 	//displaylist ?
@@ -421,14 +424,14 @@ void pd_api_gfx_pushContext(LCDBitmap* target)
     }
     else
     {
-        Tmp->DrawTarget = _Playdate_Screen;
+        Tmp->DrawTarget = _pd_api_gfx_Playdate_Screen;
     }
 	//save the cliprect it is the cliprect from the target bitmap
 	SDL_Rect clipRect;
 	SDL_GetClipRect(Tmp->DrawTarget->Tex, &clipRect);
 	Tmp->cliprect = clipRect; 
 	gfxstack.push_back(Tmp);
-    CurrentGfxContext = Tmp;
+    _pd_api_gfx_CurrentGfxContext = Tmp;
 }
 
 void pd_api_gfx_popContext(void)
@@ -437,14 +440,14 @@ void pd_api_gfx_popContext(void)
     if(gfxstack.size() > 1)
     {
 		//restore the cliprect of the current drawtarget first (we had it store in pushcontext)
-		SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &CurrentGfxContext->cliprect);
+		SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &_pd_api_gfx_CurrentGfxContext->cliprect);
 		delete gfxstack[gfxstack.size()-1];
 		gfxstack.pop_back();
-        CurrentGfxContext = gfxstack[gfxstack.size()-1];
+        _pd_api_gfx_CurrentGfxContext = gfxstack[gfxstack.size()-1];
         //restore drawtarget
-		if(!CurrentGfxContext->DrawTarget)
+		if(!_pd_api_gfx_CurrentGfxContext->DrawTarget)
 		{
-			CurrentGfxContext->DrawTarget = _Playdate_Screen;
+			_pd_api_gfx_CurrentGfxContext->DrawTarget = _pd_api_gfx_Playdate_Screen;
 		}
     }
 }
@@ -551,7 +554,8 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
     *outerr = loaderror;    
     LCDBitmap* result = NULL;
     char ext[5];
-    char* fullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
+    char* tmpfullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
+	char* fullpath = (char *) malloc((strlen(path) + 17) * sizeof(char));
     bool needextension = true;
     if(strlen(path) > 4)
     {
@@ -559,9 +563,18 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
         needextension = strcasecmp(ext, ".PNG") != 0;
     }
     if (needextension)
-        sprintf(fullpath,"./%s.png", path);
+	{
+        sprintf(tmpfullpath,"./%s.png", path);
+	}
     else
-        sprintf(fullpath, "./%s", path);
+	{
+        sprintf(tmpfullpath, "./%s", path);
+	}
+
+	sprintf(fullpath, "./%s/%s",_pd_api_get_current_source_dir(), tmpfullpath);
+	struct stat lstats;
+	if(stat(fullpath, &lstats) != 0)
+		sprintf(fullpath, "./%s", tmpfullpath);
 
     SDL_Surface* Img = IMG_Load(fullpath);
     if(Img)
@@ -569,7 +582,8 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		SDL_Surface* Img2 = SDL_ConvertSurfaceFormat(Img, pd_api_gfx_PIXELFORMAT, 0);
 		if (Img2)
 		{
-			pd_api_gfx_MakeSurfaceBlackAndWhite(Img2);
+			if (_pd_current_source_dir == 0)
+				pd_api_gfx_MakeSurfaceBlackAndWhite(Img2);
 			result = pd_api_gfx_newBitmap(Img2->w, Img2->h, kColorClear);
 			if(result)
 			{
@@ -584,6 +598,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		SDL_FreeSurface(Img);
     }   
     free(fullpath);
+	free(tmpfullpath);
     return result;
 }
 
@@ -744,11 +759,13 @@ void pd_api_gfx_freeBitmapTable(LCDBitmapTable* table)
     {
         pd_api_gfx_freeBitmap(table->bitmaps[i]);
     }
+	free(table->bitmaps);
+	table->bitmaps = NULL;
     free(table);
     table = NULL;
 }
 
-LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
+LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** outerr)
 {
     *outerr = loaderror;    
     LCDBitmapTable* result = NULL;
@@ -853,7 +870,8 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
                 result = pd_api_gfx_Create_LCDBitmapTable();
                 if(result)
                 {
-					pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
+					if (_pd_current_source_dir == 0)
+						pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
                     result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
                     *outerr = NULL;
                     result->w = w;
@@ -893,6 +911,17 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
     return result;
 }
 
+LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
+{
+	char* fullpath = (char *) malloc((strlen(path) + 17) * sizeof(char));
+    sprintf(fullpath, "./%s/%s", _pd_api_get_current_source_dir(), path);
+	LCDBitmapTable *result = _pd_api_gfx_do_loadBitmapTable(fullpath, outerr);
+	free(fullpath);
+	if(!result)
+		result = _pd_api_gfx_do_loadBitmapTable(path, outerr);
+	return result;
+}
+
 void pd_api_gfx_loadIntoBitmapTable(const char* path, LCDBitmapTable* table, const char** outerr)
 {
     table = pd_api_gfx_loadBitmapTable(path, outerr);
@@ -925,7 +954,7 @@ LCDBitmap* pd_api_gfx_getDebugBitmap(void) // valid in simulator only, function 
 
 LCDBitmap* pd_api_gfx_copyFrameBufferBitmap(void)
 {
-    return pd_api_gfx_copyBitmap(_Playdate_Screen);
+    return pd_api_gfx_copyBitmap(_pd_api_gfx_Playdate_Screen);
 }
 
 void pd_api_gfx_markUpdatedRows(int start, int end)
@@ -1000,7 +1029,7 @@ void pd_api_gfx_setScreenClipRect(int x, int y, int width, int height)
     cliprect.y = y;
     cliprect.w = width;
     cliprect.h = height;
-    SDL_SetClipRect(CurrentGfxContext->DrawTarget->Tex, &cliprect);
+    SDL_SetClipRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &cliprect);
 }
 	
 // 1.1.1
@@ -1009,7 +1038,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
-        bitmap = pd_api_gfx_copyBitmap(CurrentGfxContext->DrawTarget);
+        bitmap = pd_api_gfx_copyBitmap(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         pd_api_gfx_pushContext(bitmap);
         pd_api_gfx_clear(kColorClear);
     }
@@ -1027,16 +1056,16 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     switch (color)
     {
         case kColorBlack:
-            filledPolygonRGBASurface(CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            filledPolygonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            filledPolygonRGBASurface(CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledPolygonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            filledPolygonRGBASurface(CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledPolygonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            filledPolygonRGBASurface(CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            filledPolygonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, vx, vy, nPoints, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1045,7 +1074,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     if (color == kColorXOR)
     {
         pd_api_gfx_popContext();
-        pd_api_gfx_pushContext(CurrentGfxContext->DrawTarget);
+        pd_api_gfx_pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         pd_api_gfx_setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, 0,0, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         pd_api_gfx_popContext();
@@ -1057,7 +1086,7 @@ uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 {
     LCDFont *f = font;
     if(!f)
-        f = _Default_Font;
+        f = _pd_api_gfx_Default_Font;
 
     if(!f)
         return 0;
@@ -1071,7 +1100,7 @@ uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 // 1.7
 LCDBitmap* pd_api_gfx_getDisplayBufferBitmap(void)
 {
-    return _Playdate_Screen;
+    return _pd_api_gfx_Playdate_Screen;
 }
 
 void pd_api_gfx_setTextLeading(int lineHeightAdustment)
@@ -1136,8 +1165,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 {
 	pd_api_gfx_recreatemaskedimage(bitmap);
     SDL_Rect dstrect;
-    dstrect.x = x +  CurrentGfxContext->drawoffsetx;
-    dstrect.y = y +  CurrentGfxContext->drawoffsety;
+    dstrect.x = x +  _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    dstrect.y = y +  _pd_api_gfx_CurrentGfxContext->drawoffsety;
     dstrect.w = bitmap->w;
     dstrect.h = bitmap->h;
 
@@ -1249,7 +1278,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 	dstrect.w = tmpTexture->w;
 	dstrect.h = tmpTexture->h;
 
-    if (CurrentGfxContext->BitmapDrawMode != kDrawModeCopy)
+    if (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode != kDrawModeCopy)
 	{
 		tmpTexture1 = SDL_CreateRGBSurfaceWithFormat(0, tmpTexture->w , tmpTexture->h, 32, pd_api_gfx_PIXELFORMAT);
 		SDL_SetSurfaceBlendMode(tmpTexture1, SDL_BLENDMODE_NONE);
@@ -1261,11 +1290,11 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 	
 		// only needed for xor & nxor
 		SDL_Surface* drawtargetsurface = NULL;
-		bool requiresTargetTexture = (CurrentGfxContext->BitmapDrawMode == kDrawModeNXOR) || (CurrentGfxContext->BitmapDrawMode == kDrawModeXOR);
+		bool requiresTargetTexture = (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode == kDrawModeNXOR) || (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode == kDrawModeXOR);
 		if (requiresTargetTexture)
 		{
 			drawtargetsurface = SDL_CreateRGBSurfaceWithFormat(0, dstrect.w, dstrect.h, 32, pd_api_gfx_PIXELFORMAT);
-			SDL_BlitSurface(CurrentGfxContext->DrawTarget->Tex, &dstrect, drawtargetsurface, NULL);
+			SDL_BlitSurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &dstrect, drawtargetsurface, NULL);
 			SDL_SetSurfaceBlendMode(drawtargetsurface, SDL_BLENDMODE_NONE);
 		}
 		
@@ -1305,12 +1334,12 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 			//in case of xor nxor we also need the target surface to compare values
 			//but the result is actually applied to the tmpsurface as well wich we'll draw one more time
 			//at the end using regular functions
-			switch (CurrentGfxContext->BitmapDrawMode)
+			switch (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode)
 			{           
 				case kDrawModeBlackTransparent:
 				{
-					int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-					int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+					int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+					int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1331,8 +1360,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeWhiteTransparent:
 				{
-					int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-					int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+					int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+					int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1353,8 +1382,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeFillWhite:
 				{
-					int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-					int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+					int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+					int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1375,8 +1404,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeFillBlack:
 				{ 
-					int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-					int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+					int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+					int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1397,8 +1426,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeInverted:
 				{
-					int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-					int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+					int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+					int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1431,8 +1460,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				{
 					if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
 					{
-						int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-						int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+						int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+						int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 						for (int yy = 0; (yy < height); yy++)
 						{
 							for(int xx = 0; (xx < width); xx++)
@@ -1466,8 +1495,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				{
 					if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
 					{
-						int width = std::min(CurrentGfxContext->DrawTarget->w, dstrect.w);
-						int height = std::min(CurrentGfxContext->DrawTarget->h, dstrect.h);
+						int width = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->w, dstrect.w);
+						int height = std::min(_pd_api_gfx_CurrentGfxContext->DrawTarget->h, dstrect.h);
 						for (int yy = 0; (yy < height); yy++)
 						{
 							for(int xx = 0; (xx < width); xx++)
@@ -1519,13 +1548,13 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 
 	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 	SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
-	SDL_BlitSurface(tmpTexture, NULL, CurrentGfxContext->DrawTarget->Tex, &dstrect);
+	SDL_BlitSurface(tmpTexture, NULL, _pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &dstrect);
 
 
 	if(!isOrginalTexture)
 		SDL_FreeSurface(tmpTexture);
 	
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotation, float centerx, float centery, float xscale, float yscale)
@@ -1586,25 +1615,25 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
     }
 	else
 	{
-		x1 += CurrentGfxContext->drawoffsetx;
-		y1 += CurrentGfxContext->drawoffsety;
-		x2 += CurrentGfxContext->drawoffsetx;
-		y2 += CurrentGfxContext->drawoffsety;
+		x1 += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+		y1 += _pd_api_gfx_CurrentGfxContext->drawoffsety;
+		x2 += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+		y2 += _pd_api_gfx_CurrentGfxContext->drawoffsety;
 	}
 	
 	switch (color)
     {
         case kColorBlack:
-            lineRGBASurface(CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            lineRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            lineRGBASurface(CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            lineRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            lineRGBASurface(CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            lineRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            lineRGBASurface(CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            lineRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x1, y1, x2, y2, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1613,13 +1642,13 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
     if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCDColor color)
@@ -1666,31 +1695,31 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
     }
 	else
 	{
-		points[0].x += CurrentGfxContext->drawoffsetx;
-		points[1].x += CurrentGfxContext->drawoffsetx;
-		points[2].x += CurrentGfxContext->drawoffsetx;
-		points[3].x += CurrentGfxContext->drawoffsetx;
+		points[0].x += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+		points[1].x += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+		points[2].x += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+		points[3].x += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
 		
-		points[0].y += CurrentGfxContext->drawoffsety;
-		points[1].y += CurrentGfxContext->drawoffsety;
-		points[2].y += CurrentGfxContext->drawoffsety;
-		points[3].y += CurrentGfxContext->drawoffsety;
+		points[0].y += _pd_api_gfx_CurrentGfxContext->drawoffsety;
+		points[1].y += _pd_api_gfx_CurrentGfxContext->drawoffsety;
+		points[2].y += _pd_api_gfx_CurrentGfxContext->drawoffsety;
+		points[3].y += _pd_api_gfx_CurrentGfxContext->drawoffsety;
 	}
 
 	
 	switch (color)
     {
         case kColorBlack:
-            filledTrigonRGBASurface(CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            filledTrigonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            filledTrigonRGBASurface(CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledTrigonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            filledTrigonRGBASurface(CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledTrigonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            filledTrigonRGBASurface(CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            filledTrigonRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1700,13 +1729,13 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
     if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
@@ -1721,24 +1750,24 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     
 
     SDL_Rect rect;
-    rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
-    rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
+    rect.x = color == kColorXOR ? 0: x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    rect.y = color == kColorXOR ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     rect.w = width;
     rect.h = height;
     
 	switch (color)
     {
         case kColorBlack:
-            rectangleRGBASurface(CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            rectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            rectangleRGBASurface(CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            rectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            rectangleRGBASurface(CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            rectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            rectangleRGBASurface(CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            rectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1747,13 +1776,13 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
@@ -1763,16 +1792,16 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 	switch (color)
     {
         case kColorBlack:
-            RealColor = SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            RealColor = SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            RealColor = SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            RealColor = SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            RealColor = SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            RealColor = SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            RealColor = SDL_MapRGBA(CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            RealColor = SDL_MapRGBA(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
 			//assume lcd pattern
@@ -1801,31 +1830,31 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 			for (int xx = 0; xx < tilesx; xx++)
 				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -xoffset, (yy*8) -yoffset, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
 		Api->graphics->popContext();
-		Api->graphics->drawBitmap(bitmap,x + CurrentGfxContext->drawoffsetx,  y + CurrentGfxContext->drawoffsety, kBitmapUnflipped);
+		Api->graphics->drawBitmap(bitmap,x + _pd_api_gfx_CurrentGfxContext->drawoffsetx,  y + _pd_api_gfx_CurrentGfxContext->drawoffsety, kBitmapUnflipped);
 		Api->graphics->freeBitmap(bitmap);
 		Api->graphics->freeBitmap(pattern);
 	}
     else
 	{
 		SDL_Rect rect;
-    	rect.x = color == kColorXOR ? 0: x + CurrentGfxContext->drawoffsetx;
-    	rect.y = color == kColorXOR ? 0: y + CurrentGfxContext->drawoffsety;
+    	rect.x = color == kColorXOR ? 0: x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    	rect.y = color == kColorXOR ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     	rect.w = width;
     	rect.h = height;
 
-    	SDL_FillRect(CurrentGfxContext->DrawTarget->Tex, &rect, RealColor);
+    	SDL_FillRect(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, &rect, RealColor);
 	}
 
 	if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, float startAngle, float endAngle, LCDColor color) // stroked inside the rect
@@ -1844,22 +1873,22 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width + CurrentGfxContext->drawoffsetx;
-    y = color == kColorXOR ? height:  y + height + CurrentGfxContext->drawoffsety;
+    x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     
     switch (color)
     {
         case kColorBlack:
-            ellipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            ellipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            ellipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            ellipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            ellipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            ellipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            ellipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            ellipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1869,13 +1898,13 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
     if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngle, float endAngle, LCDColor color)
@@ -1895,23 +1924,23 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width + CurrentGfxContext->drawoffsetx;
-    y = color == kColorXOR ? height:  y + height + CurrentGfxContext->drawoffsety;
+    x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
 
          
     switch (color)
     {
         case kColorBlack:
-            filledEllipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            filledEllipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
             break;
         case kColorWhite:
-            filledEllipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledEllipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorXOR:
-            filledEllipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            filledEllipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
             break;
         case kColorClear:
-            filledEllipseRGBASurface(CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            filledEllipseRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
             break;
         default:
             break;
@@ -1920,13 +1949,13 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     if (color == kColorXOR)
     {
         Api->graphics->popContext();
-        Api->graphics->pushContext(CurrentGfxContext->DrawTarget);
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
         Api->graphics->setDrawMode(kDrawModeXOR);
         _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
-	CurrentGfxContext->DrawTarget->BitmapDirty = true;
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 
@@ -1942,9 +1971,10 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
     *outErr = loaderror;    
     LCDFont* result = NULL;
-    char* fullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
-    sprintf(fullpath, "./%s", path);
-    char* ext = strrchr(fullpath, '.');
+    char* tmpfullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
+	char* fullpath =  (char *) malloc((strlen(path) + 17) * sizeof(char));
+    sprintf(tmpfullpath, "./%s", path);
+    char* ext = strrchr(tmpfullpath, '.');
     if (ext)
     {
         if(strlen(ext) == 4)
@@ -1954,18 +1984,29 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             ext[3] = 'f';
         }
         else
-            sprintf(fullpath, "./%s.ttf", path);
+		{
+			sprintf(tmpfullpath, "./%s.ttf", path);
+		}
     }
     else
-        sprintf(fullpath, "./%s.ttf", path);
+	{
+        sprintf(tmpfullpath, "./%s.ttf", path);
+	}
 
-    //check font list to see if we already loaded the font
+
+	sprintf(fullpath, "./%s/%s",_pd_api_get_current_source_dir(), tmpfullpath);
+	struct stat lstats;
+	if(stat(fullpath, &lstats) != 0)
+		sprintf(fullpath, "%s", tmpfullpath);
+
+	//check font list to see if we already loaded the font
     for (auto& font : fontlist)
     {
         if (strcasecmp(font->path, fullpath) == 0)
         {
             *outErr = NULL;
             free(fullpath);
+			free(tmpfullpath);
             return font->font;
         }
     }
@@ -1989,7 +2030,34 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
     }   
 
     free(fullpath);
+	free(tmpfullpath);
     return result;
+}
+
+void _pd_api_gfx_loadDefaultFonts()
+{
+	const char* err;
+	_pd_api_gfx_Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light.ttf", &err);
+    _pd_api_gfx_FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold.ttf", &err);
+}
+
+void _pd_api_gfx_resetContext()
+{
+	while(gfxstack.size() > 1)
+		pd_api_gfx_popContext();
+	_pd_api_gfx_CurrentGfxContext->BackgroundColor = kColorWhite;
+    _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
+    _pd_api_gfx_CurrentGfxContext->cliprect.x = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.y = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.w = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.h = -1;
+    _pd_api_gfx_CurrentGfxContext->drawoffsetx = 0;
+    _pd_api_gfx_CurrentGfxContext->drawoffsety = 0;
+    _pd_api_gfx_CurrentGfxContext->DrawTarget = _pd_api_gfx_Playdate_Screen;
+    _pd_api_gfx_CurrentGfxContext->font = _pd_api_gfx_Default_Font;
+    _pd_api_gfx_CurrentGfxContext->linecapstyle = kLineCapStyleButt;
+    _pd_api_gfx_CurrentGfxContext->stencil = NULL;
+    _pd_api_gfx_CurrentGfxContext->tracking = 0;
 }
 
 LCDFontPage* pd_api_gfx_getFontPage(LCDFont* font, uint32_t c)
@@ -2013,7 +2081,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
     LCDFont *f = font;
     if(!f)
 	{
-        f = _Default_Font;
+        f = _pd_api_gfx_Default_Font;
 	}
     
     if(!f)
@@ -2082,22 +2150,22 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
     if(len == 0)
         return 0;
 
-    if(CurrentGfxContext->font == NULL)
+    if(_pd_api_gfx_CurrentGfxContext->font == NULL)
     {
         return -1;
     }
 
     int result = -1;
-    if (CurrentGfxContext->font->font)
+    if (_pd_api_gfx_CurrentGfxContext->font->font)
     {
         char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
         strncpy(sizedtext, (char *)text, len);
         sizedtext[len] = '\0';
-        SDL_Surface* TextSurface = TTF_RenderText_Solid_Wrapped(CurrentGfxContext->font->font, sizedtext, pd_api_gfx_color_black, 0);
+        SDL_Surface* TextSurface = TTF_RenderText_Solid_Wrapped(_pd_api_gfx_CurrentGfxContext->font->font, sizedtext, pd_api_gfx_color_black, 0);
         free(sizedtext);
         if (TextSurface) 
         {
-            SDL_Surface* Texture = SDL_ConvertSurfaceFormat(TextSurface, CurrentGfxContext->DrawTarget->Tex->format->format, 0);
+            SDL_Surface* Texture = SDL_ConvertSurfaceFormat(TextSurface, _pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format->format, 0);
             if(Texture)
             {                
                 LCDBitmap * bitmap = pd_api_gfx_newBitmap(TextSurface->w,TextSurface->h, kColorClear);
@@ -2134,29 +2202,27 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 {
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
     
-    const char* err;
-    _Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorWhite);
-    _Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light.ttf", &err);
-    _FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold.ttf", &err);
+    _pd_api_gfx_Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorWhite);
+    _pd_api_gfx_loadDefaultFonts();
     
-    CurrentGfxContext = new GfxContext();
-    CurrentGfxContext->BackgroundColor = kColorWhite;
-    CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
-    CurrentGfxContext->cliprect.x = -1;
-    CurrentGfxContext->cliprect.y = -1;
-    CurrentGfxContext->cliprect.w = -1;
-    CurrentGfxContext->cliprect.h = -1;
-    CurrentGfxContext->drawoffsetx = 0;
-    CurrentGfxContext->drawoffsety = 0;
-    CurrentGfxContext->DrawTarget = _Playdate_Screen;
-    CurrentGfxContext->font = _Default_Font;
-    CurrentGfxContext->linecapstyle = kLineCapStyleButt;
-    CurrentGfxContext->stencil = NULL;
-    CurrentGfxContext->tracking = 0;
-    gfxstack.push_back(CurrentGfxContext);
+    _pd_api_gfx_CurrentGfxContext = new GfxContext();
+    _pd_api_gfx_CurrentGfxContext->BackgroundColor = kColorWhite;
+    _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
+    _pd_api_gfx_CurrentGfxContext->cliprect.x = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.y = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.w = -1;
+    _pd_api_gfx_CurrentGfxContext->cliprect.h = -1;
+    _pd_api_gfx_CurrentGfxContext->drawoffsetx = 0;
+    _pd_api_gfx_CurrentGfxContext->drawoffsety = 0;
+    _pd_api_gfx_CurrentGfxContext->DrawTarget = _pd_api_gfx_Playdate_Screen;
+    _pd_api_gfx_CurrentGfxContext->font = _pd_api_gfx_Default_Font;
+    _pd_api_gfx_CurrentGfxContext->linecapstyle = kLineCapStyleButt;
+    _pd_api_gfx_CurrentGfxContext->stencil = NULL;
+    _pd_api_gfx_CurrentGfxContext->tracking = 0;
+    gfxstack.push_back(_pd_api_gfx_CurrentGfxContext);
 
     //SDL_SetRenderTarget(Renderer, _Playdate_Screen->Tex);
-    SDL_SetSurfaceBlendMode(_Playdate_Screen->Tex, SDL_BLENDMODE_NONE);
+    SDL_SetSurfaceBlendMode(_pd_api_gfx_Playdate_Screen->Tex, SDL_BLENDMODE_NONE);
     Tmp->video = pd_api_gfx_Create_playdate_video();
 
 	// LCDBitmap
@@ -2265,5 +2331,5 @@ void _pd_api_gfx_freeFontList()
 
 void _pd_api_gfx_cleanUp()
 {
-	Api->graphics->freeBitmap(_Playdate_Screen);
+	Api->graphics->freeBitmap(_pd_api_gfx_Playdate_Screen);
 }

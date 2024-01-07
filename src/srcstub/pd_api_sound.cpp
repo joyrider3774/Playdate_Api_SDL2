@@ -154,9 +154,10 @@ AudioSample* pd_api_sound_loadSample(const char* path)
 {    
     printfDebug(DebugTraceFunctions, "pd_api_sound_loadSample\n");
     char ext[5];
-    char* fullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
+    char* fullpath = (char *) malloc((strlen(path) + 17) * sizeof(char));
     bool needextension = true;
-    if(strlen(path) > 4)
+    struct stat lstats;
+	if(strlen(path) > 4)
     {
         strcpy(ext, path + (strlen(path) - 4));
         needextension = (strcasecmp(ext, ".WAV") != 0) &&  (strcasecmp(ext, ".MP3") != 0);
@@ -164,17 +165,32 @@ AudioSample* pd_api_sound_loadSample(const char* path)
 
     if (needextension)
     {
-        struct stat lstats;
-        sprintf(fullpath,"./%s.ogg", path);
+        sprintf(fullpath,"./%s/%s.ogg", _pd_api_get_current_source_dir(), path);
         if(stat(fullpath, &lstats) != 0)
 		{
-			sprintf(fullpath,"./%s.mp3", path);
+			sprintf(fullpath,"./%s/%s.mp3", _pd_api_get_current_source_dir(), path);
         	if(stat(fullpath, &lstats) != 0)
-            	sprintf(fullpath,"./%s.wav", path);
+			{
+            	sprintf(fullpath,"./%s/%s.wav", _pd_api_get_current_source_dir(), path);
+				if(stat(fullpath, &lstats) != 0)
+				{
+					sprintf(fullpath,"./%s.ogg", path);
+					if(stat(fullpath, &lstats) != 0)
+					{
+						sprintf(fullpath,"./%s.mp3", path);
+						if(stat(fullpath, &lstats) != 0)
+							sprintf(fullpath,"./%s.wav", path);
+					}
+				}
+			}
 		}
     }
     else
-        sprintf(fullpath, "./%s", path);
+	{
+        sprintf(fullpath, "./%s/%s", _pd_api_get_current_source_dir(), path);
+		if(stat(fullpath, &lstats) != 0)
+			sprintf(fullpath, "./%s", path);
+	}
     
     AudioSample* tmp = NULL;
     

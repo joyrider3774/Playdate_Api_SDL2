@@ -12,6 +12,8 @@ void* _pd_api_sys_DoUpdateuserdata;
 int _CranckSoundDisabled = 0;
 int _CranckDocked = 0;
 Uint32 pd_api_sys_startElapsed = 0;
+float _CranckChange = 0.0f;
+float _CranckAngle = 0.0f;
 
 void _pd_api_sys_UpdateInput()
 {
@@ -22,6 +24,32 @@ void _pd_api_sys_UpdateInput()
 	
 	CInput_Update(_pd_api_sys_input);
 
+	_CranckChange = 0.0f;
+
+	if (_pd_api_sys_input->Buttons.ButLB)
+	{
+		_CranckDocked = false;
+		_CranckChange = -5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
+		_CranckAngle = _CranckAngle + _CranckChange;
+		if (_CranckAngle < 0.0f)
+			_CranckAngle = 360.0f + _CranckAngle;
+	}
+
+	if (_pd_api_sys_input->Buttons.ButRB)
+	{
+		_CranckDocked = false;
+		_CranckChange = 5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
+		_CranckAngle = _CranckAngle + _CranckChange;
+		if (_CranckAngle > 359.0f)
+			_CranckAngle =  _CranckAngle - 360.0f;
+	}
+
+	if (_pd_api_sys_input->Buttons.ButLT)
+		_CranckDocked = true;
+
+	if (_pd_api_sys_input->Buttons.ButRT)
+		_CranckDocked = false;
+
 	if ((_pd_api_sys_input->Buttons.ButFullscreen) && (!_pd_api_sys_input->PrevButtons.ButFullscreen))
 		_pd_api_sys_fullScreenCallBack();
 
@@ -30,6 +58,10 @@ void _pd_api_sys_UpdateInput()
 
 	if (_pd_api_sys_input->Buttons.ButQuit)
 		_pd_api_sys_quitCallBack();
+	
+	if ((_pd_api_sys_input->Buttons.ButX || _pd_api_sys_input->Buttons.NextSource) && 
+		!(_pd_api_sys_input->PrevButtons.ButX || _pd_api_sys_input->PrevButtons.NextSource))
+		_pd_api_sys_nextSourceDirCallback();
 }
 
 void pd_api_sys_setUpdateCallback(PDCallbackFunction* update, void* userdata)
@@ -128,12 +160,12 @@ void pd_api_sys_drawFPS(int x, int y)
 
 float pd_api_sys_getCrankChange(void)
 {
-	return 0.0f;
+	return _CranckChange;
 }
 
 float pd_api_sys_getCrankAngle(void)
 {
-	return 0.0f;
+	return _CranckAngle;
 }
 
 int pd_api_sys_isCrankDocked(void)

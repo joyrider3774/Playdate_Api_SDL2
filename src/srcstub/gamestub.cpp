@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <SDL_ttf.h>
 #include <SDL_mixer.h>
+#include <sys/stat.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
@@ -12,9 +13,11 @@
 #include <math.h>
 #include <thread>
 #include <chrono>
+#include <string.h>
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
+#include "pdxinfo_parser.h"
 
 SDL_Window *SdlWindow;
 SDL_Renderer *Renderer;
@@ -31,8 +34,8 @@ double pd_api_elapsed;
 //mapped value of clear must lie between black and white and its value may not be bigger than whitethreshold or lower than blackthreshold
 
 SDL_Color  pd_api_gfx_color_clear = {128, 255, 255, SDL_ALPHA_OPAQUE};
-SDL_Color  pd_api_gfx_color_white = {255, 255, 255, SDL_ALPHA_OPAQUE};
-SDL_Color  pd_api_gfx_color_black = {0, 0, 0, SDL_ALPHA_OPAQUE};
+SDL_Color  pd_api_gfx_color_white = {177, 175, 168, SDL_ALPHA_OPAQUE};
+SDL_Color  pd_api_gfx_color_black = {49, 47, 40, SDL_ALPHA_OPAQUE};
 SDL_Color  pd_api_gfx_color_whitetreshold = {155, 155, 155, SDL_ALPHA_OPAQUE};
 SDL_Color  pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
 
@@ -40,6 +43,127 @@ bool stubDoQuit;
 
 SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
 SDL_Texture* _pd_api_TexScreen;
+
+const int MAXSOURCEDIRS = 6;
+
+const char *_pd_alternate_source_dirs[MAXSOURCEDIRS] = {".", "Source1", "Source2", "Source3", "Source4", "Source5"};
+int _pd_current_source_dir = 0;
+bool _pd_do_load_next_source_dir = false;
+
+void _pd_load_source_colors()
+{
+	pd_api_gfx_color_clear = {128, 255, 255, SDL_ALPHA_OPAQUE};
+	pd_api_gfx_color_white = {177, 175, 168, SDL_ALPHA_OPAQUE};
+	pd_api_gfx_color_black = {49, 47, 40, SDL_ALPHA_OPAQUE};
+	pd_api_gfx_color_whitetreshold = {155, 155, 155, SDL_ALPHA_OPAQUE};
+	pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
+	
+	FILE *fp;
+	char Filename[MAXPATH];
+	sprintf(Filename, "./%s/colors.ini", _pd_api_get_current_source_dir());
+	fp = fopen(Filename, "r");
+	if (fp)
+	{
+		fscanf(fp, "pd_api_gfx_color_clear_r=%hhd\n", &pd_api_gfx_color_clear.r);
+		fscanf(fp, "pd_api_gfx_color_clear_g=%hhd\n", &pd_api_gfx_color_clear.g);
+		fscanf(fp, "pd_api_gfx_color_clear_b=%hhd\n", &pd_api_gfx_color_clear.b);
+		
+		fscanf(fp, "pd_api_gfx_color_white_r=%hhd\n", &pd_api_gfx_color_white.r);
+		fscanf(fp, "pd_api_gfx_color_white_g=%hhd\n", &pd_api_gfx_color_white.g);
+		fscanf(fp, "pd_api_gfx_color_white_b=%hhd\n", &pd_api_gfx_color_white.b);
+		
+		fscanf(fp, "pd_api_gfx_color_black_r=%hhd\n", &pd_api_gfx_color_black.r);
+		fscanf(fp, "pd_api_gfx_color_black_g=%hhd\n", &pd_api_gfx_color_black.g);
+		fscanf(fp, "pd_api_gfx_color_black_b=%hhd\n", &pd_api_gfx_color_black.b);
+
+		fscanf(fp, "pd_api_gfx_color_whitetreshold_r=%hhd\n", &pd_api_gfx_color_whitetreshold.r);
+		fscanf(fp, "pd_api_gfx_color_whitetreshold_g=%hhd\n", &pd_api_gfx_color_whitetreshold.g);
+		fscanf(fp, "pd_api_gfx_color_whitetreshold_b=%hhd\n", &pd_api_gfx_color_whitetreshold.b);
+
+		fscanf(fp, "pd_api_gfx_color_blacktreshold_r=%hhd\n", &pd_api_gfx_color_blacktreshold.r);
+		fscanf(fp, "pd_api_gfx_color_blacktreshold_g=%hhd\n", &pd_api_gfx_color_blacktreshold.g);
+		fscanf(fp, "pd_api_gfx_color_blacktreshold_b=%hhd\n", &pd_api_gfx_color_blacktreshold.b);
+		fclose(fp);
+	}
+}
+
+void _pd_reset()
+{
+	eventHandler(Api, kEventTerminate, 0);
+	//erase remaining sprites in memory
+    _pd_api_sprite_cleanup_sprites(false);
+
+	Mix_HaltChannel(-1);
+	Mix_HaltMusic();
+    //free samples & sounds
+    _pd_api_sound_freeSampleList();
+	_pd_api_gfx_freeFontList();
+	_pd_load_source_colors();
+	_pd_api_gfx_loadDefaultFonts();
+	_pd_api_gfx_resetContext();
+	eventHandler(Api, kEventInit, 0);
+}
+
+void _pd_api_sys_nextSourceDirCallback()
+{
+	_pd_do_load_next_source_dir = true;
+}
+
+void _pd_save_source_dir()
+{
+	SDFile *File;
+	File = Api->file->open(".sdl2api.dat", kFileWrite);
+	if (File)
+	{
+		Api->file->write(File, &_pd_current_source_dir, sizeof(_pd_current_source_dir));
+		Api->file->close(File);
+	}
+}
+
+void _pd_validate_source_dir()
+{
+	char filename[MAXPATH];
+	sprintf(filename, "./%s", _pd_api_get_current_source_dir());
+	struct stat lstats;
+	if(stat(filename, &lstats) != 0)
+		_pd_current_source_dir = 0;
+}
+
+void _pd_load_source_dir()
+{
+	SDFile *File;
+	File = Api->file->open(".sdl2api.dat", kFileReadData);
+	if (File)
+	{
+		Api->file->read(File, &_pd_current_source_dir, sizeof(_pd_current_source_dir));
+		Api->file->close(File);
+	}
+	else
+	{
+		_pd_current_source_dir = DEFAULTSOURCEDIR;
+		
+	}
+	_pd_validate_source_dir();
+	_pd_load_source_colors();
+}
+
+
+void _pd_load_next_source_dir()
+{
+	_pd_current_source_dir++;
+	if(_pd_current_source_dir >= MAXSOURCEDIRS)
+		_pd_current_source_dir = 0;
+	
+	_pd_validate_source_dir();
+	printfDebug(DebugInfo, "_pd_current_source_dir = %d\n", _pd_current_source_dir);
+	_pd_save_source_dir();
+	_pd_reset();
+}
+
+const char * _pd_api_get_current_source_dir()
+{
+	return _pd_alternate_source_dirs[_pd_current_source_dir];
+}
 
 void _pd_api_sys_fullScreenCallBack()
 {
@@ -115,14 +239,14 @@ void _pd_api_display()
 	
 	if(bgColor == kColorClear)
 	{
-		if (_DisplayInverted)
+		if (_pd_api_display_Inverted)
 			bgColor = kColorBlack;
 		else
 			bgColor = kColorWhite;
 	}
 	else
 	{
-		if (_DisplayInverted)
+		if (_pd_api_display_Inverted)
 		{
 			if(bgColor == kColorBlack)
 				bgColor = kColorWhite;
@@ -150,7 +274,7 @@ void _pd_api_display()
 	//so that clear pixels (cyan's) are made transparant. 
 	//we clear the background of the real screen surface with either white or black
 	//bgColor = getBackgroundDrawColor();
-	LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, _DisplayInverted? kColorBlack:kColorWhite);//(LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
+	LCDBitmap * screen = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, _pd_api_display_Inverted? kColorBlack:kColorWhite);//(LCDSolidColor)bgColor == kColorClear ? _DisplayInverted? kColorBlack:kColorWhite: (LCDSolidColor)bgColor);
 	//get the playdate screen bitmap
 	LCDBitmap * playdatescreen = Api->graphics->getDisplayBufferBitmap();
 	//and push it as a context so we can pop it later
@@ -161,32 +285,32 @@ void _pd_api_display()
 	Api->graphics->clearClipRect();
 	Api->graphics->setDrawOffset(0,0);
 	//apply inverted mode
-	if (_DisplayInverted)
+	if (_pd_api_display_Inverted)
 	{
 		Api->graphics->setDrawMode(kDrawModeInverted);
 	}
 	//set flip mode
 	LCDBitmapFlip flip = kBitmapUnflipped;
-	if (_DisplayFlippedX && _DisplayFlippedY)
+	if (_pd_api_display_FlippedX && _pd_api_display_FlippedY)
 	{
 		flip = kBitmapFlippedXY;
 	}
 	else
 	{
-		if (_DisplayFlippedX)
+		if (_pd_api_display_FlippedX)
 		{
 			flip = kBitmapFlippedX;
 		}
 		else
 		{
-			if(_DisplayFlippedY)
+			if(_pd_api_display_FlippedY)
 			{
 				flip = kBitmapFlippedY;
 			}
 		}
 	}
 	//draw using the newly added all around function
-	_pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _DisplayScale, _DisplayScale, false, 0, 0, 0, flip);
+	_pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _pd_api_display_Scale, _pd_api_display_Scale, false, 0, 0, 0, flip);
 	Api->graphics->popContext();
 
 	//now we just need to blit this bitmap to the screen, but i could not access screen->tex so added another function
@@ -195,13 +319,19 @@ void _pd_api_display()
 	SDL_Surface* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
 	SDL_UpdateTexture(_pd_api_TexScreen, NULL, Tex->pixels, Tex->pitch);
 	SDL_Rect Dest;                    
-	Dest.x = _DisplayOffsetDisplayX;
-	Dest.y = _DisplayOffsetDisplayY;
+	Dest.x = _pd_api_display_OffsetDisplayX;
+	Dest.y = _pd_api_display_OffsetDisplayY;
 	Dest.w = LCD_COLUMNS;
 	Dest.h = LCD_ROWS;
+	//res hack
+	Dest.x -= (LCD_COLUMNS - SCREENRESX) / 2;
+	Dest.y -= (LCD_ROWS - SCREENRESY) / 2;
+   	SDL_RenderSetLogicalSize(Renderer, SCREENRESX, SCREENRESY);
+	//end res hack
 	SDL_RenderCopy(Renderer, _pd_api_TexScreen, NULL, &Dest);
 	SDL_RenderPresent(Renderer);
-
+   	//reset res hack
+	SDL_RenderSetLogicalSize(Renderer, LCD_COLUMNS, LCD_ROWS);
 	Api->graphics->freeBitmap(screen);
 
 	//restore render target
@@ -232,39 +362,49 @@ void runMainLoop()
 
 	//calculate fps & delay
 	pd_api_elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
-	if ((_DisplayDesiredDelta != 0.0) && (pd_api_elapsed < _DisplayDesiredDelta))
+	if ((_pd_api_display_DesiredDelta != 0.0) && (pd_api_elapsed < _pd_api_display_DesiredDelta))
 	{
 		//SDL_Delay((Uint32)(_DisplayDesiredDelta - elapsed));
-		preciseSleep((_DisplayDesiredDelta - pd_api_elapsed) / 1000.0);
+		preciseSleep((_pd_api_display_DesiredDelta - pd_api_elapsed) / 1000.0);
 	}
 
 	pd_api_elapsed = ((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency();
 	if(pd_api_elapsed != 0.0)
 	{
-		_CurrentFps = 1.0 / pd_api_elapsed;
-		pd_api_TotalFps += _CurrentFps;
-		_AvgFps = pd_api_TotalFps / (double)pd_api_FrameCount;
+		_pd_api_display_CurrentFps = 1.0 / pd_api_elapsed;
+		pd_api_TotalFps += _pd_api_display_CurrentFps;
+		_pd_api_display_AvgFps = pd_api_TotalFps / (double)pd_api_FrameCount;
 	}
 	
 	if (((SDL_GetPerformanceFrequency() + pd_api_fpslogticks)) < SDL_GetPerformanceCounter())
 	{  
 		pd_api_TotalFps = 0.0;
 		pd_api_FrameCount = 0;
-		_LastFPS = _AvgFps;
-		printfDebug(DebugFPS, "%2f\n", _LastFPS);
+		_pd_api_display_LastFPS = _pd_api_display_AvgFps;
+		printfDebug(DebugFPS, "%2f\n", _pd_api_display_LastFPS);
 		pd_api_fpslogticks = SDL_GetPerformanceCounter();
+	}
+
+	//needs to happen on the end or keventterminate or could produce problems
+	//when stuff gets freed and update function (_pd_api_sys_DoUpdate) is called again with freed assets
+	//so a flag is used and set with the callback but only acted upon here
+	if (_pd_do_load_next_source_dir)
+	{
+		_pd_do_load_next_source_dir = false;
+		_pd_load_next_source_dir();
 	}
 }
 
 int main(int argv, char** args)
 {
+	float windowScale = WINDOWSCALE;
 	bool useSoftwareRenderer = true;
     bool useLinear = false;
     bool useVsync = false;
     bool useFullScreenAtStartup = false;
     bool useOpenGLHint = false;
     int c;
-    while ((c = getopt(argv, args, "?lafvo")) != -1) 
+    while ((c = getopt(argv, args, "?lafvodtq")) != -1) 
     {
         switch (c) 
         {
@@ -278,7 +418,10 @@ Possible options are:\n\
   -a: Use Acclerated Renderer\n\
   -f: Run fullscreen at startup (by default starts up windowed)\n\
   -o: Set OpenGL Hint in accelerated mode, so it will try to use opengl\n\
-  -v: Use VSync\n");
+  -v: Use VSync\n\
+  -d: Use Double Window Size\n\
+  -t: Use Triple Window Size\n\
+  -q: Use Quadruple Window Size\n");
                 exit(0);
                 break;
             case 'l':
@@ -296,6 +439,17 @@ Possible options are:\n\
             case 'v':
                 useVsync = true;
                 break;
+			case 'd':
+				windowScale = 2.0f;
+				break;
+			case 't':
+				windowScale = 3.0f;
+				break;
+			case 'q':
+				windowScale = 4.0f;
+				break;
+			default:
+				break;
         }
     }
 
@@ -306,7 +460,7 @@ Possible options are:\n\
             WindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;            
         }
 
-        SdlWindow = SDL_CreateWindow("Playdate Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, LCD_COLUMNS, LCD_ROWS, WindowFlags);
+       	SdlWindow = SDL_CreateWindow("Playdate Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREENRESX*windowScale, SCREENRESY*windowScale, WindowFlags);
         
         if (SdlWindow) 
         {
@@ -337,6 +491,7 @@ Possible options are:\n\
                     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
 
                 SDL_RenderSetLogicalSize(Renderer, LCD_COLUMNS, LCD_ROWS);
+
                 SDL_Log("Succesfully Created Buffer\n");
 
                 SDL_SetRenderTarget(Renderer, NULL);
@@ -381,6 +536,9 @@ Possible options are:\n\
                         Api->lua = pd_api_lua_Create_playdate_lua();
                         Api->scoreboards = pd_api_scoreboards_Create_playdate_scoreboards();
                         Api->json = pd_api_json_Create_playdate_json();
+
+						//load potential saved source dir value
+						_pd_load_source_dir();
 
                         //initialize handler
                         eventHandler(Api, kEventInit, 0);

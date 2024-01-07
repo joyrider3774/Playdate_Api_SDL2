@@ -11,7 +11,7 @@ typedef struct SButtons {
 		 ButLeft2, ButRight2, ButUp2, ButDown2,
 		 ButBack, ButStart, ButA, ButB,
 		 ButX, ButY, ButLB, ButRB, ButFullscreen, ButQuit, ButRT, ButLT,
-		 RenderReset;
+		 RenderReset, NextSource;
 } SButtons;
 
 typedef struct CInput {
