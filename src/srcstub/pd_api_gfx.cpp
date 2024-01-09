@@ -165,6 +165,38 @@ void pd_api_gfx_MakeSurfaceBlackAndWhite(SDL_Surface *Img)
 	}
 }
 
+void pd_api_gfx_MakeSurfaceOpaque(SDL_Surface *Img)
+{
+	if (Img)
+	{
+		bool unlocked = true;
+		if (SDL_MUSTLOCK(Img))
+			unlocked = SDL_LockSurface(Img);
+		if(unlocked)
+		{
+			Uint32 transparant = SDL_MapRGBA(Img->format, 0, 0, 0, 0);
+			Uint8 r,g,b,a;
+			for (int y = 0; y < Img->h; y++)
+			{
+				for(int x = 0; x< Img->w; x++)
+				{
+					Uint32 *p = (Uint32*)((Uint8 *)Img->pixels + ((y) * Img->pitch) + (x * Img->format->BytesPerPixel));
+					if(*p == transparant)
+						continue;
+					SDL_GetRGBA(*p, Img->format, &r, &g, &b, &a);
+					if(a > COLORCONVERSIONALPHATHRESHOLD)
+						*p = SDL_MapRGBA(Img->format, r, g, b, 255);
+					else
+						*p = SDL_MapRGBA(Img->format, r, g, b, 0);
+				}
+			}
+			if (SDL_MUSTLOCK(Img))
+				SDL_UnlockSurface(Img);
+		}
+	}
+}
+
+
 LCDBitmap* pd_api_gfx_PatternToBitmap(LCDPattern Pattern)
 {
 	LCDBitmap* result = Api->graphics->newBitmap(8, 8, kColorClear);
@@ -584,6 +616,8 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		{
 			if (_pd_current_source_dir == 0)
 				pd_api_gfx_MakeSurfaceBlackAndWhite(Img2);
+			else
+				pd_api_gfx_MakeSurfaceOpaque(Img2);
 			result = pd_api_gfx_newBitmap(Img2->w, Img2->h, kColorClear);
 			if(result)
 			{
@@ -872,6 +906,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
                 {
 					if (_pd_current_source_dir == 0)
 						pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
+					else
+						pd_api_gfx_MakeSurfaceOpaque(Img);
                     result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
                     *outerr = NULL;
                     result->w = w;
