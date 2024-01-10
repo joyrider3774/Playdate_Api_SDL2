@@ -1,7 +1,7 @@
 # Make does not offer a recursive wildcard function, so here's one:
 rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 
-DEBUG = 0
+DEBUG = 1
 CPP_BUILD ?= 0
 EMSCRIPTEN_BUILD ?= 0
 DEFAULTSOURCEDIR ?= 0
@@ -9,7 +9,7 @@ DEFAULTSOURCEDIR ?= 0
 #can be handy if a game is not using the full 400x240 resolution and draws everything in the center
 SCREENRESX ?= 400 
 SCREENRESY ?= 240
-#to set the window's default size it's the resultion times this value 
+#to set the window's default size it's the resolution times this value 
 WINDOWSCALE ?= 1
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
@@ -34,60 +34,39 @@ OBJS = $(OBJSC) $(OBJSCPP)
 INC_DIRS = -I./ $(addprefix -I, $(SRC_C_DIR)) $(addprefix -I, $(SRC_CPP_DIR))
 
 OPT_LEVEL ?= -O2
+SDL2CONFIG = sdl2-config
 CC = gcc
 CPP = g++
 CPP_VERSION = c++17
 OUTPUT_ASSETS_DIR =
-CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter  `sdl2-config --cflags` #-g # -Wdouble-promotion # -D_GLIBCXX_DEBUG -D_GLIBCXX_DEBUG_PEDANTIC -D_FORTIFY_SOURCE
-LDLIBS = `sdl2-config --libs` -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
+CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter
+LDLIBS = -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
+CFLAGS_EXTRA = 
+LDFLAGS_EXTRA =
+LDUSEX11 = 1
 
-ifeq ($(EMSCRIPTEN_BUILD), 1)
-#output to the html folder where an index.html will be that loads game.js
-OUT_DIR = ./html
-EXE = game.js
-CC = emcc
-CPP = em++
-OPT_LEVEL = -O3
-#emscripten uses their own libs only ogg seemed to play fine browser
-CFLAGS = -sUSE_OGG=1 -sUSE_VORBIS=1 -sUSE_SDL=2 -sUSE_SDL_TTF=2 -sUSE_SDL_GFX=2 -sUSE_SDL_MIXER=2 -sUSE_SDL_IMAGE=2 -sSDL2_IMAGE_FORMATS='["png"]' -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter
-
-#memory size for game i took about 500 MB but some games require more
-EMSCRIPTEN_MEMORY_SIZE=536870912
-
-#reset Libs
-LDLIBS = 
-#might be needed to prevent stutters or use sleep statements in emscripten
-ifeq ($(EMSCRIPTEN_ASYNCIFY), 1)
-LDLIBS += -sASYNCIFY -lidbfs.js -s FORCE_FILESYSTEM
+ifneq ($(PLATFORM),)
+include build_platforms/$(PLATFORM).mk
 endif
-#provide memory and assets folder
-LDLIBS += -sINITIAL_MEMORY=$(EMSCRIPTEN_MEMORY_SIZE) $(CFLAGS) --preload-file $(OUTPUT_ASSETS_DIR)@
 
-#assets folder where a copy will be made with music and sound converted to .ogg (using ffmpeg)
-OUTPUT_ASSETS_DIR = assets
+CFLAGS += `$(SDL2CONFIG) --cflags` $(CFLAGS_EXTRA)
+LDLIBS += `$(SDL2CONFIG) --libs` $(LDFLAGS_EXTRA)
 
-
+#provide OUTPUT_ASSETS_DIR in <platform>.mk to convert audio to ogg
+ifneq ($(OUTPUT_ASSETS_DIR),)
 #used for converting sound to ogg with ffmpeg
 ALL_SOUND_MUSIC_WAV = $(call rwildcard, $(SOURCE_DIR)/,*.wav)
 ALL_SOUND_MUSIC_OGG_SOURCE = $(ALL_SOUND_MUSIC_WAV:.wav=.ogg)
 ALL_SOUND_MUSIC_OGG_ASSETS = $(subst $(SOURCE_DIR)/,$(OUTPUT_ASSETS_DIR)/,$(ALL_SOUND_MUSIC_OGG_SOURCE))
 endif
 
-#when debugging in windows need to supply -mconsole to see output of log statements
 ifeq ($(DEBUG), 1)
-ifeq ($(OS),Windows_NT)
-LDLIBS += -mconsole
-endif
 CFLAGS += -g
 OPT_LEVEL =
 endif
 
-#MINGW does not have X11 and does not require it
-#dont know about cygwin
-ifneq ($(OS),Windows_NT)
-ifeq ($(EMSCRIPTEN_BUILD),0)
+ifeq ($(LDUSEX11), 1)
 LDLIBS += -lX11
-endif
 endif
 
 CFLAGS += -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
