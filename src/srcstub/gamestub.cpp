@@ -479,7 +479,7 @@ Possible options are:\n\
 
             SDL_Log("Succesfully Set %dx%d\n", LCD_COLUMNS, LCD_ROWS);
            
-            
+            SDL_SetCursor(SDL_DISABLE);
             Renderer = SDL_CreateRenderer(SdlWindow, -1, flags);
             if (Renderer) 
             {
