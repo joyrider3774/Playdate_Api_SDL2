@@ -40,7 +40,7 @@ CPP = g++
 CPP_VERSION = c++17
 OUTPUT_ASSETS_DIR =
 CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter
-LDLIBS = -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lm
+LDFLAGS = -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx
 CFLAGS_EXTRA = 
 LDFLAGS_EXTRA =
 LDUSEX11 = 1
@@ -50,7 +50,7 @@ include build_platforms/$(PLATFORM).mk
 endif
 
 CFLAGS += `$(SDL2CONFIG) --cflags` $(CFLAGS_EXTRA)
-LDLIBS += `$(SDL2CONFIG) --libs` $(LDFLAGS_EXTRA)
+LDFLAGS += `$(SDL2CONFIG) --libs` $(LDFLAGS_EXTRA)
 
 #provide OUTPUT_ASSETS_DIR in <platform>.mk to convert audio to ogg
 ifneq ($(OUTPUT_ASSETS_DIR),)
@@ -66,7 +66,7 @@ OPT_LEVEL =
 endif
 
 ifeq ($(LDUSEX11), 1)
-LDLIBS += -lX11
+LDFLAGS += -lX11
 endif
 
 CFLAGS += -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
@@ -77,7 +77,7 @@ all: $(EXE)
 
 $(EXE): $(OUTPUT_ASSETS_DIR) $(ALL_SOUND_MUSIC_OGG_ASSETS) $(OBJS) $(INC)
 	mkdir -p $(OUT_DIR)
-	$(CPP) -o $(OUT_DIR)/$@ -std=$(CPP_VERSION) $(OBJS) $(LDLIBS)
+	$(CPP) -o $(OUT_DIR)/$@ -std=$(CPP_VERSION) $(OBJS) $(LDFLAGS)
 
 $(OBJ_DIR)/%.o: %.cpp
 	mkdir -p $(@D)
