@@ -395,9 +395,8 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
             if (((mode & kFileReadData) == kFileReadData) && ((mode & kFileRead) == kFileRead))
             {
                 modestr[0] = 'r';
-                modestr[1] = '+';
-                modestr[2] = 'b';
-                modestr[3] = '\0';
+                modestr[1] = 'b';
+                modestr[2] = '\0';
                 LastFile = fopen(filename, modestr);
                 if(!LastFile)
                 {
@@ -416,9 +415,8 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
                 if(((mode & kFileRead) == kFileRead) || ((mode & kFileReadData) == kFileReadData))
                 {
                     modestr[0] = 'r';
-                    modestr[1] = '+';
-                    modestr[2] = 'b';
-                    modestr[3] = '\0';
+                    modestr[1] = 'b';
+                    modestr[2] = '\0';
                     LastFile = fopen(filename, modestr);
                 }
             }
