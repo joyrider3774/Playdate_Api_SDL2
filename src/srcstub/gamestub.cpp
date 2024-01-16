@@ -401,7 +401,7 @@ int main(int argv, char** args)
 	bool useSoftwareRenderer = true;
     bool useLinear = false;
     bool useVsync = false;
-    bool useFullScreenAtStartup = false;
+    bool useFullScreenAtStartup = FULLSCREENATSTARTUP;
     bool useOpenGLHint = false;
     int c;
     while ((c = getopt(argv, args, "?lafvodtq")) != -1) 

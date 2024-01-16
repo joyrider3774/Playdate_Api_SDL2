@@ -21,3 +21,6 @@
 #ifndef DEFAULTSOURCEDIR
 	#define DEFAULTSOURCEDIR 0
 #endif
+#ifndef FULLSCREENATSTARTUP
+	#define FULLSCREENATSTARTUP false
+#endif

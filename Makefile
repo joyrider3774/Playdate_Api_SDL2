@@ -11,6 +11,7 @@ SCREENRESX ?= 400
 SCREENRESY ?= 240
 #to set the window's default size it's the resolution times this value 
 WINDOWSCALE ?= 1
+FULLSCREENATSTARTUP ?= false
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame
@@ -69,7 +70,7 @@ ifeq ($(LDUSEX11), 1)
 LDFLAGS += -lX11
 endif
 
-CFLAGS += -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
+CFLAGS += -DFULLSCREENATSTARTUP=$(FULLSCREENATSTARTUP) -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
 
 .PHONY: all clean
 
