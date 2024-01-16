@@ -1,7 +1,7 @@
 # Make does not offer a recursive wildcard function, so here's one:
 rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 
-DEBUG = 1
+DEBUG = 0
 CPP_BUILD ?= 0
 EMSCRIPTEN_BUILD ?= 0
 DEFAULTSOURCEDIR ?= 0
