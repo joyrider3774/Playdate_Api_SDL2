@@ -109,6 +109,9 @@ struct playdate_sys
 	int (*shouldDisplay24HourTime)(void);
 	void (*convertEpochToDateTime)(uint32_t epoch, struct PDDateTime* datetime);
 	uint32_t (*convertDateTimeToEpoch)(struct PDDateTime* datetime);
+	
+	// 2.0
+	void (*clearICache)(void);
 };
 
 #endif /* pdext_sys_h */

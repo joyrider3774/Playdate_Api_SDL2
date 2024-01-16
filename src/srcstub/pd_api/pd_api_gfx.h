@@ -90,8 +90,7 @@ typedef enum
 typedef uint8_t LCDPattern[16]; // 8x8 pattern: 8 rows image data, 8 rows mask
 typedef uintptr_t LCDColor; // LCDSolidColor or pointer to LCDPattern
 
-#define LCDMakePattern(r0,r1,r2,r3,r4,r5,r6,r7,r8,r9,ra,rb,rc,rd,re,rf) (LCDPattern){(r0),(r1),(r2),(r3),(r4),(r5),(r6),(f7),(r8),(r9),(ra),(rb),(rc),(rd),(re),(rf)}
-#define LCDOpaquePattern(r0,r1,r2,r3,r4,r5,r6,r7) (LCDPattern){(r0),(r1),(r2),(r3),(r4),(r5),(r6),(r7),0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}
+#define LCDOpaquePattern(r0,r1,r2,r3,r4,r5,r6,r7) {(r0),(r1),(r2),(r3),(r4),(r5),(r6),(r7),0xff,0xff,0xff,0xff,0xff,0xff,0xff,0xff}
 
 typedef enum
 {
@@ -207,6 +206,10 @@ struct playdate_graphics
 
 	// 1.12
 	LCDFont* (*makeFontFromData)(LCDFontData* data, int wide);
+
+	// 2.1
+	int (*getTextTracking)(void);
+
 };
 
 #endif /* pdext_gfx_h */

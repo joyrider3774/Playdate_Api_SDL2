@@ -24,7 +24,7 @@ int cc;
 bool _pd_api_sprite_SpriteListNeedsSort = false;
 bool _pd_api_sprite_AlwaysRedraw = false;
 bool _pd_api_sprite_need_cleanup = false;
-World* world = new World(32);
+World* world = new World(INT_MAX);
 
 void printSpliteListInfo()
 {
@@ -191,6 +191,9 @@ void _pd_api_sprite_drawBumpItems(void)
 void pd_api_sprite_drawSprites(void)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_drawSprites\n");
+	LCDColor tmp = getBackgroundDrawColor();
+	if(tmp != kColorClear)
+		Api->graphics->clear(tmp)
 	_pd_api_sprite_SortList();
 	int c =0;	
 	for (auto& spritePtr : spriteList)
@@ -248,6 +251,8 @@ LCDSprite* pd_api_sprite_newSprite(void)
 	Tmp->shared_ptr_self = std::shared_ptr<LCDSprite>(Tmp);
 	Tmp->UpdateFunction = _pd_api_sprite_DefaultUpdateFunction;
 	Tmp->DrawFunction = _pd_api_sprite_DefaultSpriteDrawFunction;
+	Tmp->CenterX = 0.5f;
+	Tmp->CenterY = 0.5f;
     spriteList.push_back(Tmp->shared_ptr_self);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_newSprite end\n");
 	return Tmp;
@@ -315,6 +320,8 @@ LCDSprite* pd_api_sprite_copy(LCDSprite *sprite)
 	newSprite->Visible = sprite->Visible;
 	newSprite->zIndex = sprite->zIndex;
 	newSprite->Loaded = sprite->Loaded;
+	newSprite->CenterPointX = newSprite->CenterPointX;
+	newSprite->CenterPointY = newSprite->CenterPointY;
 	//newSprite->setBumpItem(sprite->BumpItem());
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_copy end\n");
 	return newSprite;
@@ -407,11 +414,11 @@ void pd_api_sprite_setBounds(LCDSprite *sprite, PDRect bounds)
 	sprite->BoundsRect = bounds;
 	sprite->CollideRectBump.x = sprite->BoundsRect.x + sprite->CollideRect.x;
 	sprite->CollideRectBump.y = sprite->BoundsRect.y + sprite->CollideRect.y;	
-	sprite->CenterPointX = bounds.x + (bounds.width / 2.0f);
-	sprite->CenterPointY = bounds.y + (bounds.height / 2.0f);
+	sprite->CenterPointX = bounds.x + (bounds.width * sprite->CenterX);
+	sprite->CenterPointY = bounds.y + (bounds.height * sprite->CenterY);
 	if(sprite->BumpItem != nullptr)
 	{
-		world->Update(sprite->BumpItem, Rectangle(sprite->CenterPointX - (sprite->CollideRect.width / 2.0f), sprite->CenterPointY - (sprite->CollideRect.height / 2.0f), sprite->CollideRectBump.width, sprite->CollideRectBump.height));		
+		world->Update(sprite->BumpItem, Rectangle(sprite->CenterPointX - (sprite->CollideRect.width * sprite->CenterX), sprite->CenterPointY - (sprite->CollideRect.height * sprite->CenterY), sprite->CollideRectBump.width, sprite->CollideRectBump.height));		
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setBounds end\n");
 }
@@ -1186,20 +1193,22 @@ SpriteCollisionInfo* pd_api_sprite_moveWithCollisions(LCDSprite *sprite, float g
 	if(actualY)
 		*actualY = internalActualY;
 
-	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
-
 	if(sprite == NULL)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions sprite == NULL\n");
-		return Tmp;
+		return NULL;
 	}
 	
 	if(!sprite->Loaded)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions end Sprite not loaded\n");
-		return Tmp;
+		return NULL;
 	}
 	
+	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
+	memset(Tmp, 0, sizeof(SpriteCollisionInfo));
+
+
 	if(sprite->BumpItem != nullptr)
 	{
 		CollisionResolution resolution;
@@ -1310,7 +1319,7 @@ SpriteCollisionInfo* pd_api_sprite_moveWithCollisions(LCDSprite *sprite, float g
 			Tmp[*len].spriteRect.y = col->itemRect.pos.y;
 			Tmp[*len].overlaps = col->overlaps;
 			Tmp[*len].normal.x = col->normal.x;
-			Tmp[*len].normal.y = col->normal.y;
+			Tmp[*len].normal.y = col->normal.y; //seems inverse in simulator
 			Tmp[*len].ti = col->ti;
 			Tmp[*len].move.x = col->move.x;
 			Tmp[*len].move.x = col->move.y;
@@ -1320,6 +1329,11 @@ SpriteCollisionInfo* pd_api_sprite_moveWithCollisions(LCDSprite *sprite, float g
 		}
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions end\n");
+	if (*len == 0)
+	{
+		free(Tmp);
+		return NULL;
+	}
 	return Tmp;
 }
 
@@ -1446,6 +1460,27 @@ void pd_api_sprite_setStencilImage(LCDSprite *sprite, LCDBitmap* stencil, int ti
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setStencilImage end\n");
 }
 
+// 2.1
+void pd_api_sprite_setCenter(LCDSprite* s, float x, float y)
+{
+	if(!s)
+		return;
+
+	s->CenterX = s->CenterX;
+	s->CenterY = s->CenterY;
+}
+
+void pd_api_sprite_getCenter(LCDSprite* s, float* x, float* y)
+{
+	if(!s)
+		return;
+
+	if(x)
+		*x = s->CenterX;
+	if(y)
+		*y = s->CenterY;
+}
+
 playdate_sprite* pd_api_sprite_Create_playdate_sprite()
 {
     playdate_sprite *Tmp = (playdate_sprite*) malloc(sizeof(*Tmp));
@@ -1529,5 +1564,10 @@ playdate_sprite* pd_api_sprite_Create_playdate_sprite()
 	
 	// added in 1.10
 	Tmp->setStencilImage = pd_api_sprite_setStencilImage;
+
+	// 2.1
+	Tmp->setCenter = pd_api_sprite_setCenter;
+	Tmp->getCenter = pd_api_sprite_getCenter; 
+
     return Tmp;
 }

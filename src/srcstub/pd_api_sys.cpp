@@ -371,6 +371,12 @@ uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime)
 	return 0;
 }
 
+// 2.0
+void pd_api_sys_clearICache(void)
+{
+
+}
+
 playdate_sys* pd_api_sys_Create_playdate_sys()
 {
 	playdate_sys* tmp = (playdate_sys *) malloc(sizeof(*tmp));
@@ -419,6 +425,8 @@ playdate_sys* pd_api_sys_Create_playdate_sys()
 	tmp->convertEpochToDateTime = pd_api_sys_convertEpochToDateTime;
 	tmp->convertDateTimeToEpoch = pd_api_sys_convertDateTimeToEpoch;
 
+	// 2.0
+	tmp->clearICache = pd_api_sys_clearICache;
 
 	return tmp;
 }

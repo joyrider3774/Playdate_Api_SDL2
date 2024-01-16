@@ -1047,6 +1047,13 @@ void pd_api_sound_setOutputsActive(int headphone, int speaker)
 {
 
 }
+
+// 2.2
+const char* pd_api_sound_getError(void)
+{
+	return NULL;
+}
+
 	
 // 1.5
 int pd_api_sound_removeSource(SoundSource* source)
@@ -1209,6 +1216,12 @@ void pd_api_sound_setGlobalPDSynthLFO(PDSynthLFO* lfo, int global)
 
 }
 
+// 2.2
+void pd_api_sound_setStartPhaseLFO(PDSynthLFO* lfo, float phase)
+{
+
+}
+
 
 playdate_sound_lfo* pd_api_sound_Create_playdate_sound_lfo()
 {
@@ -1228,6 +1241,9 @@ playdate_sound_lfo* pd_api_sound_Create_playdate_sound_lfo()
 	Tmp->getValue = pd_api_sound_getValuePDSynthLFO;
 	// 1.10
 	Tmp->setGlobal = pd_api_sound_setGlobalPDSynthLFO;
+	// 2.2
+	Tmp->setStartPhase = pd_api_sound_setStartPhaseLFO;
+
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_lfo end\n");
     return Tmp;
 };
@@ -1442,6 +1458,11 @@ PDSynthEnvelope* pd_api_sound_getEnvelopePDSynth(PDSynth* synth) // synth keeps 
 	return Tmp;
 }
 
+int pd_api_sound_setWavetablePDSynth (PDSynth* synth, AudioSample* sample, int log2size, int columns, int rows)
+{
+	return 0;
+}
+
 // PDSynth extends SoundSource
 playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
 {
@@ -1474,6 +1495,8 @@ playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
 	Tmp->isPlaying = pd_api_sound_isPlayingPDSynth;
 	// 1.13
 	Tmp->getEnvelope = pd_api_sound_getEnvelopePDSynth;
+	// 2.2
+	Tmp->setWavetable = pd_api_sound_setWavetablePDSynth;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_synth end\n");
     return Tmp;
 };
@@ -1774,7 +1797,7 @@ int pd_api_sound_getTempoSoundSequence(SoundSequence* seq)
     return 0;
 }
 
-void pd_api_sound_setTempoSoundSequence(SoundSequence* seq, int stepsPerSecond)
+void pd_api_sound_setTempoSoundSequence(SoundSequence* seq, float stepsPerSecond)
 {
 
 }
@@ -2445,6 +2468,8 @@ playdate_sound* pd_api_sound_Create_playdate_sound()
     Tmp->setMicCallback = pd_api_sound_setMicCallback;
     Tmp->getHeadphoneState = pd_api_sound_getHeadphoneState;
     Tmp->setOutputsActive = pd_api_sound_setOutputsActive;
+	// 2.2
+	Tmp->getError = pd_api_sound_getError;
 
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound end\n");
     return Tmp;

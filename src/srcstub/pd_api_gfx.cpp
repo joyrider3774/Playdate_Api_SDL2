@@ -1195,6 +1195,12 @@ LCDFont* pd_api_gfx_makeFontFromData(LCDFontData* data, int wide)
     return NULL;
 }
 
+// 2.1
+int pd_api_gfx_getTextTracking()
+{
+	return _pd_api_gfx_CurrentGfxContext->tracking;
+}
+
 int printcount = 1;
 
 void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip)
@@ -2343,6 +2349,9 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 	
 	// 1.12
 	Tmp->makeFontFromData = pd_api_gfx_makeFontFromData;
+
+	// 2.1
+	Tmp->getTextTracking = pd_api_gfx_getTextTracking;
 
     return Tmp;
 }

@@ -19,7 +19,7 @@ typedef struct
 	float y;
 	float width;
 	float height;
-	
+
 } PDRect;
 
 static inline PDRect PDRectMake(float x, float y, float width, float height)
@@ -160,6 +160,10 @@ struct playdate_sprite
 
 	// added in 1.10
 	void (*setStencilImage)(LCDSprite *sprite, LCDBitmap* stencil, int tile);
+	
+	// 2.1
+	void (*setCenter)(LCDSprite* s, float x, float y);
+	void (*getCenter)(LCDSprite* s, float* x, float* y);
 };
 
 #endif /* pdext_sprite_h */
