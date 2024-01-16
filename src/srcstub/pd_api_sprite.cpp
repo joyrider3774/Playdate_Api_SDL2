@@ -193,7 +193,7 @@ void pd_api_sprite_drawSprites(void)
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_drawSprites\n");
 	LCDColor tmp = getBackgroundDrawColor();
 	if(tmp != kColorClear)
-		Api->graphics->clear(tmp)
+		Api->graphics->clear(tmp);
 	_pd_api_sprite_SortList();
 	int c =0;	
 	for (auto& spritePtr : spriteList)
