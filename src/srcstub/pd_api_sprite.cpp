@@ -217,8 +217,8 @@ void pd_api_sprite_drawSprites(void)
 			}			
 	 	}
 	}
-
-	_pd_api_sprite_drawBumpItems();
+	if (DRAWBUMPRECTS)
+		_pd_api_sprite_drawBumpItems();
 
 	printfDebug(DebugInfo, "pd_api_sprite_drawSprites draws done: %d\n",c);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_drawSprites end\n");
