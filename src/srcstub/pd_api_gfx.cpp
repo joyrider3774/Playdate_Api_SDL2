@@ -655,7 +655,35 @@ LCDBitmap* pd_api_gfx_copyBitmap(LCDBitmap* bitmap)
 
 void pd_api_gfx_loadIntoBitmap(const char* path, LCDBitmap* bitmap, const char** outerr)
 {
-    bitmap = pd_api_gfx_loadBitmap(path, outerr);
+    LCDBitmap* tmpBitmap = pd_api_gfx_loadBitmap(path, outerr);
+	if(tmpBitmap)
+	{
+		if(bitmap->MaskedTex)
+			SDL_FreeSurface(bitmap->MaskedTex);
+		bitmap->MaskedTex = SDL_ConvertSurfaceFormat(tmpBitmap->MaskedTex, pd_api_gfx_PIXELFORMAT, 0);
+
+		if(bitmap->Tex)
+			SDL_FreeSurface(bitmap->Tex);
+		bitmap->Tex = SDL_ConvertSurfaceFormat(tmpBitmap->Tex, pd_api_gfx_PIXELFORMAT, 0);
+
+		if(bitmap->Mask)
+			pd_api_gfx_freeBitmap(bitmap->Mask);
+		bitmap->Mask = NULL; 
+
+		if(bitmap->BitmapDataData)
+			free(bitmap->BitmapDataData);
+		bitmap->BitmapDataData = NULL;
+
+		if(bitmap->BitmapDataMask)
+			free(bitmap->BitmapDataMask);
+		bitmap->BitmapDataMask = NULL;
+
+		bitmap->BitmapDirty = true;
+		bitmap->h = tmpBitmap->h;
+		bitmap->w = tmpBitmap->w;
+		bitmap->MaskDirty = false;
+	}
+	pd_api_gfx_freeBitmap(tmpBitmap);
 }
 
 //mask and data changes are not applied to the bitmap but they can be read
@@ -892,57 +920,127 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
                 }
             }
             
-            SDL_Surface* Img = NULL;
-			SDL_Surface* Tmp = IMG_Load(fullpath);
-			if(Tmp)
+			
+			//format name-table-X (seems we need to load next few files then that exists with incrementing x)
+			if ((w == 1) && (h == 0))
 			{
-				Img = SDL_ConvertSurfaceFormat(Tmp, pd_api_gfx_PIXELFORMAT, 0);
-				SDL_FreeSurface(Tmp);
+				
+				char* ext2 = strrchr(fullpath, '.');
+				if(ext2)
+				{
+					char* substr2 = strstr(tmpPath, "-TABLE-");
+					char* rootfilename = (char *) malloc((strlen(fullpath)+10) * sizeof(char));
+					memset(rootfilename, 0, (strlen(fullpath)+10) * sizeof(char));
+					strncpy(rootfilename, fullpath, strlen(fullpath) - strlen(substr2) + 7);
+					char* fullpath2 = (char *) malloc((strlen(fullpath)+14) * sizeof(char));
+					int counter = 1;
+					sprintf(fullpath2, "%s%d%s", rootfilename, counter, ext2);
+					SDL_Surface* Img = NULL;
+					SDL_Surface* Tmp = IMG_Load(fullpath2);
+					if(Tmp)
+					{
+						result = pd_api_gfx_Create_LCDBitmapTable();
+						if(result)
+						{
+							result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
+							result->w = Tmp->w;
+							result->h = Tmp->h;
+							*outerr = NULL;
+								
+							while(Tmp)
+							{
+								Img = SDL_ConvertSurfaceFormat(Tmp, pd_api_gfx_PIXELFORMAT, 0);
+								SDL_FreeSurface(Tmp);
+								
+								if (_pd_current_source_dir == 0)
+									pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
+								else
+									pd_api_gfx_MakeSurfaceOpaque(Img);
+
+								SDL_SetSurfaceBlendMode(Img, SDL_BLENDMODE_BLEND);
+								result->bitmaps = (LCDBitmap **) realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
+								result->bitmaps[result->count] = pd_api_gfx_newBitmap(result->w, result->h, kColorClear);
+								if(result->bitmaps[result->count])
+								{
+									SDL_BlitSurface(Img, NULL, result->bitmaps[result->count]->Tex, NULL);
+									SDL_SetSurfaceBlendMode(result->bitmaps[result->count]->Tex, SDL_BLENDMODE_NONE);
+									result->count++;
+								}
+								else
+								{
+									*outerr = loaderror;
+									return NULL;
+								}
+								
+								SDL_FreeSurface(Img);
+
+								counter++;
+								sprintf(fullpath2, "%s%d%s", rootfilename, counter, ext2);
+								Tmp = IMG_Load(fullpath2);							
+							}	
+						}
+					}
+					free(rootfilename);
+					free(fullpath2);
+
+				}
+				
 			}
-            if(Img)
-            {
-                result = pd_api_gfx_Create_LCDBitmapTable();
-                if(result)
-                {
-					if (_pd_current_source_dir == 0)
-						pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
-					else
-						pd_api_gfx_MakeSurfaceOpaque(Img);
-                    result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
-                    *outerr = NULL;
-                    result->w = w;
-                    result->h = h;
-					SDL_SetSurfaceBlendMode(Img, SDL_BLENDMODE_BLEND);
-                    for (int y = 0; y < Img->h; y+=h)
-                    {
-                        for (int x = 0; x < Img->w ; x+=w)
-                        {     
-                            result->bitmaps = (LCDBitmap **) realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
-                            result->bitmaps[result->count] = pd_api_gfx_newBitmap(w, h, kColorClear);
-                            if(result->bitmaps[result->count])
-                            {
-                                SDL_Rect rect;
-                                rect.x = x;
-                                rect.y = y;
-                                rect.w = w;
-                                rect.h = h;
-								SDL_BlitSurface(Img, &rect, result->bitmaps[result->count]->Tex, NULL);
-								SDL_SetSurfaceBlendMode(result->bitmaps[result->count]->Tex, SDL_BLENDMODE_NONE);
-                                result->count++;
-                            }
-                            else
-                            {
-                                *outerr = loaderror;
-                                return NULL;
-                            }
-                        }
-                    }
-                }
-				SDL_FreeSurface(Img);
-            }
-        }
-        free(fullpath);
-        free(tmpPath); 
+			else
+			{
+				SDL_Surface* Img = NULL;
+				SDL_Surface* Tmp = IMG_Load(fullpath);
+				if(Tmp)
+				{
+					Img = SDL_ConvertSurfaceFormat(Tmp, pd_api_gfx_PIXELFORMAT, 0);
+					SDL_FreeSurface(Tmp);
+				}
+				if(Img)
+				{
+					result = pd_api_gfx_Create_LCDBitmapTable();
+					if(result)
+					{
+						if (_pd_current_source_dir == 0)
+							pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
+						else
+							pd_api_gfx_MakeSurfaceOpaque(Img);
+						result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
+						*outerr = NULL;
+						result->w = w;
+						result->h = h;
+						SDL_SetSurfaceBlendMode(Img, SDL_BLENDMODE_BLEND);
+						for (int y = 0; y < Img->h; y+=h)
+						{
+							for (int x = 0; x < Img->w ; x+=w)
+							{     
+								result->bitmaps = (LCDBitmap **) realloc(result->bitmaps, (result->count+1) * sizeof(*result->bitmaps));
+								result->bitmaps[result->count] = pd_api_gfx_newBitmap(w, h, kColorClear);
+								if(result->bitmaps[result->count])
+								{
+									SDL_Rect rect;
+									rect.x = x;
+									rect.y = y;
+									rect.w = w;
+									rect.h = h;
+									SDL_BlitSurface(Img, &rect, result->bitmaps[result->count]->Tex, NULL);
+									SDL_SetSurfaceBlendMode(result->bitmaps[result->count]->Tex, SDL_BLENDMODE_NONE);
+									result->count++;
+								}
+								else
+								{
+									*outerr = loaderror;
+									return NULL;
+								}
+							}
+						}
+					}
+					SDL_FreeSurface(Img);
+				}
+		
+			}
+		}
+		free(fullpath);
+		free(tmpPath); 
     }
     return result;
 }
@@ -960,7 +1058,18 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
 
 void pd_api_gfx_loadIntoBitmapTable(const char* path, LCDBitmapTable* table, const char** outerr)
 {
-    table = pd_api_gfx_loadBitmapTable(path, outerr);
+    LCDBitmapTable* tmpTable = pd_api_gfx_loadBitmapTable(path, outerr);
+	if(tmpTable)
+	{
+		for (int i = 0; i < table->count; i++)
+		{
+			if(table->bitmaps[i])
+				pd_api_gfx_freeBitmap(table->bitmaps[i]);
+			table->bitmaps[i] = pd_api_gfx_copyBitmap(tmpTable->bitmaps[i]);
+		}
+		table->h = tmpTable->h;
+		table->w = tmpTable->w;
+	}
 }
 
 LCDBitmap* pd_api_gfx_getTableBitmap(LCDBitmapTable* table, int idx)

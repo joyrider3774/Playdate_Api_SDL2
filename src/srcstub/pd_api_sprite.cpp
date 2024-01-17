@@ -251,8 +251,6 @@ LCDSprite* pd_api_sprite_newSprite(void)
 	Tmp->shared_ptr_self = std::shared_ptr<LCDSprite>(Tmp);
 	Tmp->UpdateFunction = _pd_api_sprite_DefaultUpdateFunction;
 	Tmp->DrawFunction = _pd_api_sprite_DefaultSpriteDrawFunction;
-	Tmp->CenterX = 0.5f;
-	Tmp->CenterY = 0.5f;
     spriteList.push_back(Tmp->shared_ptr_self);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_newSprite end\n");
 	return Tmp;
@@ -1052,19 +1050,22 @@ SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goal
 	if(actualY)
 		*actualY = internalActualY;
 
-	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
+
 
 	if(sprite == NULL)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions sprite == NULL\n");
-		return Tmp;
+		return NULL;
 	}
 
 	if(!sprite->Loaded)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end Sprite not loaded\n");
-		return Tmp;
+		return NULL;
 	}
+	
+	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
+	memset(Tmp, 0, sizeof(SpriteCollisionInfo));
 	
 	if(sprite->BumpItem != nullptr)
 	{
@@ -1178,6 +1179,11 @@ SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goal
 		}
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end\n");
+	if (*len == 0)
+	{
+		free(Tmp);
+		return NULL;
+	}
 	return Tmp;
 }
 
