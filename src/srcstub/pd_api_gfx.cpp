@@ -2450,7 +2450,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 		}
 		LATIN1_to_UTF8_backport(sizedtext, utf8_alloc);
 		text_cpy = (char *)utf8_alloc;
-		} else {
+	} else {
 		/* Use a copy anyway */
 		size_t str_len = SDL_strlen(sizedtext);
 		utf8_alloc = SDL_stack_alloc(Uint8, str_len + 1);
@@ -2463,7 +2463,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 	}
 
 	/* Get the dimensions of the text surface */
-	if ((TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text_cpy, &width, &height) < 0) || !width) {
+	if ((TTF_SizeUTF8(f->font, text_cpy, &width, &height) < 0) || !width) {
 		SDL_SetError("Text has zero width");
 		if (utf8_alloc)
 			free(utf8_alloc);
@@ -2538,7 +2538,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 		} while (textlen > 0);
 	}
 
-	lineskip = TTF_FontLineSkip(_pd_api_gfx_CurrentGfxContext->font->font);
+	lineskip = TTF_FontLineSkip(f->font);
 	rowHeight = SDL_max(height, lineskip);
 	char* newtext;
 	//if (wrapLength == 0) {
@@ -2559,7 +2559,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 					}
 				}
 
-				if (TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, newtext, &w, &h) == 0) {
+				if (TTF_SizeUTF8(f->font, newtext, &w, &h) == 0) {
 					width = SDL_max(w, width);
 				}
 
@@ -2593,9 +2593,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
     int result = -1;
     if (_pd_api_gfx_CurrentGfxContext->font->font)
     {
-        char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
-        strncpy(sizedtext, (char *)text, len);
-        sizedtext[len] = '\0';
+        const char* sizedtext = (const char *) text;
 
 		int width, height;
 		Uint8 *utf8_alloc = NULL;
