@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <vector>
+#include <climits>
 #include "bump/World.hpp"
 #include "bump/Collision.hpp"
 #include "bump/CollisionResponses.hpp"
