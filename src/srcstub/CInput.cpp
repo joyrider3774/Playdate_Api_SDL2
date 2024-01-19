@@ -1,7 +1,9 @@
 #include <SDL.h>
 #include <SDL_joystick.h>
+#include "pd_api.h"
 #include "CInput.h"
 #include "defines.h"
+#include "gamestub.h"
 
 CInput *CInput_Create()
 {
