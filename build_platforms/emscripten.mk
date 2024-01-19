@@ -12,12 +12,12 @@ EMSCRIPTEN_MEMORY_SIZE=536870912
 LDUSEX11 = 0
 
 #reset Libs
-LDLIBS = 
+LDFLAGS = 
 #might be needed to prevent stutters or use sleep statements in emscripten
 ifeq ($(EMSCRIPTEN_ASYNCIFY), 1)
-LDLIBS += -sASYNCIFY -lidbfs.js -s FORCE_FILESYSTEM
+LDFLAGS += -sASYNCIFY -lidbfs.js -s FORCE_FILESYSTEM
 endif
 #provide memory and assets folder
-LDLIBS += -sINITIAL_MEMORY=$(EMSCRIPTEN_MEMORY_SIZE) $(CFLAGS) --preload-file $(OUTPUT_ASSETS_DIR)@
+LDFLAGS += -sINITIAL_MEMORY=$(EMSCRIPTEN_MEMORY_SIZE) $(CFLAGS) --preload-file $(OUTPUT_ASSETS_DIR)@
 #assets folder where a copy will be made with music and sound converted to .ogg (using ffmpeg)
 OUTPUT_ASSETS_DIR = assets
