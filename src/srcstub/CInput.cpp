@@ -1,6 +1,7 @@
 #include <SDL.h>
 #include <SDL_joystick.h>
 #include "CInput.h"
+#include "defines.h"
 
 CInput *CInput_Create()
 {
@@ -115,8 +116,24 @@ void CInput_ResetButtons(CInput* cinput)
 
 void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value) 
 {
+	if(DEBUG_JOYSTICK_BUTTONS)
+	{
+		Api->graphics->clear(kColorWhite);
+		char *text = NULL;
+		Api->system->formatString(&text, "Button: %d", Button);
+		Api->graphics->drawText(text, strlen(text), kASCIIEncoding, 0, 0);
+		Api->graphics->display();
+		SDL_Delay(1000);
+	}
+
+
 	switch (Button)
 	{
+		#ifdef TRIMUI_SMART_PRO
+		case SDL_CONTROLLER_BUTTON_GUIDE:
+			cinput->Buttons.ButQuit = Value;
+			break;
+		#endif
 		case SDL_CONTROLLER_BUTTON_Y:
 			cinput->Buttons.ButY = Value;
 			break;
@@ -141,10 +158,18 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 		case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
 			cinput->Buttons.ButDpadRight = Value;
 			break;
-		case SDL_CONTROLLER_BUTTON_A:
+		#ifdef TRIMUI_SMART_PRO
+			case SDL_CONTROLLER_BUTTON_B:
+		#else
+			case SDL_CONTROLLER_BUTTON_A:
+		#endif
 			cinput->Buttons.ButA = Value;
 			break;
-		case SDL_CONTROLLER_BUTTON_B:
+		#ifdef TRIMUI_SMART_PRO
+			case SDL_CONTROLLER_BUTTON_A:
+		#else
+			case SDL_CONTROLLER_BUTTON_B:
+		#endif
 			cinput->Buttons.ButB = Value;
 			break;
 		case SDL_CONTROLLER_BUTTON_START:
