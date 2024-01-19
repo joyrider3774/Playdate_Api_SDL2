@@ -7,6 +7,7 @@
 #include <SDL.h>
 #include <SDL_image.h>
 #include <SDL_rotate.h>
+#include <SDL_stdinc.h>
 #include <SDL2_rotozoom.h>
 #include <SDL_ttf.h>
 #include <sys/stat.h>
@@ -2227,6 +2228,144 @@ int pd_api_gfx_getGlyphKerning(LCDFontGlyph* glyph, uint32_t glyphcode, uint32_t
     return 0;
 }
 
+//taken from SDL_TTF
+static void LATIN1_to_UTF8_backport(const char *src, Uint8 *dst)
+{
+    while (*src) {
+        Uint8 ch = *(const Uint8 *)src++;
+        if (ch <= 0x7F) {
+            *dst++ = ch;
+        } else {
+            *dst++ = 0xC0 | ((ch >> 6) & 0x1F);
+            *dst++ = 0x80 | (ch & 0x3F);
+        }
+    }
+    *dst = '\0';
+}
+
+//taken from SDL_TTF
+/* Gets the number of bytes needed to convert a Latin-1 string to UTF-8 */
+static size_t LATIN1_to_UTF8_len_backport(const char *text)
+{
+    size_t bytes = 1;
+    while (*text) {
+        Uint8 ch = *(const Uint8 *)text++;
+        if (ch <= 0x7F) {
+            bytes += 1;
+        } else {
+            bytes += 2;
+        }
+    }
+    return bytes;
+}
+
+//taken from SDL_TTF
+/* Gets a unicode value from a UTF-8 encoded string
+ * Ouputs increment to advance the string */
+#define UNKNOWN_UNICODE 0xFFFD
+static Uint32 UTF8_getch_backport(const char *src, size_t srclen, int *inc)
+{
+    const Uint8 *p = (const Uint8 *)src;
+    size_t left = 0;
+    size_t save_srclen = srclen;
+    SDL_bool overlong = SDL_FALSE;
+    SDL_bool underflow = SDL_FALSE;
+    Uint32 ch = UNKNOWN_UNICODE;
+
+    if (srclen == 0) {
+        return UNKNOWN_UNICODE;
+    }
+    if (p[0] >= 0xFC) {
+        if ((p[0] & 0xFE) == 0xFC) {
+            if (p[0] == 0xFC && (p[1] & 0xFC) == 0x80) {
+                overlong = SDL_TRUE;
+            }
+            ch = (Uint32) (p[0] & 0x01);
+            left = 5;
+        }
+    } else if (p[0] >= 0xF8) {
+        if ((p[0] & 0xFC) == 0xF8) {
+            if (p[0] == 0xF8 && (p[1] & 0xF8) == 0x80) {
+                overlong = SDL_TRUE;
+            }
+            ch = (Uint32) (p[0] & 0x03);
+            left = 4;
+        }
+    } else if (p[0] >= 0xF0) {
+        if ((p[0] & 0xF8) == 0xF0) {
+            if (p[0] == 0xF0 && (p[1] & 0xF0) == 0x80) {
+                overlong = SDL_TRUE;
+            }
+            ch = (Uint32) (p[0] & 0x07);
+            left = 3;
+        }
+    } else if (p[0] >= 0xE0) {
+        if ((p[0] & 0xF0) == 0xE0) {
+            if (p[0] == 0xE0 && (p[1] & 0xE0) == 0x80) {
+                overlong = SDL_TRUE;
+            }
+            ch = (Uint32) (p[0] & 0x0F);
+            left = 2;
+        }
+    } else if (p[0] >= 0xC0) {
+        if ((p[0] & 0xE0) == 0xC0) {
+            if ((p[0] & 0xDE) == 0xC0) {
+                overlong = SDL_TRUE;
+            }
+            ch = (Uint32) (p[0] & 0x1F);
+            left = 1;
+        }
+    } else {
+        if ((p[0] & 0x80) == 0x00) {
+            ch = (Uint32) p[0];
+        }
+    }
+    --srclen;
+    while (left > 0 && srclen > 0) {
+        ++p;
+        if ((p[0] & 0xC0) != 0x80) {
+            ch = UNKNOWN_UNICODE;
+            break;
+        }
+        ch <<= 6;
+        ch |= (p[0] & 0x3F);
+        --srclen;
+        --left;
+    }
+    if (left > 0) {
+        underflow = SDL_TRUE;
+    }
+    /* Technically overlong sequences are invalid and should not be interpreted.
+       However, it doesn't cause a security risk here and I don't see any harm in
+       displaying them. The application is responsible for any other side effects
+       of allowing overlong sequences (e.g. string compares failing, etc.)
+       See bug 1931 for sample input that triggers this.
+    */
+    /* if (overlong) return UNKNOWN_UNICODE; */
+
+    (void) overlong;
+
+    if (underflow ||
+        (ch >= 0xD800 && ch <= 0xDFFF) ||
+        (ch == 0xFFFE || ch == 0xFFFF) || ch > 0x10FFFF) {
+        ch = UNKNOWN_UNICODE;
+    }
+
+    *inc = (int)(save_srclen - srclen);
+
+    return ch;
+}
+
+//taken from SDL_TTF
+static SDL_bool CharacterIsNewLine_backport(Uint32 c)
+{
+    if (c == '\n') {
+        return SDL_TRUE;
+    }
+    return SDL_FALSE;
+}
+
+//based on functionality from SDL_TTF
 int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStringEncoding encoding, int tracking)
 {
     LCDFont *f = font;
@@ -2255,47 +2394,192 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 		return 0;
 	}
 
-	char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
-    char *sizedtexttmp = (char *) malloc((len + 1) * sizeof(char));
-	strncpy(sizedtext,(char *) text, len);
-    sizedtext[len] = '\0';
-    int w, wtmp, htmp;
-	char *p = sizedtext;
-	char *ptmp = sizedtexttmp;
-	w = 0;
-	while(*p != '\0')
-	{
-		if(*p == '\n')
-		{
-			*ptmp = '\0';
-			if(strlen(sizedtexttmp) > 0)
-			{
-				TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
-				if(wtmp > w)
-					w = wtmp;
+	// char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
+    // char *sizedtexttmp = (char *) malloc((len + 1) * sizeof(char));
+	// strncpy(sizedtext,(char *) text, len);
+    // sizedtext[len] = '\0';
+    // int w, wtmp, htmp;
+	// char *p = sizedtext;
+	// char *ptmp = sizedtexttmp;
+	// w = 0;
+	// while(*p != '\0')
+	// {
+	// 	if(*p == '\n')
+	// 	{
+	// 		*ptmp = '\0';
+	// 		if(strlen(sizedtexttmp) > 0)
+	// 		{
+	// 			TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
+	// 			if(wtmp > w)
+	// 				w = wtmp;
+	// 		}
+	// 		ptmp = sizedtexttmp;
+	// 	}
+	// 	else
+	// 	{
+	// 		*ptmp = *p;
+	// 		ptmp++;
+	// 	}
+	// 	p++;
+	// }
+	// //in case '\n' was last char sizedtextmp was reset to initial position and does not contain 0 char
+	// *ptmp = '\0';
+	// if(strlen(sizedtexttmp) > 0)
+	// {
+	// 	TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
+	// 	if(wtmp > w)
+	// 		w = wtmp;
+	// }
+    // free(sizedtext);
+	// free(sizedtexttmp);
+    // return w;
+
+
+	int width, height;
+	Uint8 *utf8_alloc = NULL;
+
+	int i, numLines, rowHeight, lineskip;
+	char **strLines = NULL, *text_cpy;
+	const char* sizedtext = (const char *) text; 
+	/* Convert input string to default encoding UTF-8 */
+	if (encoding == kASCIIEncoding) {
+		utf8_alloc = SDL_stack_alloc(Uint8, LATIN1_to_UTF8_len_backport(sizedtext));
+		if (utf8_alloc == NULL) {
+			SDL_OutOfMemory();
+			return 0;
+		}
+		LATIN1_to_UTF8_backport(sizedtext, utf8_alloc);
+		text_cpy = (char *)utf8_alloc;
+		} else {
+		/* Use a copy anyway */
+		size_t str_len = SDL_strlen(sizedtext);
+		utf8_alloc = SDL_stack_alloc(Uint8, str_len + 1);
+		if (utf8_alloc == NULL) {
+			SDL_OutOfMemory();
+			return 0;
+		}
+		SDL_memcpy(utf8_alloc, text, str_len + 1);
+		text_cpy = (char *)utf8_alloc;
+	}
+
+	/* Get the dimensions of the text surface */
+	if ((TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text_cpy, &width, &height) < 0) || !width) {
+		SDL_SetError("Text has zero width");
+		if (utf8_alloc)
+			free(utf8_alloc);
+		return 0;
+	}
+
+	numLines = 1;
+
+	if (*text_cpy) {
+		int maxNumLines = 0;
+		size_t textlen = SDL_strlen(text_cpy);
+		numLines = 0;
+		size_t numChars = 0;
+		do {
+			size_t save_textlen = (size_t)(-1);
+			char *save_text  = NULL;
+
+			if (numLines >= maxNumLines) {
+				char **saved = strLines;
+				
+				maxNumLines += 32;
+				strLines = (char **)SDL_realloc(strLines, maxNumLines * sizeof (*strLines));
+				if (strLines == NULL) {
+					strLines = saved;
+					SDL_OutOfMemory();
+					if (utf8_alloc)
+						free(utf8_alloc);
+					if (strLines)
+						free(strLines);
+					return 0;
+				}
 			}
-			ptmp = sizedtexttmp;
-		}
-		else
-		{
-			*ptmp = *p;
-			ptmp++;
-		}
-		p++;
+
+			strLines[numLines++] = text_cpy;
+
+			while (textlen > 0) {
+				int inc = 0;
+				int is_delim;
+				Uint32 c = UTF8_getch_backport(text_cpy, textlen, &inc);
+				text_cpy += inc;
+				textlen -= inc;
+
+				if (c == UNICODE_BOM_NATIVE || c == UNICODE_BOM_SWAPPED) {
+					continue;
+				}
+
+				numChars += 1;
+				/* With wrapLength == 0, normal text rendering but newline aware */
+				is_delim = CharacterIsNewLine_backport(c);
+
+				/* Record last delimiter position */
+				if (is_delim) {
+					save_textlen = textlen;
+					save_text = text_cpy;
+					/* Break, if new line */
+					if (c == '\n' || c == '\r') {
+						*(text_cpy - 1) = '\0';
+						break;
+					}
+				}
+		
+				if(numChars >= len)
+					textlen = 0;
+				
+			}
+
+			/* Cut at last delimiter/new lines, otherwise in the middle of the word */
+			if (save_text && textlen) {
+				text_cpy = save_text;
+				textlen = save_textlen;
+			}
+		} while (textlen > 0);
 	}
-	//in case '\n' was last char sizedtextmp was reset to initial position and does not contain 0 char
-	*ptmp = '\0';
-	if(strlen(sizedtexttmp) > 0)
-	{
-		TTF_SizeText(f->font, sizedtexttmp, &wtmp, &htmp);
-		if(wtmp > w)
-			w = wtmp;
-	}
-    free(sizedtext);
-	free(sizedtexttmp);
-    return w;
+
+	lineskip = TTF_FontLineSkip(_pd_api_gfx_CurrentGfxContext->font->font);
+	rowHeight = SDL_max(height, lineskip);
+	char* newtext;
+	//if (wrapLength == 0) {
+	if(true) {
+		/* Find the max of all line lengths */
+		if (numLines > 1) {
+			width = 0;
+			for (i = 0; i < numLines; i++) {
+				char save_c = 0;
+				int w, h;
+
+				/* Add end-of-line */
+				if (strLines) {
+					newtext = strLines[i];
+					if (i + 1 < numLines) {
+						save_c = strLines[i + 1][0];
+						strLines[i + 1][0] = '\0';
+					}
+				}
+
+				if (TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, newtext, &w, &h) == 0) {
+					width = SDL_max(w, width);
+				}
+
+				/* Remove end-of-line */
+				if (strLines) {
+					if (i + 1 < numLines) {
+						strLines[i + 1][0] = save_c;
+					}
+				}
+			}
+			/* In case there are all newlines */
+			width = SDL_max(width, 1);
+		}
+	} 
+	height = rowHeight + lineskip * (numLines - 1);
+
+	return width;
 }
 
+//based on functionality from SDL_TTF
 int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding, int x, int y)
 {
     if(len == 0)
@@ -2312,27 +2596,203 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
         char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
         strncpy(sizedtext, (char *)text, len);
         sizedtext[len] = '\0';
-        SDL_Surface* TextSurface = TTF_RenderText_Solid_Wrapped(_pd_api_gfx_CurrentGfxContext->font->font, sizedtext, pd_api_gfx_color_black, 0);
-        free(sizedtext);
-        if (TextSurface) 
-        {
-            SDL_Surface* Texture = SDL_ConvertSurfaceFormat(TextSurface, _pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format->format, 0);
-            if(Texture)
-            {                
-                LCDBitmap * bitmap = pd_api_gfx_newBitmap(TextSurface->w,TextSurface->h, kColorClear);
-                if(bitmap)
-                {
-					SDL_BlitSurface(Texture, NULL, bitmap->Tex, NULL);					
-                    pd_api_gfx_drawBitmap(bitmap, x, y, kBitmapUnflipped);
-                    pd_api_gfx_freeBitmap(bitmap);
-                }
+
+		int width, height;
+		Uint8 *utf8_alloc = NULL;
+
+		int i, numLines, rowHeight, lineskip;
+		char **strLines = NULL, *text_cpy;
+
+		/* Convert input string to default encoding UTF-8 */
+		if (encoding == kASCIIEncoding) {
+			utf8_alloc = SDL_stack_alloc(Uint8, LATIN1_to_UTF8_len_backport(sizedtext));
+			if (utf8_alloc == NULL) {
+				SDL_OutOfMemory();
+				return result;
+			}
+			LATIN1_to_UTF8_backport(sizedtext, utf8_alloc);
+			text_cpy = (char *)utf8_alloc;
+		 } else {
+		 	/* Use a copy anyway */
+		 	size_t str_len = SDL_strlen(sizedtext);
+		 	utf8_alloc = SDL_stack_alloc(Uint8, str_len + 1);
+		 	if (utf8_alloc == NULL) {
+		 		SDL_OutOfMemory();
+				return result;
+		 	}
+		 	SDL_memcpy(utf8_alloc, sizedtext, str_len + 1);
+		 	text_cpy = (char *)utf8_alloc;
+		}
+
+		/* Get the dimensions of the text surface */
+		if ((TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text_cpy, &width, &height) < 0) || !width) {
+			SDL_SetError("Text has zero width");
+			if (utf8_alloc)
+				free(utf8_alloc);
+			return result;
+		}
+
+		numLines = 1;
+
+		if (*text_cpy) {
+			int maxNumLines = 0;
+			size_t textlen = SDL_strlen(text_cpy);
+			numLines = 0;
+			size_t numChars = 0;
+			do {
+				size_t save_textlen = (size_t)(-1);
+				char *save_text  = NULL;
+
+				if (numLines >= maxNumLines) {
+					char **saved = strLines;
+					
+					maxNumLines += 32;
+					strLines = (char **)SDL_realloc(strLines, maxNumLines * sizeof (*strLines));
+					if (strLines == NULL) {
+						strLines = saved;
+						SDL_OutOfMemory();
+						if (utf8_alloc)
+							free(utf8_alloc);
+						if (strLines)
+							free(strLines);
+						return result;
+					}
+				}
+
+				strLines[numLines++] = text_cpy;
+
+				while (textlen > 0) {
+					int inc = 0;
+					int is_delim;
+					Uint32 c = UTF8_getch_backport(text_cpy, textlen, &inc);
+					text_cpy += inc;
+					textlen -= inc;
+
+					if (c == UNICODE_BOM_NATIVE || c == UNICODE_BOM_SWAPPED) {
+						continue;
+					}
+
+					numChars += 1;
+					/* With wrapLength == 0, normal text rendering but newline aware */
+					is_delim = CharacterIsNewLine_backport(c);
+
+					/* Record last delimiter position */
+					if (is_delim) {
+						save_textlen = textlen;
+						save_text = text_cpy;
+						/* Break, if new line */
+						if (c == '\n' || c == '\r') {
+							*(text_cpy - 1) = '\0';
+							break;
+						}
+					}
+
+					if(numChars >= len)
+						textlen = 0;
+				}
+
+				/* Cut at last delimiter/new lines, otherwise in the middle of the word */
+				if (save_text && textlen) {
+					text_cpy = save_text;
+					textlen = save_textlen;
+				}
+			} while (textlen > 0);
+		}
+
+		lineskip = TTF_FontLineSkip(_pd_api_gfx_CurrentGfxContext->font->font);
+		rowHeight = SDL_max(height, lineskip);
+		char* text;
+		//if (wrapLength == 0) {
+		if(true) {
+			/* Find the max of all line lengths */
+			if (numLines > 1) {
+				width = 0;
+				for (i = 0; i < numLines; i++) {
+					char save_c = 0;
+					int w, h;
+
+					/* Add end-of-line */
+					if (strLines) {
+						text = strLines[i];
+						if (i + 1 < numLines) {
+							save_c = strLines[i + 1][0];
+							strLines[i + 1][0] = '\0';
+						}
+					}
+
+					if (TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text, &w, &h) == 0) {
+						width = SDL_max(w, width);
+					}
+
+					/* Remove end-of-line */
+					if (strLines) {
+						if (i + 1 < numLines) {
+							strLines[i + 1][0] = save_c;
+						}
+					}
+				}
+				/* In case there are all newlines */
+				width = SDL_max(width, 1);
+			}
+		} 
+		height = rowHeight + lineskip * (numLines - 1);
+
+		/* Render each line */
+		for (i = 0; i < numLines; i++) {
+			int xstart, ystart;
+			char save_c = 0;
+
+			/* Add end-of-line */
+			if (strLines) {
+				text = strLines[i];
+				if (i + 1 < numLines) {
+					save_c = strLines[i + 1][0];
+					strLines[i + 1][0] = '\0';
+				}
+			}
+
+
+			ystart = y;
+			xstart = x;
+			/* Move to i-th line */
+			ystart += i * lineskip;
+		
+			SDL_Surface* TextSurface = TTF_RenderUTF8_Solid(_pd_api_gfx_CurrentGfxContext->font->font, text, pd_api_gfx_color_black);
+			if (TextSurface) 
+        	{
+            	SDL_Surface* Texture = SDL_ConvertSurfaceFormat(TextSurface, _pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format->format, 0);
+            	if(Texture)
+            	{                
+                	LCDBitmap * bitmap = pd_api_gfx_newBitmap(TextSurface->w,TextSurface->h, kColorClear);
+                	if(bitmap)
+                	{
+						SDL_BlitSurface(TextSurface, NULL, bitmap->Tex, NULL);
+						pd_api_gfx_drawBitmap(bitmap, xstart, ystart, kBitmapUnflipped);
+                    	pd_api_gfx_freeBitmap(bitmap);
+					}
+				}
                 SDL_FreeSurface(Texture);
-                result = 0;
+				result = 0;
             }
             SDL_FreeSurface(TextSurface);
-        }
-    } 
-    return result;
+
+
+			/* Remove end-of-line */
+			if (strLines) {
+				if (i + 1 < numLines) {
+					strLines[i + 1][0] = save_c;
+				}
+			}
+		}
+
+		if (strLines) {
+			SDL_free(strLines);
+		}
+		if (utf8_alloc) {
+			SDL_stack_free(utf8_alloc);
+		}
+	}
+	return result;
 }
 
 playdate_video* pd_api_gfx_Create_playdate_video()
