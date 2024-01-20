@@ -2499,7 +2499,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 
 			strLines[numLines++] = text_cpy;
 
-			while (textlen > 0) {
+			while ((textlen > 0) && (numChars < len)) {
 				int inc = 0;
 				int is_delim;
 				Uint32 c = UTF8_getch_backport(text_cpy, textlen, &inc);
@@ -2525,8 +2525,11 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 					}
 				}
 		
-				if(numChars >= len)
-					textlen = 0;
+				//this means we had a character limit and need to apply a null char then
+				if((numChars >= len))
+				{
+					*(text_cpy) = '\0';
+				}
 				
 			}
 
@@ -2535,7 +2538,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 				text_cpy = save_text;
 				textlen = save_textlen;
 			}
-		} while (textlen > 0);
+		} while ((textlen > 0) && (numChars < len));
 	}
 
 	lineskip = TTF_FontLineSkip(f->font);
@@ -2658,9 +2661,9 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 				}
 
 				strLines[numLines++] = text_cpy;
-
-				while (textlen > 0) {
-					int inc = 0;
+				int inc = 0;
+				while ((textlen > 0) && (numChars < len)) {
+					inc = 0;
 					int is_delim;
 					Uint32 c = UTF8_getch_backport(text_cpy, textlen, &inc);
 					text_cpy += inc;
@@ -2684,9 +2687,11 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 							break;
 						}
 					}
-
-					if(numChars >= len)
-						textlen = 0;
+				}
+				//this means we had a character limit and need to apply a null char then
+				if((numChars >= len))
+				{
+					*(text_cpy) = '\0';
 				}
 
 				/* Cut at last delimiter/new lines, otherwise in the middle of the word */
@@ -2694,12 +2699,14 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 					text_cpy = save_text;
 					textlen = save_textlen;
 				}
-			} while (textlen > 0);
+
+				
+			} while ((textlen > 0) && (numChars < len));
 		}
 
 		lineskip = TTF_FontLineSkip(_pd_api_gfx_CurrentGfxContext->font->font);
 		rowHeight = SDL_max(height, lineskip);
-		char* text;
+		char* newtext;
 		//if (wrapLength == 0) {
 		if(true) {
 			/* Find the max of all line lengths */
@@ -2711,14 +2718,14 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 
 					/* Add end-of-line */
 					if (strLines) {
-						text = strLines[i];
+						newtext = strLines[i];
 						if (i + 1 < numLines) {
 							save_c = strLines[i + 1][0];
 							strLines[i + 1][0] = '\0';
 						}
 					}
 
-					if (TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text, &w, &h) == 0) {
+					if (TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, newtext, &w, &h) == 0) {
 						width = SDL_max(w, width);
 					}
 
@@ -2742,7 +2749,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 
 			/* Add end-of-line */
 			if (strLines) {
-				text = strLines[i];
+				newtext = strLines[i];
 				if (i + 1 < numLines) {
 					save_c = strLines[i + 1][0];
 					strLines[i + 1][0] = '\0';
@@ -2755,7 +2762,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 			/* Move to i-th line */
 			ystart += i * lineskip;
 		
-			SDL_Surface* TextSurface = TTF_RenderUTF8_Solid(_pd_api_gfx_CurrentGfxContext->font->font, text, pd_api_gfx_color_black);
+			SDL_Surface* TextSurface = TTF_RenderUTF8_Solid(_pd_api_gfx_CurrentGfxContext->font->font, newtext, pd_api_gfx_color_black);
 			if (TextSurface) 
         	{
             	SDL_Surface* Texture = SDL_ConvertSurfaceFormat(TextSurface, _pd_api_gfx_CurrentGfxContext->DrawTarget->Tex->format->format, 0);
