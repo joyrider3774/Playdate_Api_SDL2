@@ -26,3 +26,6 @@
 #ifndef FULLSCREENATSTARTUP
 	#define FULLSCREENATSTARTUP false
 #endif
+#ifndef SCALINGMODE
+	#define SCALINGMODE 0
+#endif

@@ -318,15 +318,46 @@ void _pd_api_display()
 	SDL_SetRenderTarget(Renderer, NULL);
 	SDL_Surface* Tex = _pd_api_gfx_GetSDLTextureFromBitmap(screen);
 	SDL_UpdateTexture(_pd_api_TexScreen, NULL, Tex->pixels, Tex->pitch);
-	SDL_Rect Dest;                    
-	Dest.x = _pd_api_display_OffsetDisplayX;
-	Dest.y = _pd_api_display_OffsetDisplayY;
-	Dest.w = LCD_COLUMNS;
-	Dest.h = LCD_ROWS;
-	//res hack
-	Dest.x -= (LCD_COLUMNS - SCREENRESX) / 2;
-	Dest.y -= (LCD_ROWS - SCREENRESY) / 2;
-   	SDL_RenderSetLogicalSize(Renderer, SCREENRESX, SCREENRESY);
+	SDL_Rect Dest;	
+	//crop / cut out
+	if (SCALINGMODE == 0)
+	{
+		Dest.x = _pd_api_display_OffsetDisplayX;
+		Dest.y = _pd_api_display_OffsetDisplayY;
+		Dest.w = LCD_COLUMNS;
+		Dest.h = LCD_ROWS;
+		//res hack
+		Dest.x -= (LCD_COLUMNS - SCREENRESX) / 2;
+		Dest.y -= (LCD_ROWS - SCREENRESY) / 2;
+		SDL_RenderSetLogicalSize(Renderer, SCREENRESX, SCREENRESY);
+	}
+	else
+	{
+		//Stretch
+		if(SCALINGMODE == 1)
+		{
+			int w, h;
+			SDL_GetWindowSize(SdlWindow, &w, &h);
+			Dest.x = _pd_api_display_OffsetDisplayX;
+			Dest.y = _pd_api_display_OffsetDisplayY;
+			Dest.w = w;
+			Dest.h = h;
+			//res hack
+			Dest.x = _pd_api_display_OffsetDisplayX*Dest.w/LCD_ROWS;
+			Dest.y = _pd_api_display_OffsetDisplayY*Dest.h/LCD_COLUMNS;
+			SDL_RenderSetLogicalSize(Renderer, Dest.w, Dest.h);
+		}
+		//default letterboxed
+		else
+		{
+			Dest.x = _pd_api_display_OffsetDisplayX;
+			Dest.y = _pd_api_display_OffsetDisplayY;
+			Dest.w = LCD_COLUMNS;
+			Dest.h = LCD_ROWS;
+			//res hack
+			SDL_RenderSetLogicalSize(Renderer, LCD_COLUMNS, LCD_ROWS);
+		}
+	}
 	//end res hack
 	SDL_RenderCopy(Renderer, _pd_api_TexScreen, NULL, &Dest);
 	SDL_RenderPresent(Renderer);

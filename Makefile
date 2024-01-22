@@ -4,14 +4,22 @@ rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 DEBUG = 0
 CPP_BUILD ?= 0
 EMSCRIPTEN_BUILD ?= 0
+#if you provide other source folders this sets the number which one to use by default (for example to set colored assets as default)
 DEFAULTSOURCEDIR ?= 0
-#default is 400x240 but you can lower the values to cut out / crop the screen
-#can be handy if a game is not using the full 400x240 resolution and draws everything in the center
+#Resolution default is 400x240 if other values than 400x240 are given the scaling mode option below defines whats happens
 SCREENRESX ?= 400 
 SCREENRESY ?= 240
 #to set the window's default size it's the resolution times this value 
 WINDOWSCALE ?= 1
-FULLSCREENATSTARTUP ?= false
+#SET SCALING MODE
+# 0: Lower Resolutions than 400x240 cut out / crop the screen and center it, Higher resolution will center the 400x240 screen from playdate 
+#   can be handy if a game is not using the full 400x240 resolution and draws everything in the center
+
+# 1: Scale to fit window size (distortions will happen !)
+
+# 2: Render using default SDL2 way it will letterbox if resolutions are not same aspect ration of 400x240
+SCALINGMODE ?= 1
+FULLSCREENATSTARTUP ?= 0
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame
@@ -50,6 +58,8 @@ ifneq ($(PLATFORM),)
 include build_platforms/$(PLATFORM).mk
 endif
 
+PLATFORM=msys_mingw
+
 CFLAGS += `$(SDL2CONFIG) --cflags` $(CFLAGS_EXTRA)
 LDFLAGS += `$(SDL2CONFIG) --libs` $(LDFLAGS_EXTRA)
 
@@ -70,7 +80,7 @@ ifeq ($(LDUSEX11), 1)
 LDFLAGS += -lX11
 endif
 
-CFLAGS += -DFULLSCREENATSTARTUP=$(FULLSCREENATSTARTUP) -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
+CFLAGS += -DSCALINGMODE=$(SCALINGMODE) -DFULLSCREENATSTARTUP=$(FULLSCREENATSTARTUP) -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
 
 .PHONY: all clean
 
