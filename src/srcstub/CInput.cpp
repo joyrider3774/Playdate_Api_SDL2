@@ -131,23 +131,20 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 
 	switch (Button)
 	{
-		#if defined(TRIMUI_SMART_PRO) || defined(RG35XX_PLUS_BATOCERA) 
+		#if defined(RG35XX_PLUS_BATOCERA) 
+		case SDL_CONTROLLER_BUTTON_BACK:
+			cinput->Buttons.ButQuit = Value;
+			break;
+		#endif
+		#if defined(TRIMUI_SMART_PRO)
 		case SDL_CONTROLLER_BUTTON_GUIDE:
 			cinput->Buttons.ButQuit = Value;
 			break;
 		#endif
-		#ifdef RG35XX_PLUS_BATOCERA
-		case SDL_CONTROLLER_BUTTON_X:
-		#else
 		case SDL_CONTROLLER_BUTTON_Y:
-		#endif
 			cinput->Buttons.ButY = Value;
 			break;
-		#ifdef RG35XX_PLUS_BATOCERA
-		case SDL_CONTROLLER_BUTTON_Y:
-		#else
 		case SDL_CONTROLLER_BUTTON_X:
-		#endif
 			cinput->Buttons.ButX = Value;
 			break;
 		case SDL_CONTROLLER_BUTTON_LEFTSHOULDER:
@@ -168,14 +165,14 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 		case SDL_CONTROLLER_BUTTON_DPAD_RIGHT:
 			cinput->Buttons.ButDpadRight = Value;
 			break;
-		#if defined(TRIMUI_SMART_PRO) || defined(RG35XX_PLUS_BATOCERA) 
+		#if defined(TRIMUI_SMART_PRO) 
 			case SDL_CONTROLLER_BUTTON_B:
 		#else
 			case SDL_CONTROLLER_BUTTON_A:
 		#endif
 			cinput->Buttons.ButA = Value;
 			break;
-		#if defined(TRIMUI_SMART_PRO) || defined(RG35XX_PLUS_BATOCERA)
+		#if defined(TRIMUI_SMART_PRO)
 			case SDL_CONTROLLER_BUTTON_A:
 		#else
 			case SDL_CONTROLLER_BUTTON_B:
@@ -185,7 +182,11 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 		case SDL_CONTROLLER_BUTTON_START:
 			cinput->Buttons.ButStart = Value;
 			break;
+		#if defined(RG35XX_PLUS_BATOCERA) 
+		case SDL_CONTROLLER_BUTTON_GUIDE:
+		#else
 		case SDL_CONTROLLER_BUTTON_BACK:
+		#endif
 			cinput->Buttons.ButBack = Value;
 			break;
 		default:
