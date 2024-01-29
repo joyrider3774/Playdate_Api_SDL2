@@ -343,8 +343,8 @@ void _pd_api_display()
 			Dest.w = w;
 			Dest.h = h;
 			//res hack
-			Dest.x = _pd_api_display_OffsetDisplayX*Dest.w/LCD_ROWS;
-			Dest.y = _pd_api_display_OffsetDisplayY*Dest.h/LCD_COLUMNS;
+			Dest.x = _pd_api_display_OffsetDisplayX*Dest.w/LCD_COLUMNS;
+			Dest.y = _pd_api_display_OffsetDisplayY*Dest.h/LCD_ROWS;
 			SDL_RenderSetLogicalSize(Renderer, Dest.w, Dest.h);
 		}
 		//default letterboxed
