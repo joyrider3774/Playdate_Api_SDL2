@@ -18,7 +18,7 @@ WINDOWSCALE ?= 1
 # 1: Scale to fit window size (distortions will happen !)
 
 # 2: Render using default SDL2 way it will letterbox if resolutions are not same aspect ration of 400x240
-SCALINGMODE ?= 0
+SCALINGMODE ?= 2
 FULLSCREENATSTARTUP ?= 0
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
