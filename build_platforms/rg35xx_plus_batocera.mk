@@ -1,6 +1,6 @@
 
-TOOLCHAIN = /opt/rg35xx/
-TOOLCHAIN_USR = /opt/rg35xx/arm-buildroot-linux-gnueabihf/sysroot/usr
+TOOLCHAIN = /opt/arm-buildroot-linux-gnueabihf_sdk-buildroot/
+TOOLCHAIN_USR = /opt/arm-buildroot-linux-gnueabihf_sdk-buildroot/arm-buildroot-linux-gnueabihf/sysroot/usr
 
 CC = $(TOOLCHAIN)/bin/arm-linux-gcc
 CPP = $(TOOLCHAIN)/bin/arm-linux-g++
