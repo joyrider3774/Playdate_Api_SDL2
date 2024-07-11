@@ -426,6 +426,18 @@ void runMainLoop()
 	}
 }
 
+bool fileExists(const char *fname)
+{
+    FILE *file;
+	file = fopen(fname, "r");
+	if (file)
+    {
+        fclose(file);
+        return true;
+    }
+    return false;
+}
+
 int main(int argv, char** args)
 {
 	float windowScale = WINDOWSCALE;
@@ -434,8 +446,9 @@ int main(int argv, char** args)
     bool useVsync = false;
     bool useFullScreenAtStartup = FULLSCREENATSTARTUP;
     bool useOpenGLHint = false;
-    int c;
-    while ((c = getopt(argv, args, "?lafvodtq")) != -1) 
+	bool checkMuxFile = false;
+	int c;
+    while ((c = getopt(argv, args, "?lafvodtqm")) != -1) 
     {
         switch (c) 
         {
@@ -479,6 +492,9 @@ Possible options are:\n\
 			case 'q':
 				windowScale = 4.0f;
 				break;
+			case 'm':
+				checkMuxFile = true;
+				break;
 			default:
 				break;
         }
@@ -486,6 +502,8 @@ Possible options are:\n\
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) == 0) 
     {
+		const char * videoDriver = SDL_GetCurrentVideoDriver();
+		SDL_Log("Using Video Driver:%s\n", videoDriver);
         Uint32 WindowFlags = SDL_WINDOW_RESIZABLE;
         if (useFullScreenAtStartup) {
             WindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;            
@@ -587,6 +605,9 @@ Possible options are:\n\
      			    	while(!stubDoQuit)
 						{
 							runMainLoop();
+							if(checkMuxFile)
+								if(fileExists("/tmp/mux_done"))
+									stubDoQuit = true;	
 						}
 						#endif
                         eventHandler(Api, kEventTerminate, 0);
