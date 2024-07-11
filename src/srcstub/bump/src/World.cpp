@@ -2,6 +2,7 @@
 #include "../CollisionResponses.hpp"
 #include "../Collision.hpp"
 #include <iostream>
+#include <algorithm>
 
 using namespace plugin::physics::bump;
 
