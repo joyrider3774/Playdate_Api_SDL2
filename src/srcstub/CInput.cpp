@@ -194,6 +194,72 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 	}
 }
 
+#ifdef FUNKEY
+
+void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value)
+{
+	switch (Key)
+	{
+		case SDLK_q:
+			cinput->Buttons.ButQuit = Value;
+			break;
+		case SDLK_h:
+			cinput->Buttons.NextSource = Value;
+			break;
+		case SDLK_f:
+			cinput->Buttons.ButFullscreen = Value;
+			break;
+		case SDLK_n:
+			cinput->Buttons.ButRB = Value;
+			break;
+		case SDLK_m:
+			cinput->Buttons.ButLB = Value;
+			break;
+		case SDLK_u:
+		case SDLK_UP:
+			cinput->Buttons.ButUp = Value;
+			break;
+		case SDLK_d:
+			cinput->Buttons.ButDown = Value;
+			break;
+		case SDLK_l:
+			cinput->Buttons.ButLeft = Value;
+			break;
+		case SDLK_r:
+			cinput->Buttons.ButRight = Value;
+			break;
+		case SDLK_s:
+			cinput->Buttons.ButStart = Value;
+			break;
+		case SDLK_ESCAPE:
+			cinput->Buttons.ButBack = Value;
+			break;
+		case SDLK_SPACE:
+		case SDLK_a:
+			cinput->Buttons.ButA = Value;
+			break;
+		case SDLK_b:
+			cinput->Buttons.ButB = Value;
+			break;
+		case SDLK_x:
+			cinput->Buttons.ButX = Value;
+			break;
+		case SDLK_y:
+			cinput->Buttons.ButY = Value;
+			break;
+		case SDLK_v:
+			cinput->Buttons.ButLT = Value;
+			break;
+		case SDLK_o:
+			cinput->Buttons.ButRT = Value;
+			break;
+		default:
+			break;
+	}
+}
+
+#else
+
 void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value)
 {
 	switch (Key)
@@ -262,6 +328,8 @@ void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value)
 			break;
 	}
 }
+
+#endif
 
 void CInput_HandleJoystickAxisEvent(CInput *cinput, int Axis, int Value)
 {
