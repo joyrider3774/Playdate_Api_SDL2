@@ -100,7 +100,7 @@ $(OBJ_DIR)/%.o: %.c
 
 $(ALL_SOUND_MUSIC_OGG_ASSETS):
 	mkdir -p "$(dir $@)"
-	ffmpeg -y -i "$(subst .ogg,.wav,$(subst $(OUTPUT_ASSETS_DIR)/,$(SOURCE_DIR)/,$@))" "$@"
+	ffmpeg -y -i "$(subst .ogg,.wav,$(subst $(OUTPUT_ASSETS_DIR)/,$(SOURCE_DIR)/,$@))" $(FFMPEG_OPTS) "$@"
 
 $(OUTPUT_ASSETS_DIR):
 	cp -r $(SOURCE_DIR) $@
