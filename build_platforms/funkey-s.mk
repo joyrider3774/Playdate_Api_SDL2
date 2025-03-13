@@ -9,4 +9,4 @@ LDUSEX11 = 0
 CFLAGS_EXTRA = -DFUNKEY
 LDFLAGS = -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx -lpthread
 OUTPUT_ASSETS_DIR = assets
-FFMPEG_OPTS = -c:a libvorbis -ab 64k
+FFMPEG_OPTS = -c:a libvorbis -ab 64k -ar 44100
