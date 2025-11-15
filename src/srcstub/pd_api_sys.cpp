@@ -377,6 +377,62 @@ void pd_api_sys_clearICache(void)
 
 }
 
+// 2.4
+void pd_api_sys_setButtonCallback(PDButtonCallbackFunction* cb, void* buttonud, int queuesize)
+{
+
+}
+
+void pd_api_sys_setSerialMessageCallback(void (*callback)(const char* data))
+{
+
+}
+
+int pd_api_sys_vaFormatString(char **outstr, const char *fmt, va_list args)
+{
+	return 0;
+}
+
+int pd_api_sys_parseString(const char *str, const char *format, ...)
+{
+	return 0;
+}
+
+void pd_api_sys_delay(uint32_t milliseconds)
+{
+
+}
+
+// 2.7
+void pd_api_sys_getServerTime(void (*callback)(const char* time, const char* err))
+{
+
+}
+
+void pd_api_sys_restartGame(const char* launchargs)
+{
+
+}
+
+const char* pd_api_sys_getLaunchArgs(const char** outpath)
+{
+	return NULL;
+}
+
+bool pd_api_sys_sendMirrorData(uint8_t command, void* data, int len)
+{
+	return false;
+}
+
+// 3.0
+const struct PDInfo* pd_api_sys_getSystemInfo(void)
+{
+	PDInfo* Tmp = (PDInfo*)malloc(sizeof(PDInfo));
+	Tmp->language = kPDLanguageEnglish;
+	Tmp->osversion = 0;
+	return Tmp;
+}
+
 playdate_sys* pd_api_sys_Create_playdate_sys()
 {
 	playdate_sys* tmp = (playdate_sys *) malloc(sizeof(*tmp));
@@ -427,6 +483,24 @@ playdate_sys* pd_api_sys_Create_playdate_sys()
 
 	// 2.0
 	tmp->clearICache = pd_api_sys_clearICache;
+
+	// 2.4
+	tmp->setButtonCallback = pd_api_sys_setButtonCallback;
+	tmp->setSerialMessageCallback = pd_api_sys_setSerialMessageCallback;
+	tmp->vaFormatString = pd_api_sys_vaFormatString;
+	tmp->parseString = pd_api_sys_parseString;
+	
+	// ???
+	tmp->delay = pd_api_sys_delay;
+
+	// 2.7
+	tmp->getServerTime = pd_api_sys_getServerTime;
+	tmp->restartGame = pd_api_sys_restartGame;
+	tmp->getLaunchArgs = pd_api_sys_getLaunchArgs;
+	tmp->sendMirrorData = pd_api_sys_sendMirrorData;
+	
+	// 3.0
+	tmp->getSystemInfo = pd_api_sys_getSystemInfo;
 
 	return tmp;
 }

@@ -381,9 +381,11 @@ void pd_api_gfx_setStencil(LCDBitmap* stencil) // deprecated in favor of setSten
     _pd_api_gfx_CurrentGfxContext->stencil = stencil;
 }
 
-void pd_api_gfx_setDrawMode(LCDBitmapDrawMode mode)
+LCDBitmapDrawMode pd_api_gfx_setDrawMode(LCDBitmapDrawMode mode)
 {
+	LCDBitmapDrawMode tmp = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
     _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = mode;
+	return tmp;
 }
 
 void pd_api_gfx_setDrawOffset(int dx, int dy)
@@ -2814,6 +2816,197 @@ playdate_video* pd_api_gfx_Create_playdate_video()
     return Tmp;
 }
 
+// 2.5
+void pd_api_gfx_setPixel(int x, int y, LCDColor c)
+{
+
+}
+
+LCDSolidColor pd_api_gfx_getBitmapPixel(LCDBitmap* bitmap, int x, int y)
+{
+	return kColorBlack;
+}
+
+void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width)
+{
+
+}
+
+// 2.6
+void pd_api_gfx_drawTextInRect(const void* text, size_t len, PDStringEncoding encoding, int x, int y, int width, int height, PDTextWrappingMode wrap, PDTextAlignment align)
+{
+
+}
+
+// 2.7
+int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t len, int maxwidth, PDStringEncoding encoding, PDTextWrappingMode wrap, int tracking, int extraLeading)
+{
+	return 0;
+}
+
+void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
+{
+
+}
+
+void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, LCDColor color)
+{
+
+}
+
+
+// 3.0
+LCDStreamPlayer* pd_api_gfx_playdate_videostream_newPlayer(void)
+{
+	return NULL;
+}
+
+void pd_api_gfx_playdate_videostream_freePlayer(LCDStreamPlayer* p)
+{
+
+}
+
+void pd_api_gfx_playdate_videostream_setBufferSize(LCDStreamPlayer* p, int video, int audio)
+{
+
+}
+
+void pd_api_gfx_playdate_videostream_setFile(LCDStreamPlayer* p, SDFile* file)
+{
+
+}
+
+void pd_api_gfx_playdate_videostream_setHTTPConnection(LCDStreamPlayer* p, HTTPConnection* conn)
+{
+
+}
+
+FilePlayer* pd_api_gfx_playdate_videostream_getFilePlayer(LCDStreamPlayer* p)
+{
+	return NULL;
+}
+
+LCDVideoPlayer* pd_api_gfx_playdate_videostream_getVideoPlayer(LCDStreamPlayer* p)
+{
+	return NULL;
+}
+
+//	int (*setContext)(LCDStreamPlayer* p, LCDBitmap* context);
+//	LCDBitmap* (*getContext)(LCDStreamPlayer* p);
+
+// returns true if it drew a frame, else false
+bool pd_api_gfx_playdate_videostream_update(LCDStreamPlayer* p)
+{
+	return false;
+}
+
+int pd_api_gfx_playdate_videostream_getBufferedFrameCount(LCDStreamPlayer* p)
+{
+	return 0;
+}
+
+uint32_t pd_api_gfx_playdate_videostream_getBytesRead(LCDStreamPlayer* p)
+{
+	return 0;
+}
+
+// 3.0
+void pd_api_gfx_playdate_videostream_setTCPConnection(LCDStreamPlayer* p, TCPConnection* conn)
+{
+
+}
+
+
+playdate_videostream* pd_api_gfx_Create_playdate_videostream()
+{
+	playdate_videostream *Tmp = (playdate_videostream*) malloc(sizeof(*Tmp));
+    Tmp->freePlayer = pd_api_gfx_playdate_videostream_freePlayer;
+	Tmp->getBufferedFrameCount = pd_api_gfx_playdate_videostream_getBufferedFrameCount;
+	Tmp->getBytesRead = pd_api_gfx_playdate_videostream_getBytesRead;
+	Tmp->getFilePlayer = pd_api_gfx_playdate_videostream_getFilePlayer;
+	Tmp->getVideoPlayer = pd_api_gfx_playdate_videostream_getVideoPlayer;
+	Tmp->newPlayer = pd_api_gfx_playdate_videostream_newPlayer;
+	Tmp->setBufferSize = pd_api_gfx_playdate_videostream_setBufferSize;
+	Tmp->setFile = pd_api_gfx_playdate_videostream_setFile;
+	Tmp->setHTTPConnection = pd_api_gfx_playdate_videostream_setHTTPConnection;
+	Tmp->setTCPConnection = pd_api_gfx_playdate_videostream_setTCPConnection ;
+	Tmp->update = pd_api_gfx_playdate_videostream_update;
+    return Tmp;
+}
+
+LCDTileMap* pd_api_gfx_playdate_tilemap_newTilemap(void)
+{
+	return NULL;
+}
+
+void pd_api_gfx_playdate_tilemap_freeTilemap(LCDTileMap* m)
+{
+
+}
+
+void pd_api_gfx_playdate_tilemap_setImageTable(LCDTileMap* m, LCDBitmapTable* table)
+{
+
+}
+
+LCDBitmapTable* pd_api_gfx_playdate_tilemap_getImageTable(LCDTileMap* m)
+{
+	return NULL;
+}
+
+void pd_api_gfx_playdate_tilemap_setSize(LCDTileMap* m, int tilesWide, int tilesHigh)
+{
+
+}
+
+void pd_api_gfx_playdate_tilemap_getSize(LCDTileMap* m, int* tilesWide, int* tilesHigh)
+{
+
+}
+
+void pd_api_gfx_playdate_tilemap_getPixelSize(LCDTileMap* m, uint32_t* outWidth, uint32_t* outHeight)
+{
+
+}
+
+void pd_api_gfx_playdate_tilemap_setTiles(LCDTileMap* m, uint16_t* indexes, int count, int rowwidth)
+{
+
+}
+
+void pd_api_gfx_playdate_tilemap_setTileAtPosition(LCDTileMap* m, int x, int y, uint16_t idx)
+{
+
+}
+
+int pd_api_gfx_playdate_tilemap_getTileAtPosition(LCDTileMap* m, int x, int y)
+{
+	return 0;
+}
+
+void pd_api_gfx_playdate_tilemap_drawAtPoint(LCDTileMap* m, float x, float y)
+{
+
+}
+
+
+playdate_tilemap* pd_api_gfx_Create_playdate_tilemap()
+{
+	playdate_tilemap *Tmp = (playdate_tilemap*) malloc(sizeof(*Tmp));
+    Tmp->drawAtPoint = pd_api_gfx_playdate_tilemap_drawAtPoint;
+    Tmp->freeTilemap = pd_api_gfx_playdate_tilemap_freeTilemap;
+    Tmp->getImageTable = pd_api_gfx_playdate_tilemap_getImageTable;
+    Tmp->getPixelSize = pd_api_gfx_playdate_tilemap_getPixelSize;
+    Tmp->getSize = pd_api_gfx_playdate_tilemap_getSize;
+    Tmp->getTileAtPosition = pd_api_gfx_playdate_tilemap_getTileAtPosition;
+    Tmp->newTilemap = pd_api_gfx_playdate_tilemap_newTilemap;
+    Tmp->setImageTable = pd_api_gfx_playdate_tilemap_setImageTable;
+	Tmp->setSize = pd_api_gfx_playdate_tilemap_setSize;
+	Tmp->setTileAtPosition = pd_api_gfx_playdate_tilemap_setTileAtPosition;
+	Tmp->setTiles = pd_api_gfx_playdate_tilemap_setTiles;
+    return Tmp;
+}
+
 playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 {
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
@@ -2926,8 +3119,26 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
 
 	// 2.1
 	Tmp->getTextTracking = pd_api_gfx_getTextTracking;
+	
+	// 2.5
+	Tmp->setPixel = pd_api_gfx_setPixel;
+	Tmp->getBitmapPixel = pd_api_gfx_getBitmapPixel;
+	Tmp->getBitmapTableInfo = pd_api_gfx_getBitmapTableInfo;
 
-    return Tmp;
+	// 2.6
+	Tmp->drawTextInRect = pd_api_gfx_drawTextInRect;
+
+	// 2.7
+	Tmp->getTextHeightForMaxWidth = pd_api_gfx_getTextHeightForMaxWidth;
+	Tmp->drawRoundRect = pd_api_gfx_drawRoundRect;
+	Tmp->fillRoundRect = pd_api_gfx_fillRoundRect;
+
+	// 3.0
+	Tmp->tilemap = pd_api_gfx_Create_playdate_tilemap();
+	Tmp->videostream = pd_api_gfx_Create_playdate_videostream();
+	
+
+	return Tmp;
 }
 
 

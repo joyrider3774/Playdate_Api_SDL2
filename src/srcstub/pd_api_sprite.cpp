@@ -1489,6 +1489,18 @@ void pd_api_sprite_getCenter(LCDSprite* s, float* x, float* y)
 		*y = s->CenterY;
 }
 
+// 2.7
+void pd_api_sprite_setTilemap(LCDSprite* s, LCDTileMap* tilemap)
+{
+
+}
+
+LCDTileMap* pd_api_sprite_getTilemap(LCDSprite* s)
+{
+	return NULL;
+}
+    
+
 playdate_sprite* pd_api_sprite_Create_playdate_sprite()
 {
     playdate_sprite *Tmp = (playdate_sprite*) malloc(sizeof(*Tmp));
@@ -1576,6 +1588,9 @@ playdate_sprite* pd_api_sprite_Create_playdate_sprite()
 	// 2.1
 	Tmp->setCenter = pd_api_sprite_setCenter;
 	Tmp->getCenter = pd_api_sprite_getCenter; 
-
+	
+	// 2.7
+	Tmp->setTilemap = pd_api_sprite_setTilemap;
+	Tmp->getTilemap = pd_api_sprite_getTilemap;
     return Tmp;
 }

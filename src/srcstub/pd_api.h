@@ -21,6 +21,7 @@
 #include "pd_api/pd_api_sound.h"
 #include "pd_api/pd_api_display.h"
 //#include "pd_api/pd_api_scoreboards.h"
+//#include "pd_api/pd_api_network.h"
 
 typedef struct PlaydateAPI PlaydateAPI;
 
@@ -35,6 +36,7 @@ struct PlaydateAPI
 	const struct playdate_lua* lua;
 	const struct playdate_json* json;
 	const struct playdate_scoreboards* scoreboards;
+//	const struct playdate_network* network;
 };
 
 #if TARGET_EXTENSION
@@ -49,7 +51,9 @@ typedef enum
 	kEventTerminate,
 	kEventKeyPressed, // arg is keycode
 	kEventKeyReleased,
-	kEventLowPower
+	kEventLowPower,
+	kEventMirrorStarted,
+	kEventMirrorEnded
 } PDSystemEvent;
 #endif
 

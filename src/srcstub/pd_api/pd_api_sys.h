@@ -9,9 +9,9 @@
 #ifndef pdext_sys_h
 #define pdext_sys_h
 
+#include <stdarg.h>
 #include <stdint.h>
 #include "pd_api_gfx.h"
-
 #if TARGET_EXTENSION
 
 typedef enum
@@ -30,6 +30,15 @@ typedef enum
 	kPDLanguageJapanese,
 	kPDLanguageUnknown,
 } PDLanguage;
+
+typedef void AccessRequestCallback(bool allowed, void* userdata);
+
+enum accessReply
+{
+	kAccessAsk,
+	kAccessDeny,
+	kAccessAllow
+};
 
 #endif
 
@@ -55,7 +64,14 @@ typedef enum
 } PDPeripherals;
 
 typedef int PDCallbackFunction(void* userdata); // return 0 when done
-typedef void PDMenuItemCallbackFunction(void* userdata); // return 0 when done
+typedef void PDMenuItemCallbackFunction(void* userdata);
+typedef int PDButtonCallbackFunction(PDButtons button, int down, uint32_t when, void* userdata);
+
+struct PDInfo
+{
+	uint32_t osversion;
+	PDLanguage language;
+};
 
 struct playdate_sys
 {
@@ -103,15 +119,33 @@ struct playdate_sys
 	// 1.4
 	float (*getBatteryPercentage)(void);
 	float (*getBatteryVoltage)(void);
-	
+
 	// 1.13
 	int32_t (*getTimezoneOffset)(void);
 	int (*shouldDisplay24HourTime)(void);
 	void (*convertEpochToDateTime)(uint32_t epoch, struct PDDateTime* datetime);
 	uint32_t (*convertDateTimeToEpoch)(struct PDDateTime* datetime);
-	
+
 	// 2.0
 	void (*clearICache)(void);
+	
+	// 2.4
+	void (*setButtonCallback)(PDButtonCallbackFunction* cb, void* buttonud, int queuesize);
+	void (*setSerialMessageCallback)(void (*callback)(const char* data));
+	int (*vaFormatString)(char **outstr, const char *fmt, va_list args);
+	int (*parseString)(const char *str, const char *format, ...);
+	
+	// ???
+	void (*delay)(uint32_t milliseconds);
+
+	// 2.7
+	void (*getServerTime)(void (*callback)(const char* time, const char* err));
+	void (*restartGame)(const char* launchargs);
+	const char* (*getLaunchArgs)(const char** outpath);
+	bool (*sendMirrorData)(uint8_t command, void* data, int len);
+	
+	// 3.0
+	const struct PDInfo* (*getSystemInfo)(void);
 };
 
 #endif /* pdext_sys_h */

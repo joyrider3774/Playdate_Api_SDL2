@@ -9,6 +9,9 @@
 #ifndef pdext_gfx_h
 #define pdext_gfx_h
 
+#include <stdbool.h>
+
+#include "pd_api_file.h"
 #if TARGET_EXTENSION
 
 
@@ -98,6 +101,20 @@ typedef enum
 	kPolygonFillEvenOdd
 } LCDPolygonFillRule;
 
+typedef enum
+{
+	kWrapClip,
+	kWrapCharacter,
+	kWrapWord,
+} PDTextWrappingMode;
+
+typedef enum
+{
+	kAlignTextLeft,
+	kAlignTextCenter,
+	kAlignTextRight
+} PDTextAlignment;
+
 #endif
 
 typedef struct LCDBitmap LCDBitmap;
@@ -106,7 +123,12 @@ typedef struct LCDFont LCDFont;
 typedef struct LCDFontData LCDFontData;
 typedef struct LCDFontPage LCDFontPage;
 typedef struct LCDFontGlyph LCDFontGlyph;
+typedef struct LCDTileMap LCDTileMap;
 typedef struct LCDVideoPlayer LCDVideoPlayer;
+typedef struct LCDStreamPlayer LCDStreamPlayer;
+typedef struct HTTPConnection HTTPConnection;
+typedef struct TCPConnection TCPConnection;
+typedef struct FilePlayer FilePlayer;
 
 struct playdate_video
 {
@@ -120,6 +142,53 @@ struct playdate_video
 	LCDBitmap* (*getContext)(LCDVideoPlayer *p);
 };
 
+struct playdate_videostream
+{
+	LCDStreamPlayer* (*newPlayer)(void);
+	void (*freePlayer)(LCDStreamPlayer* p);
+	
+	void (*setBufferSize)(LCDStreamPlayer* p, int video, int audio);
+
+	void (*setFile)(LCDStreamPlayer* p, SDFile* file);
+	void (*setHTTPConnection)(LCDStreamPlayer* p, HTTPConnection* conn);
+
+	FilePlayer* (*getFilePlayer)(LCDStreamPlayer* p);
+	LCDVideoPlayer* (*getVideoPlayer)(LCDStreamPlayer* p);
+
+//	int (*setContext)(LCDStreamPlayer* p, LCDBitmap* context);
+//	LCDBitmap* (*getContext)(LCDStreamPlayer* p);
+
+	// returns true if it drew a frame, else false
+	bool (*update)(LCDStreamPlayer* p);
+
+	int (*getBufferedFrameCount)(LCDStreamPlayer* p);
+
+	uint32_t (*getBytesRead)(LCDStreamPlayer* p);
+	
+	// 3.0
+	void (*setTCPConnection)(LCDStreamPlayer* p, TCPConnection* conn);
+};
+
+struct playdate_tilemap
+{
+	LCDTileMap* (*newTilemap)(void);
+	void (*freeTilemap)(LCDTileMap* m);
+	
+	void (*setImageTable)(LCDTileMap* m, LCDBitmapTable* table);
+	LCDBitmapTable* (*getImageTable)(LCDTileMap* m);
+
+	void (*setSize)(LCDTileMap* m, int tilesWide, int tilesHigh);
+	void (*getSize)(LCDTileMap* m, int* tilesWide, int* tilesHigh);
+	void (*getPixelSize)(LCDTileMap* m, uint32_t* outWidth, uint32_t* outHeight);
+
+	void (*setTiles)(LCDTileMap* m, uint16_t* indexes, int count, int rowwidth);
+	
+	void (*setTileAtPosition)(LCDTileMap* m, int x, int y, uint16_t idx);
+	int (*getTileAtPosition)(LCDTileMap* m, int x, int y);
+
+	void (*drawAtPoint)(LCDTileMap* m, float x, float y);
+};
+
 struct playdate_graphics
 {
 	const struct playdate_video* video;
@@ -128,7 +197,7 @@ struct playdate_graphics
 	void (*clear)(LCDColor color);
 	void (*setBackgroundColor)(LCDSolidColor color);
 	void (*setStencil)(LCDBitmap* stencil); // deprecated in favor of setStencilImage, which adds a "tile" flag
-	void (*setDrawMode)(LCDBitmapDrawMode mode);
+	LCDBitmapDrawMode (*setDrawMode)(LCDBitmapDrawMode mode);
 	void (*setDrawOffset)(int dx, int dy);
 	void (*setClipRect)(int x, int y, int width, int height);
 	void (*clearClipRect)(void);
@@ -210,6 +279,22 @@ struct playdate_graphics
 	// 2.1
 	int (*getTextTracking)(void);
 
+	// 2.5
+	void (*setPixel)(int x, int y, LCDColor c);
+	LCDSolidColor (*getBitmapPixel)(LCDBitmap* bitmap, int x, int y);
+	void (*getBitmapTableInfo)(LCDBitmapTable* table, int* count, int* width);
+	
+	// 2.6
+	void (*drawTextInRect)(const void* text, size_t len, PDStringEncoding encoding, int x, int y, int width, int height, PDTextWrappingMode wrap, PDTextAlignment align);
+	
+	// 2.7
+	int (*getTextHeightForMaxWidth)(LCDFont* font, const void* text, size_t len, int maxwidth, PDStringEncoding encoding, PDTextWrappingMode wrap, int tracking, int extraLeading);
+	void (*drawRoundRect)(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color);
+	void (*fillRoundRect)(int x, int y, int width, int height, int radius, LCDColor color);
+
+	// 3.0
+	const struct playdate_tilemap* tilemap;
+	const struct playdate_videostream* videostream;
 };
 
 #endif /* pdext_gfx_h */

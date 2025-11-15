@@ -262,7 +262,7 @@ int pd_api_sound_loadIntoSample(AudioSample* sample, const char* path)
     return (sample->sound != NULL);
 }
 
-AudioSample* pd_api_sound_newSampleFromData(uint8_t* data, SoundFormat format, uint32_t sampleRate, int byteCount)
+AudioSample* pd_api_sound_newSampleFromData(uint8_t* data, SoundFormat format, uint32_t sampleRate, int byteCount, int shouldFreeData)
 {
     return pd_api_sound_newSampleBuffer(0);
 }
@@ -333,6 +333,12 @@ float pd_api_sound_getLengthSample(AudioSample* sample)
     return ((frames * 1000000.f) / freq);
 }
 
+// 2.4
+int pd_api_sound_decompress(AudioSample* sample)
+{
+    return 0;
+}
+
 playdate_sound_sample* pd_api_sound_Create_playdate_sound_soundsample(void)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_soundsample\n");
@@ -344,6 +350,7 @@ playdate_sound_sample* pd_api_sound_Create_playdate_sound_soundsample(void)
     Tmp->getData = pd_api_sound_getDataSample;
     Tmp->freeSample = pd_api_sound_freeSample;
     Tmp->getLength = pd_api_sound_getLengthSample;
+    Tmp->decompress =  pd_api_sound_decompress;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_soundsample end\n");
     return Tmp;
 }
@@ -571,13 +578,13 @@ void pd_api_sound_setPlayRangeSamplePlayer(SamplePlayer* player, int start, int 
     printfDebug(DebugTraceFunctions, "pd_api_sound_setPlayRangeSamplePlayer end\n");
 }
 
-void pd_api_sound_setFinishCallbackSamplePlayer(SamplePlayer* player, sndCallbackProc callback)
+void pd_api_sound_setFinishCallbackSamplePlayer(SamplePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_setFinishCallbackSamplePlayer\n");
     printfDebug(DebugTraceFunctions, "pd_api_sound_setFinishCallbackSamplePlayer end\n");
 }
 
-void pd_api_sound_setLoopCallbackSamplePlayer(SamplePlayer* player, sndCallbackProc callback)
+void pd_api_sound_setLoopCallbackSamplePlayer(SamplePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_setLoopCallbackSamplePlayer\n");
     printfDebug(DebugTraceFunctions, "pd_api_sound_setLoopCallbackSamplePlayer end\n");
@@ -908,13 +915,13 @@ int pd_api_sound_FilePlayerdidUnderrun(FilePlayer* player)
     return 0;
 }
 
-void pd_api_sound_FilePlayersetFinishCallback(FilePlayer* player, sndCallbackProc callback)
+void pd_api_sound_FilePlayersetFinishCallback(FilePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetFinishCallback\n");
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetFinishCallback end\n");
 }
 
-void pd_api_sound_FilePlayersetLoopCallback(FilePlayer* player, sndCallbackProc callback)
+void pd_api_sound_FilePlayersetLoopCallback(FilePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetLoopCallback\n");
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetLoopCallback end\n");
@@ -962,7 +969,7 @@ void pd_api_sound_FilePlayersetStopOnUnderrun(FilePlayer* player, int flag)
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetStopOnUnderrun end\n");
 }
 
-void pd_api_sound_FilePlayerfadeVolume(FilePlayer* player, float left, float right, int32_t len, sndCallbackProc finishCallback)
+void pd_api_sound_FilePlayerfadeVolume(FilePlayer* player, float left, float right, int32_t len, sndCallbackProc finishCallback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerfadeVolume\n");
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerfadeVolume end\n");
@@ -1033,9 +1040,9 @@ int pd_api_sound_removeChannel(SoundChannel* channel)
 	return 0;
 }
 	
-void pd_api_sound_setMicCallback(RecordCallback* callback, void* context, int forceInternal)
+int pd_api_sound_setMicCallback(RecordCallback* callback, void* context, enum MicSource source)
 {
-
+    return 0;
 }
 
 void pd_api_sound_getHeadphoneState(int* headphone, int* headsetmic, void (*changeCallback)(int headphone, int mic))
@@ -1088,7 +1095,7 @@ int pd_api_sound_isPlayingSoundSource(SoundSource* c)
     return 0;
 }
 
-void pd_api_sound_setFinishCallbackSoundSource(SoundSource* c, sndCallbackProc callback)
+void pd_api_sound_setFinishCallbackSoundSource(SoundSource* c, sndCallbackProc callback, void* userdata)
 {
 
 }
@@ -1132,6 +1139,11 @@ void pd_api_sound_setValueOffsetPDSynthSignal(PDSynthSignal* signal, float offse
 {
 
 }
+// 2.6
+PDSynthSignal* pd_api_sound_newSignalForValuePDSynthSignal(PDSynthSignalValue* value)
+{
+    return NULL;
+}
 
 playdate_sound_signal* pd_api_sound_Create_playdate_sound_signal()
 {
@@ -1142,6 +1154,7 @@ playdate_sound_signal* pd_api_sound_Create_playdate_sound_signal()
 	Tmp->getValue = pd_api_sound_getValuePDSynthSignal;
 	Tmp->setValueScale = pd_api_sound_setValueScalePDSynthSignal;
 	Tmp->setValueOffset = pd_api_sound_setValueOffsetPDSynthSignal;
+    Tmp->newSignalForValue = pd_api_sound_newSignalForValuePDSynthSignal;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_signal end\n");
     return Tmp;
 };
@@ -1338,7 +1351,7 @@ void pd_api_sound_setWaveformPDSynth(PDSynth* synth, SoundWaveform wave)
 
 }
 
-void pd_api_sound_setGeneratorPDSynth(PDSynth* synth, int stereo, synthRenderFunc render, synthNoteOnFunc noteOn, synthReleaseFunc release, synthSetParameterFunc setparam, synthDeallocFunc dealloc, void* userdata)
+void pd_api_sound_setGenerator_deprecreatedPDSynth(PDSynth* synth, int stereo, synthRenderFunc render, synthNoteOnFunc noteOn, synthReleaseFunc release, synthSetParameterFunc setparam, synthDeallocFunc dealloc, void* userdata)
 {
 
 }
@@ -1463,6 +1476,22 @@ int pd_api_sound_setWavetablePDSynth (PDSynth* synth, AudioSample* sample, int l
 	return 0;
 }
 
+void pd_api_sound_setGeneratorPDSynth(PDSynth* synth, int stereo, synthRenderFunc render, synthNoteOnFunc noteOn, synthReleaseFunc release, synthSetParameterFunc setparam, synthDeallocFunc dealloc, synthCopyUserdata copyUserdata, void* userdata)
+{
+
+}
+
+PDSynth* pd_api_sound_copyPDSynth(PDSynth* synth)
+{
+    return NULL;
+}
+	
+// 2.6
+void pd_api_sound_clearEnvelopePDSynth(PDSynth* synth)
+{
+
+}
+
 // PDSynth extends SoundSource
 playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
 {
@@ -1471,7 +1500,7 @@ playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
     Tmp->newSynth = pd_api_sound_newSynthPDSynth;
 	Tmp->freeSynth = pd_api_sound_freeSynthPDSynth;
 	Tmp->setWaveform = pd_api_sound_setWaveformPDSynth;
-	Tmp->setGenerator = pd_api_sound_setGeneratorPDSynth;
+	Tmp->setGenerator_deprecated = pd_api_sound_setGenerator_deprecreatedPDSynth;
 	Tmp->setSample = pd_api_sound_setSamplePDSynth;
     Tmp->setAttackTime = pd_api_sound_setAttackTimePDSynth;
 	Tmp->setDecayTime = pd_api_sound_setDecayTimePDSynth;
@@ -1493,10 +1522,19 @@ playdate_sound_synth* pd_api_sound_Create_playdate_sound_synth()
 	Tmp->setVolume = pd_api_sound_setVolumePDSynth;
 	Tmp->getVolume = pd_api_sound_getVolumePDSynth;
 	Tmp->isPlaying = pd_api_sound_isPlayingPDSynth;
-	// 1.13
+	
+    // 1.13
 	Tmp->getEnvelope = pd_api_sound_getEnvelopePDSynth;
-	// 2.2
+	
+    // 2.2
 	Tmp->setWavetable = pd_api_sound_setWavetablePDSynth;
+    
+    // 2.4
+	Tmp->setGenerator = pd_api_sound_setGeneratorPDSynth;
+	Tmp->copy = pd_api_sound_copyPDSynth;
+	
+	// 2.6
+	Tmp->clearEnvelope = pd_api_sound_clearEnvelopePDSynth;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_synth end\n");
     return Tmp;
 };
@@ -1792,9 +1830,14 @@ void pd_api_sound_setLoopsSoundSequence(SoundSequence* seq, int loopstart, int l
 
 }
 
-int pd_api_sound_getTempoSoundSequence(SoundSequence* seq)
+int pd_api_sound_getTempo_deprecatedSoundSequence(SoundSequence* seq)
 {
     return 0;
+}
+
+float pd_api_sound_getTempoSoundSequence(SoundSequence* seq)
+{
+    return 0.0f;
 }
 
 void pd_api_sound_setTempoSoundSequence(SoundSequence* seq, float stepsPerSecond)
@@ -1865,11 +1908,11 @@ playdate_sound_sequence* pd_api_sound_Create_playdate_sound_sequence()
 
 	Tmp->newSequence = pd_api_sound_newSequenceSoundSequence;
 	Tmp->freeSequence = pd_api_sound_freeSequenceSoundSequence;
-	Tmp->loadMidiFile = pd_api_sound_loadMidiFileSoundSequence;
+	Tmp->loadMIDIFile = pd_api_sound_loadMidiFileSoundSequence;
 	Tmp->getTime = pd_api_sound_getTimeSoundSequence;
 	Tmp->setTime = pd_api_sound_setTimeSoundSequence;
 	Tmp->setLoops = pd_api_sound_setLoopsSoundSequence;
-	Tmp->getTempo = pd_api_sound_getTempoSoundSequence;
+	Tmp->getTempo_deprecated = pd_api_sound_getTempo_deprecatedSoundSequence;
 	Tmp->setTempo = pd_api_sound_setTempoSoundSequence;
 	Tmp->getTrackCount = pd_api_sound_getTrackCountSoundSequence;
 	Tmp->addTrack = pd_api_sound_addTrackSoundSequence;
@@ -1883,6 +1926,8 @@ playdate_sound_sequence* pd_api_sound_Create_playdate_sound_sequence()
 	Tmp->stop = pd_api_sound_stopSoundSequence;
 	Tmp->getCurrentStep = pd_api_sound_getCurrentStepSoundSequence;
 	Tmp->setCurrentStep = pd_api_sound_setCurrentStepSoundSequence;
+    // 2.5
+	Tmp->getTempo = pd_api_sound_getTempoSoundSequence;
     printfDebug(DebugTraceFunctions, "pd_api_sound_Create_playdate_sound_sequence end\n");
     return Tmp;
 };
@@ -2354,14 +2399,14 @@ SoundSource* pd_api_sound_addCallbackSourceSoundChannel(SoundChannel* channel, A
     return Tmp;
 }
 
-void pd_api_sound_addEffectSoundChannel(SoundChannel* channel, SoundEffect* effect)
+int pd_api_sound_addEffectSoundChannel(SoundChannel* channel, SoundEffect* effect)
 {
-
+    return 0;
 }
 
-void pd_api_sound_removeEffectSoundChannel(SoundChannel* channel, SoundEffect* effect)
+int pd_api_sound_removeEffectSoundChannel(SoundChannel* channel, SoundEffect* effect)
 {
-
+    return 0;
 }
 
 void pd_api_sound_setVolumeSoundChannel(SoundChannel* channel, float volume)

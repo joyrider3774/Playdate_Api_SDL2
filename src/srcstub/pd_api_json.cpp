@@ -68,7 +68,7 @@ void pd_api_json_writeString(struct json_encoder* encoder, const char* str, int 
 
 
 
-void pd_api_json_initEncoder(json_encoder* encoder, writeFunc* write, void* userdata, int pretty)
+void pd_api_json_initEncoder(json_encoder* encoder, json_writeFunc* write, void* userdata, int pretty)
 {
     encoder->startArray = pd_api_json_startArray;
     encoder->addArrayMember = pd_api_json_addArrayMember;

@@ -65,6 +65,18 @@ void pd_api_display_setDisplayOffset(int x, int y)
     _pd_api_display_OffsetDisplayY = y;
 }
 
+// 2.7
+
+float pd_api_display_getRefreshRate(void)
+{
+    return _pd_api_display_Fps;
+}
+
+float pd_api_display_getFPS(void)
+{
+    return (float)_pd_api_display_LastFPS;
+}
+
 playdate_display* pd_api_display_Create_playdate_display()
 {
     playdate_display *Tmp = (playdate_display*) malloc(sizeof(*Tmp));
@@ -77,5 +89,7 @@ playdate_display* pd_api_display_Create_playdate_display()
     Tmp->setMosaic = pd_api_display_setMosaic;
     Tmp->setFlipped = pd_api_display_setFlipped;
     Tmp->setOffset = pd_api_display_setDisplayOffset;
+    Tmp->getRefreshRate = pd_api_display_getRefreshRate;
+    Tmp->getFPS = pd_api_display_getFPS;
     return Tmp;
 }
