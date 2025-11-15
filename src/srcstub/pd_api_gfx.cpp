@@ -40,6 +40,7 @@ struct LCDBitmapTable {
     int count;
     int w;
     int h;
+	int across;
     LCDBitmap** bitmaps;
 };
 
@@ -922,7 +923,6 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
                     h = num;
                 }
             }
-            
 			
 			//format name-table-X (seems we need to load next few files then that exists with incrementing x)
 			if ((w == 1) && (h == 0))
@@ -948,6 +948,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 							result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
 							result->w = Tmp->w;
 							result->h = Tmp->h;
+							result->across = (int)Tmp->w / w;
 							*outerr = NULL;
 								
 							while(Tmp)
@@ -1011,6 +1012,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 						*outerr = NULL;
 						result->w = w;
 						result->h = h;
+						result->across = (int)Img->w / w;
 						SDL_SetSurfaceBlendMode(Img, SDL_BLENDMODE_BLEND);
 						for (int y = 0; y < Img->h; y+=h)
 						{
@@ -2829,7 +2831,11 @@ LCDSolidColor pd_api_gfx_getBitmapPixel(LCDBitmap* bitmap, int x, int y)
 
 void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width)
 {
-
+	if(table)
+	{
+		*count = table->count;
+		*width = table->across;
+	}
 }
 
 // 2.6
