@@ -1197,10 +1197,10 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
     Sint16 vx[nPoints];
     Sint16 vy[nPoints];
   
-    for (int i=0; i<nPoints*2;i+=2)
+    for (int i=0; i<nPoints;i++)
     {
-        vx[i] = coords[i];
-        vy[i] = coords[i+1];
+        vx[i] = coords[(i*2)];
+        vy[i] = coords[(i*2)+1];
     }
 
     switch (color)
