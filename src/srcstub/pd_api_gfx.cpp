@@ -2482,7 +2482,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 	if ((TTF_SizeUTF8(f->font, text_cpy, &width, &height) < 0) || !width) {
 		SDL_SetError("Text has zero width");
 		if (utf8_alloc)
-			free(utf8_alloc);
+			SDL_stack_free(utf8_alloc);
 		return 0;
 	}
 
@@ -2506,9 +2506,9 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 					strLines = saved;
 					SDL_OutOfMemory();
 					if (utf8_alloc)
-						free(utf8_alloc);
+						SDL_stack_free(utf8_alloc);
 					if (strLines)
-						free(strLines);
+						SDL_stack_free(strLines);
 					return 0;
 				}
 			}
@@ -2645,7 +2645,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 		if ((TTF_SizeUTF8(_pd_api_gfx_CurrentGfxContext->font->font, text_cpy, &width, &height) < 0) || !width) {
 			SDL_SetError("Text has zero width");
 			if (utf8_alloc)
-				free(utf8_alloc);
+				SDL_stack_free(utf8_alloc);
 			return result;
 		}
 
@@ -2669,7 +2669,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 						strLines = saved;
 						SDL_OutOfMemory();
 						if (utf8_alloc)
-							free(utf8_alloc);
+							SDL_stack_free(utf8_alloc);
 						if (strLines)
 							free(strLines);
 						return result;
