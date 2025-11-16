@@ -587,7 +587,8 @@ void pd_api_gfx_freeBitmap(LCDBitmap* Bitmap)
 
 LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 {
-    *outerr = loaderror;    
+	if(outerr)
+    	*outerr = loaderror;
     LCDBitmap* result = NULL;
     char ext[5];
     char* tmpfullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
@@ -625,7 +626,8 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 			result = pd_api_gfx_newBitmap(Img2->w, Img2->h, kColorClear);
 			if(result)
 			{
-				*outerr = NULL;
+				if(outerr)
+					*outerr = NULL;
 				SDL_SetSurfaceBlendMode(Img2, SDL_BLENDMODE_BLEND);
 				SDL_BlitSurface(Img2, NULL, result->Tex, NULL);				
 				SDL_SetSurfaceBlendMode(result->Tex, SDL_BLENDMODE_NONE);
@@ -833,7 +835,8 @@ void pd_api_gfx_freeBitmapTable(LCDBitmapTable* table)
 
 LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** outerr)
 {
-    *outerr = loaderror;    
+	if(outerr)
+    	*outerr = loaderror;
     LCDBitmapTable* result = NULL;
     char dir_name[255];
     char prefix[255];
@@ -949,7 +952,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 							result->w = Tmp->w;
 							result->h = Tmp->h;
 							result->across = (int)Tmp->w / w;
-							*outerr = NULL;
+							if(outerr)
+								*outerr = NULL;
 								
 							while(Tmp)
 							{
@@ -972,7 +976,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 								}
 								else
 								{
-									*outerr = loaderror;
+									if(outerr)
+										*outerr = loaderror;
 									return NULL;
 								}
 								
@@ -1009,7 +1014,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 						else
 							pd_api_gfx_MakeSurfaceOpaque(Img);
 						result->bitmaps = (LCDBitmap **) malloc(sizeof(*result->bitmaps));
-						*outerr = NULL;
+						if(outerr)
+							*outerr = NULL;
 						result->w = w;
 						result->h = h;
 						result->across = (int)Img->w / w;
@@ -1033,7 +1039,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 								}
 								else
 								{
-									*outerr = loaderror;
+									if(outerr)
+										*outerr = loaderror;
 									return NULL;
 								}
 							}
@@ -2125,7 +2132,8 @@ LCDFont* pd_api_gfx_Create_LCDFont()
 
 LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
-    *outErr = loaderror;    
+	if(outErr)
+    	*outErr = loaderror;
     LCDFont* result = NULL;
     char* tmpfullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
 	char* fullpath =  (char *) malloc((strlen(path) + 17) * sizeof(char));
@@ -2160,7 +2168,8 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
     {
         if (strcasecmp(font->path, fullpath) == 0)
         {
-            *outErr = NULL;
+			if(outErr)
+            	*outErr = NULL;
             free(fullpath);
 			free(tmpfullpath);
             return font->font;
@@ -2173,7 +2182,8 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
         result = pd_api_gfx_Create_LCDFont();
         if(result)
         {
-            *outErr = NULL;
+			if(outErr)
+            	*outErr = NULL;
             TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
             result->font = font;
 
