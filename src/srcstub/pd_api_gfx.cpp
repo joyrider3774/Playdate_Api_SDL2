@@ -1395,12 +1395,14 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 			}
 		}
 		tmpTexture1 = zoomSurface(tmpTexture, xscale, yscale, 0);
-
-		if(!isOrginalTexture)
-			SDL_FreeSurface(tmpTexture);
-		tmpTexture = tmpTexture1;
-		isOrginalTexture = false;
-		SDL_SetSurfaceBlendMode(tmpTexture, SDL_BLENDMODE_NONE);
+		if(tmpTexture1)
+		{
+			if(!isOrginalTexture)
+				SDL_FreeSurface(tmpTexture);
+			tmpTexture = tmpTexture1;
+			isOrginalTexture = false;
+			SDL_SetSurfaceBlendMode(tmpTexture, SDL_BLENDMODE_NONE);
+		}
 	}
 
 	if(isRotatedBitmap)
