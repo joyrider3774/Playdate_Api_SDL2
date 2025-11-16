@@ -2878,14 +2878,101 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 
 void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
 {
-	//this is wrong but at least it will draw something
-	pd_api_gfx_drawRect(x,y,width,height,color);
+	//for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
+    LCDBitmap *bitmap = NULL;
+	int halfLineWidth = lineWidth >> 1;
+    if (color == kColorXOR)
+    {
+        bitmap = Api->graphics->newBitmap(width + lineWidth, height + lineWidth, kColorClear);
+        Api->graphics->pushContext(bitmap);
+    }
+    
+
+    SDL_Rect rect;
+    rect.x = color == kColorXOR ? halfLineWidth: x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    rect.y = color == kColorXOR ? halfLineWidth: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
+    rect.w = width;
+    rect.h = height;
+    
+	for (int i = 0; i < lineWidth; i++)
+	{
+		switch (color)
+		{
+			case kColorBlack:
+				roundedRectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+				break;
+			case kColorWhite:
+				roundedRectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+				break;
+			case kColorXOR:
+				roundedRectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+				break;
+			case kColorClear:
+				roundedRectangleRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+				break;
+			default:
+				break;
+		
+		}
+	}
+	
+    if (color == kColorXOR)
+    {
+        Api->graphics->popContext();
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, x-halfLineWidth, y-halfLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);
+    }
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, LCDColor color)
 {
-	//this is wrong but at least it will draw something
-	pd_api_gfx_fillRect(x,y,width,height,color);
+	//for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
+    LCDBitmap *bitmap = NULL;
+    if (color == kColorXOR)
+    {
+        bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+        Api->graphics->pushContext(bitmap);
+    }
+    
+
+    SDL_Rect rect;
+    rect.x = color == kColorXOR ? 0: x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    rect.y = color == kColorXOR ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
+    rect.w = width;
+    rect.h = height;
+    
+	switch (color)
+    {
+        case kColorBlack:
+            roundedBoxRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            break;
+        case kColorWhite:
+            roundedBoxRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            break;
+        case kColorXOR:
+            roundedBoxRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            break;
+        case kColorClear:
+            roundedBoxRGBASurface(_pd_api_gfx_CurrentGfxContext->DrawTarget->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            break;
+        default:
+            break;
+    }
+	
+    if (color == kColorXOR)
+    {
+        Api->graphics->popContext();
+        Api->graphics->pushContext(_pd_api_gfx_CurrentGfxContext->DrawTarget);
+        Api->graphics->setDrawMode(kDrawModeXOR);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
+        Api->graphics->popContext();
+        Api->graphics->freeBitmap(bitmap);
+    }
+	_pd_api_gfx_CurrentGfxContext->DrawTarget->BitmapDirty = true;
 }
 
 
