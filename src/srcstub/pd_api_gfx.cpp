@@ -2847,7 +2847,7 @@ playdate_video* pd_api_gfx_Create_playdate_video()
 // 2.5
 void pd_api_gfx_setPixel(int x, int y, LCDColor c)
 {
-
+	pd_api_gfx_fillRect(x,y,1,1,c);
 }
 
 LCDSolidColor pd_api_gfx_getBitmapPixel(LCDBitmap* bitmap, int x, int y)
@@ -2878,12 +2878,14 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 
 void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
 {
-
+	//this is wrong but at least it will draw something
+	pd_api_gfx_drawRect(x,y,width,height,color);
 }
 
 void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, LCDColor color)
 {
-
+	//this is wrong but at least it will draw something
+	pd_api_gfx_fillRect(x,y,width,height,color);
 }
 
 
