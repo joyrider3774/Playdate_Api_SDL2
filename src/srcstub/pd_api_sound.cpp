@@ -188,8 +188,23 @@ AudioSample* pd_api_sound_loadSample(const char* path)
     else
 	{
         sprintf(fullpath, "./%s/%s", _pd_api_get_current_source_dir(), path);
-		if(stat(fullpath, &lstats) != 0)
-			sprintf(fullpath, "./%s", path);
+        if(stat(fullpath, &lstats) != 0)
+        {
+            //check for ogg file with wav & mp3 files passed
+            sprintf(fullpath, "./%s/%s", _pd_api_get_current_source_dir(), path);
+            char *ext = strrchr(fullpath, '.');
+            if(ext)
+            {
+                if((strcasecmp(ext, ".WAV") == 0) || (strcasecmp(ext, ".MP3") == 0))
+                {
+                    ext[1] = 'o';
+                    ext[2] = 'g';
+                    ext[3] = 'g';
+                }
+            }
+            if(stat(fullpath, &lstats) != 0)
+			    sprintf(fullpath, "./%s", path);            
+        }
 	}
     
     AudioSample* tmp = NULL;
