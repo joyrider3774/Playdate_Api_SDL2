@@ -907,21 +907,27 @@ void pd_api_sprite_getPosition(LCDSprite *sprite, float *x, float *y)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_getPosition\n");
 	if(sprite==NULL)
-	{
-		*x = -100;
-		*y = -100;
+	{ 
+		if(x)
+			*x = -100;
+		if(y)
+			*y = -100;
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_getPosition end Sprite == NULL\n");
 		return;
 	}
 	if(!sprite->Loaded)
 	{
-		*x = -100;
-		*y = -100;
+		if(x)
+			*x = -100;
+		if(y)
+			*y = -100;
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_getPosition end Sprite not loaded\n");
 		return;
 	}
-	*x = sprite->CenterPointX;
-	*y = sprite->CenterPointY;
+	if(x)
+		*x = sprite->CenterPointX;
+	if(y)
+		*y = sprite->CenterPointY;
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_getPosition end\n");
 }
 
