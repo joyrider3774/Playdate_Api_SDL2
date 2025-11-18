@@ -2873,7 +2873,173 @@ void pd_api_gfx_drawTextInRect(const void* text, size_t len, PDStringEncoding en
 // 2.7
 int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t len, int maxwidth, PDStringEncoding encoding, PDTextWrappingMode wrap, int tracking, int extraLeading)
 {
-	return 0;
+	//this is wrong but does at least do something
+	int width, height;
+	Uint8 *utf8_alloc = NULL;
+
+	int i, numLines, rowHeight, lineskip;
+	char **strLines = NULL, *text_cpy;
+	const char* sizedtext = (const char *) text; 
+	LCDFont *f = font;
+    if(!f)
+	{
+        f = _pd_api_gfx_Default_Font;
+	}
+
+    if(!f)
+	{
+        return 0;
+	}
+
+    if(!f->font)
+	{
+        return 0;
+	}
+	/* Convert input string to default encoding UTF-8 */
+	if (encoding == kASCIIEncoding) {
+		utf8_alloc = SDL_stack_alloc(Uint8, LATIN1_to_UTF8_len_backport(sizedtext));
+		if (utf8_alloc == NULL) {
+			SDL_OutOfMemory();
+			return 0;
+		}
+		LATIN1_to_UTF8_backport(sizedtext, utf8_alloc);
+		text_cpy = (char *)utf8_alloc;
+	} else {
+		/* Use a copy anyway */
+		size_t str_len = SDL_strlen(sizedtext);
+		utf8_alloc = SDL_stack_alloc(Uint8, str_len + 1);
+		if (utf8_alloc == NULL) {
+			SDL_OutOfMemory();
+			return 0;
+		}
+		SDL_memcpy(utf8_alloc, text, str_len + 1);
+		text_cpy = (char *)utf8_alloc;
+	}
+
+	/* Get the dimensions of the text surface */
+	if ((TTF_SizeUTF8(f->font, text_cpy, &width, &height) < 0) || !width) {
+		SDL_SetError("Text has zero width");
+		if (utf8_alloc)
+		{
+			SDL_stack_free(utf8_alloc);
+		}
+		return 0;
+	}
+
+	numLines = 1;
+
+	if (*text_cpy) {
+		int maxNumLines = 0;
+		size_t textlen = SDL_strlen(text_cpy);
+		numLines = 0;
+		size_t numChars = 0;
+		do {
+			size_t save_textlen = (size_t)(-1);
+			char *save_text  = NULL;
+
+			if (numLines >= maxNumLines) {
+				char **saved = strLines;
+				
+				maxNumLines += 32;
+				strLines = (char **)SDL_realloc(strLines, maxNumLines * sizeof (*strLines));
+				if (strLines == NULL) {
+					strLines = saved;
+					SDL_OutOfMemory();
+					if (utf8_alloc)
+					{
+						SDL_stack_free(utf8_alloc);
+					}
+					if (strLines)
+					{
+						SDL_free(strLines);
+					}
+					return 0;
+				}
+			}
+
+			strLines[numLines++] = text_cpy;
+
+			while ((textlen > 0) && (numChars < len)) {
+				int inc = 0;
+				int is_delim;
+				Uint32 c = UTF8_getch_backport(text_cpy, textlen, &inc);
+				text_cpy += inc;
+				textlen -= inc;
+
+				if (c == UNICODE_BOM_NATIVE || c == UNICODE_BOM_SWAPPED) {
+					continue;
+				}
+
+				numChars += 1;
+				/* With wrapLength == 0, normal text rendering but newline aware */
+				is_delim = CharacterIsNewLine_backport(c);
+
+				/* Record last delimiter position */
+				if (is_delim) {
+					save_textlen = textlen;
+					save_text = text_cpy;
+					/* Break, if new line */
+					if (c == '\n' || c == '\r') {
+						*(text_cpy - 1) = '\0';
+						break;
+					}
+				}
+		
+				//this means we had a character limit and need to apply a null char then
+				if((numChars >= len))
+				{
+					*(text_cpy) = '\0';
+				}
+				
+			}
+
+			/* Cut at last delimiter/new lines, otherwise in the middle of the word */
+			if (save_text && textlen) {
+				text_cpy = save_text;
+				textlen = save_textlen;
+			}
+		} while ((textlen > 0) && (numChars < len));
+	}
+
+	lineskip = TTF_FontLineSkip(f->font);
+	rowHeight = SDL_max(height, lineskip);
+	char* newtext;
+	//if (wrapLength == 0) {
+	if(true) {
+		/* Find the max of all line lengths */
+		if (numLines > 1) {
+			width = 0;
+			for (i = 0; i < numLines; i++) {
+				char save_c = 0;
+				int w, h;
+
+				/* Add end-of-line */
+				if (strLines) {
+					newtext = strLines[i];
+					if (i + 1 < numLines) {
+						save_c = strLines[i + 1][0];
+						strLines[i + 1][0] = '\0';
+					}
+				}
+
+				if (TTF_SizeUTF8(f->font, newtext, &w, &h) == 0) {
+					width = SDL_max(w, width);
+				}
+
+				/* Remove end-of-line */
+				if (strLines) {
+					if (i + 1 < numLines) {
+						strLines[i + 1][0] = save_c;
+					}
+				}
+			}
+			/* In case there are all newlines */
+			width = SDL_max(width, 1);
+		}
+	} 
+	height = rowHeight + lineskip * (numLines - 1);
+
+	return height;
 }
 
 void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
