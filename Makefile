@@ -69,6 +69,10 @@ ifneq ($(OUTPUT_ASSETS_DIR),)
 ALL_SOUND_MUSIC_WAV = $(call rwildcard, $(SOURCE_DIR)/,*.wav)
 ALL_SOUND_MUSIC_OGG_SOURCE = $(ALL_SOUND_MUSIC_WAV:.wav=.ogg)
 ALL_SOUND_MUSIC_OGG_ASSETS = $(subst $(SOURCE_DIR)/,$(OUTPUT_ASSETS_DIR)/,$(ALL_SOUND_MUSIC_OGG_SOURCE))
+
+ALL_SOUND_MUSIC_MP3 = $(call rwildcard, $(SOURCE_DIR)/,*.mp3)
+ALL_SOUND_MUSIC_OGG_MP3_SOURCE = $(ALL_SOUND_MUSIC_MP3:.mp3=.ogg)
+ALL_SOUND_MUSIC_OGG_MP3_ASSETS = $(subst $(SOURCE_DIR)/,$(OUTPUT_ASSETS_DIR)/,$(ALL_SOUND_MUSIC_OGG_MP3_SOURCE))
 endif
 
 ifeq ($(DEBUG), 1)
@@ -86,7 +90,7 @@ CFLAGS += -DSCALINGMODE=$(SCALINGMODE) -DFULLSCREENATSTARTUP=$(FULLSCREENATSTART
 
 all: $(EXE)
 
-$(EXE): $(OUTPUT_ASSETS_DIR) $(ALL_SOUND_MUSIC_OGG_ASSETS) $(OBJS) $(INC)
+$(EXE): $(OUTPUT_ASSETS_DIR) $(ALL_SOUND_MUSIC_OGG_ASSETS) $(ALL_SOUND_MUSIC_OGG_MP3_ASSETS) $(OBJS) $(INC)
 	mkdir -p $(OUT_DIR)
 	$(CPP) -o $(OUT_DIR)/$@ -std=$(CPP_VERSION) $(OBJS) $(LDFLAGS)
 
@@ -101,10 +105,15 @@ $(OBJ_DIR)/%.o: %.c
 $(ALL_SOUND_MUSIC_OGG_ASSETS):
 	mkdir -p "$(dir $@)"
 	ffmpeg -y -i "$(subst .ogg,.wav,$(subst $(OUTPUT_ASSETS_DIR)/,$(SOURCE_DIR)/,$@))" $(FFMPEG_OPTS) "$@"
+	
+$(ALL_SOUND_MUSIC_OGG_MP3_ASSETS):
+	mkdir -p "$(dir $@)"
+	ffmpeg -y -i "$(subst .ogg,.mp3,$(subst $(OUTPUT_ASSETS_DIR)/,$(SOURCE_DIR)/,$@))" $(FFMPEG_OPTS) "$@"
 
 $(OUTPUT_ASSETS_DIR):
 	cp -r $(SOURCE_DIR) $@
 	find $@ -name '*.wav' -delete
+	find $@ -name '*.mp3' -delete
 
 clean:
 	$(RM) -rv *~ $(OBJS) $(EXE) $(OUTPUT_ASSETS_DIR)
