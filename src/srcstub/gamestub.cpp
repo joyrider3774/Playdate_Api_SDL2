@@ -500,6 +500,10 @@ Possible options are:\n\
         }
     }
 
+#ifdef FORCE_ACCELERATED_RENDER
+	useSoftwareRenderer = false;
+#endif
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_AUDIO) == 0) 
     {
 		const char * videoDriver = SDL_GetCurrentVideoDriver();

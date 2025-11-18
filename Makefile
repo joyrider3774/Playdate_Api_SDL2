@@ -1,7 +1,7 @@
 # Make does not offer a recursive wildcard function, so here's one:
 rwildcard=$(wildcard $1$2) $(foreach d,$(wildcard $1*),$(call rwildcard,$d/,$2))
 
-DEBUG = 0
+DEBUG = 1
 CPP_BUILD ?= 0
 EMSCRIPTEN_BUILD ?= 0
 #if you provide other source folders this sets the number which one to use by default (for example to set colored assets as default)
@@ -20,6 +20,8 @@ WINDOWSCALE ?= 1
 # 2: Render using default SDL2 way it will letterbox if resolutions are not same aspect ration of 400x240
 SCALINGMODE ?= 2
 FULLSCREENATSTARTUP ?= 0
+
+FORCE_ACCELERATED_RENDER ?= 0
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame
@@ -56,6 +58,10 @@ LDUSEX11 = 1
 
 ifneq ($(PLATFORM),)
 include build_platforms/$(PLATFORM).mk
+endif
+
+ifeq($(FORCE_ACCELERATED_RENDER), 1)
+CFLAGS += -DFORCE_ACCELERATED_RENDER
 endif
 
 PLATFORM=msys_mingw
