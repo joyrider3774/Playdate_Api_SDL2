@@ -60,7 +60,7 @@ ifneq ($(PLATFORM),)
 include build_platforms/$(PLATFORM).mk
 endif
 
-ifeq($(FORCE_ACCELERATED_RENDER), 1)
+ifeq ($(FORCE_ACCELERATED_RENDER), 1)
 CFLAGS += -DFORCE_ACCELERATED_RENDER
 endif
 
