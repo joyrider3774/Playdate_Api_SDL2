@@ -390,7 +390,14 @@ void pd_api_sys_setSerialMessageCallback(void (*callback)(const char* data))
 
 int pd_api_sys_vaFormatString(char **outstr, const char *fmt, va_list args)
 {
-	return 0;
+	char Buf[FORMAT_STRING_BUFLENGTH];
+    int result = vsprintf(&Buf[0], fmt, args);
+	if(result > 0)
+	{
+		*outstr = (char*) pd_api_sys_realloc(NULL,(result + 1) * sizeof(char));
+		strcpy(*outstr, Buf);
+	}
+	return result;
 }
 
 int pd_api_sys_parseString(const char *str, const char *format, ...)
