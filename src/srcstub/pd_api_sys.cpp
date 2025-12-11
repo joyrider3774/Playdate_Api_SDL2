@@ -1,4 +1,6 @@
 #include <SDL.h>
+#include <time.h>
+#include <sys/time.h>
 #include "pd_api/pd_api_sys.h"
 #include "CInput.h"
 #include "gamestubcallbacks.h"
@@ -14,6 +16,9 @@ int _CranckDocked = 0;
 Uint32 pd_api_sys_startElapsed = 0;
 float _CranckChange = 0.0f;
 float _CranckAngle = 0.0f;
+unsigned int _startTime = 0;
+
+uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime);
 
 void _pd_api_sys_UpdateInput()
 {
@@ -237,13 +242,35 @@ PDLanguage pd_api_sys_getLanguage(void)
 }
 unsigned int pd_api_sys_getCurrentTimeMilliseconds(void)
 {
-	return SDL_GetTicks();
-}
-unsigned int pd_api_sys_getSecondsSinceEpoch(unsigned int *milliseconds)
-{
-	return SDL_GetTicks() / 1000;
+	return _startTime + SDL_GetTicks();
 }
 
+unsigned int pd_api_sys_getSecondsSinceEpoch(unsigned int *milliseconds)
+{
+    // Get current time
+    time_t now = time(NULL);
+    struct tm *tm_now = gmtime(&now);
+    
+    // Create PDDateTime from current time
+    struct PDDateTime datetime;
+    datetime.year = tm_now->tm_year + 1900;
+    datetime.month = tm_now->tm_mon + 1;
+    datetime.day = tm_now->tm_mday;
+    datetime.hour = tm_now->tm_hour;
+    datetime.minute = tm_now->tm_min;
+    datetime.second = tm_now->tm_sec;
+    
+    // Get milliseconds if requested
+    if (milliseconds != NULL) 
+	{
+		struct timeval tv;
+		gettimeofday(&tv, NULL);
+		*milliseconds = tv.tv_usec / 1000;
+    }
+    
+    // Convert to epoch (seconds since Jan 1, 2000)
+    return pd_api_sys_convertDateTimeToEpoch(&datetime);
+}
 void pd_api_sys_setPeripheralsEnabled(PDPeripherals mask)
 {
 
@@ -334,6 +361,7 @@ float pd_api_sys_getElapsedTime(void)
 {
 	return SDL_GetTicks() - pd_api_sys_startElapsed;
 }
+
 void pd_api_sys_resetElapsedTime(void)
 {
 	pd_api_sys_startElapsed = SDL_GetTicks();
@@ -363,12 +391,94 @@ int pd_api_sys_shouldDisplay24HourTime(void)
 
 void pd_api_sys_convertEpochToDateTime(uint32_t epoch, struct PDDateTime* datetime)
 {
-
+    // Days since epoch for each month (non-leap year)
+    static const uint16_t days_before_month[12] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+    };
+    
+    // Convert epoch seconds to days and remaining seconds
+    uint32_t days = epoch / 86400;
+    uint32_t seconds_today = epoch % 86400;
+    
+    // Calculate time components
+    datetime->hour = seconds_today / 3600;
+    datetime->minute = (seconds_today % 3600) / 60;
+    datetime->second = seconds_today % 60;
+    
+    // Calculate weekday (Jan 1, 2000 was a Saturday = day 6)
+    datetime->weekday = ((days + 6) % 7);
+    if (datetime->weekday == 0) datetime->weekday = 7; // Sunday = 7
+    
+    // Calculate year (approximation then refinement)
+    uint32_t year = 2000 + (days / 365);
+    
+    // Count leap years from 2000 to current year
+    uint32_t leap_years = ((year - 1) / 4) - (1999 / 4) - ((year - 1) / 100) + (1999 / 100) + ((year - 1) / 400) - (1999 / 400);
+    uint32_t days_since_2000 = (year - 2000) * 365 + leap_years;
+    
+    // Adjust if we overshot
+    while (days_since_2000 > days) {
+        year--;
+        leap_years = ((year - 1) / 4) - (1999 / 4) - ((year - 1) / 100) + (1999 / 100) + ((year - 1) / 400) - (1999 / 400);
+        days_since_2000 = (year - 2000) * 365 + leap_years;
+    }
+    
+    datetime->year = year;
+    
+    // Calculate day of year
+    uint32_t day_of_year = days - days_since_2000;
+    
+    // Check if leap year
+    int is_leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+    
+    // Find month
+    datetime->month = 1;
+    for (int m = 11; m >= 0; m--) {
+        uint32_t days_before = days_before_month[m];
+        if (m > 1 && is_leap) days_before++; // Add leap day for March onwards
+        
+        if (day_of_year >= days_before) {
+            datetime->month = m + 1;
+            datetime->day = day_of_year - days_before + 1;
+            break;
+        }
+    }
 }
 
 uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime)
 {
-	return 0;
+    // Days before each month (non-leap year)
+    static const uint16_t days_before_month[12] = {
+        0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334
+    };
+    
+    // Calculate days from 2000 to start of current year
+    uint32_t year = datetime->year;
+    uint32_t days = (year - 2000) * 365;
+    
+    // Add leap days
+    days += ((year - 1) / 4) - (1999 / 4);      // Years divisible by 4
+    days -= ((year - 1) / 100) - (1999 / 100);  // Except years divisible by 100
+    days += ((year - 1) / 400) - (1999 / 400);  // Unless years divisible by 400
+    
+    // Add days for months in current year
+    days += days_before_month[datetime->month - 1];
+    
+    // Add leap day if after February in a leap year
+    if (datetime->month > 2 && (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0))) {
+        days++;
+    }
+    
+    // Add days in current month
+    days += datetime->day - 1;
+    
+    // Convert to seconds and add time components
+    uint32_t epoch = days * 86400;
+    epoch += datetime->hour * 3600;
+    epoch += datetime->minute * 60;
+    epoch += datetime->second;
+    
+    return epoch;
 }
 
 // 2.0
@@ -442,6 +552,9 @@ const struct PDInfo* pd_api_sys_getSystemInfo(void)
 
 playdate_sys* pd_api_sys_Create_playdate_sys()
 {
+	unsigned int milli;
+	_startTime = pd_api_sys_getSecondsSinceEpoch(&milli);
+	_startTime = _startTime * 1000 + milli;
 	playdate_sys* tmp = (playdate_sys *) malloc(sizeof(*tmp));
 	tmp->getButtonState = pd_api_sys_getButtonState;
 	tmp->setUpdateCallback = pd_api_sys_setUpdateCallback;
