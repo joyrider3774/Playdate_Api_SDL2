@@ -219,7 +219,7 @@ void* pd_api_sys_realloc(void* ptr, size_t size) // ptr = NULL -> malloc, size =
 	}
 	else
 	{
-		return malloc(size);
+		return realloc(ptr, size);
 	}
 	return NULL;
 }
@@ -359,7 +359,7 @@ int pd_api_sys_getReduceFlashing(void)
 // 1.1
 float pd_api_sys_getElapsedTime(void)
 {
-	return SDL_GetTicks() - pd_api_sys_startElapsed;
+	return (SDL_GetTicks() - pd_api_sys_startElapsed) / 1000.0f;
 }
 
 void pd_api_sys_resetElapsedTime(void)

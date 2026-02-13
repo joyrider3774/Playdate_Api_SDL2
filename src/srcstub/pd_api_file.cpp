@@ -257,13 +257,36 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
 int	pd_api_file_mkdir(const char* path)
 {
     char filename[MAXPATH];
-	sprintf(filename, "%s/%s", _pd_api_file_save_path(), path);
-	int result = 0;
-    #if defined(_WIN32)
-    result = mkdir(filename);
-    #else 
-    result = mkdir(filename, 0777);
-    #endif
+    memset(filename, 0, MAXPATH * sizeof(char));
+    const char *savepath = _pd_api_file_save_path();
+    size_t length = strlen(savepath);
+    memcpy(filename, savepath, length);
+
+    int result = 0;
+    const char *remaining = path;
+    while ((result == 0 || errno == EEXIST) && remaining != NULL) {
+        const char *nextslash = strchr(remaining, '/');
+        const size_t copylength = nextslash != NULL
+            ? (nextslash - remaining)
+            : strlen(remaining);
+
+        if (length + copylength + 1 < MAXPATH) {
+            if (copylength > 0) {
+                filename[length++] = '/';
+                memcpy(filename + length, remaining, copylength);
+                length += copylength;
+            }
+            remaining = nextslash ? nextslash + 1 : NULL;
+#if defined(_WIN32)
+            result = mkdir(filename);
+#else
+            result = mkdir(filename, 0777);
+#endif
+        } else {
+            errno = ENAMETOOLONG;
+            return -1;
+        }
+    }
 	_pd_api_file_sync_emscripten();
 	return result;
 }
@@ -355,20 +378,23 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 {
     char modestr[4];
     char filename[MAXPATH];
+    memset(filename, 0, sizeof(char) * MAXPATH);
     FILE *LastFile = NULL;
     if (((mode & kFileWrite) == kFileWrite) || ((mode & kFileAppend) == kFileAppend) || ((mode & kFileReadData) == kFileReadData))
     {
 		#ifndef __EMSCRIPTEN__
         	pd_api_file_mkdir("");
 		#endif
-        sprintf(filename, "%s/%s", _pd_api_file_save_path(), name);
+        snprintf(filename, MAXPATH - 1, "%s/%s", _pd_api_file_save_path(), name);
     }
     else
     {
-        sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), name);
+        snprintf(filename, MAXPATH - 1, "./%s/%s", _pd_api_get_current_source_dir(), name);
 		struct stat lstats;
-		if(stat(filename, &lstats) != 0)
-			sprintf(filename, "./%s", name);
+        if(stat(filename, &lstats) != 0) {
+            memset(filename, 0, sizeof(char) * MAXPATH);
+            snprintf(filename, MAXPATH - 1, "./%s", name);
+        }
     }
 
     if ((mode & kFileWrite) == kFileWrite)

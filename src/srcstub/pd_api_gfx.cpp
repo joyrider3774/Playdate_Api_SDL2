@@ -32,6 +32,7 @@ struct LCDBitmap {
 	uint8_t *BitmapDataData;
 	bool MaskDirty;
 	bool BitmapDirty;
+    bool TableBitmap;
     int w;
     int h;
 };
@@ -543,6 +544,7 @@ LCDBitmap* pd_api_gfx_newBitmap(int width, int height, LCDColor bgcolor)
 		//SDL_SetSurfaceRLE(result->Tex, SDL_RLEACCEL);
 		result->w = width;
         result->h = height;
+        result->TableBitmap = false;
         SDL_SetSurfaceBlendMode(result->Tex, SDL_BLENDMODE_NONE);
         pd_api_gfx_clearBitmap(result, bgcolor);		
     }
@@ -551,7 +553,7 @@ LCDBitmap* pd_api_gfx_newBitmap(int width, int height, LCDColor bgcolor)
 
 void pd_api_gfx_freeBitmap(LCDBitmap* Bitmap)
 {
-    if(Bitmap == NULL)
+    if(Bitmap == NULL || Bitmap->TableBitmap)
 	{
         return;
 	}
@@ -818,6 +820,7 @@ LCDBitmapTable* pd_api_gfx_newBitmapTable(int count, int width, int height)
         for (int i = 0; i < count; i++)
         {
             result->bitmaps[i] = pd_api_gfx_newBitmap(width, height, kColorClear);
+            result->bitmaps[i]->TableBitmap = true;
         }
     }
     return result;
@@ -829,6 +832,7 @@ void pd_api_gfx_freeBitmapTable(LCDBitmapTable* table)
         return;
     for (int i = 0; i < table->count; i++)
     {
+        table->bitmaps[i]->TableBitmap = false;
         pd_api_gfx_freeBitmap(table->bitmaps[i]);
     }
 	free(table->bitmaps);
@@ -976,6 +980,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 								{
 									SDL_BlitSurface(Img, NULL, result->bitmaps[result->count]->Tex, NULL);
 									SDL_SetSurfaceBlendMode(result->bitmaps[result->count]->Tex, SDL_BLENDMODE_NONE);
+                                    result->bitmaps[result->count]->TableBitmap = true;
 									result->count++;
 								}
 								else
@@ -1039,6 +1044,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 									rect.h = h;
 									SDL_BlitSurface(Img, &rect, result->bitmaps[result->count]->Tex, NULL);
 									SDL_SetSurfaceBlendMode(result->bitmaps[result->count]->Tex, SDL_BLENDMODE_NONE);
+                                    result->bitmaps[result->count]->TableBitmap = true;
 									result->count++;
 								}
 								else

@@ -231,9 +231,13 @@ void pd_api_sprite_updateAndDrawSprites(void)
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_updateAndDrawSprites\n");
 	_pd_api_sprite_SortList();
 	//Api->graphics->clear(kColorClear);
+
+    // Defensive copy to avoid crash if spriteList is changed by a sprite update.
+    auto spriteListCopy = spriteList;
+
 	int c = 0;
-	for (auto& spritePtr : spriteList)
-	{	
+	for (auto& spritePtr : spriteListCopy)
+	{
 		LCDSprite* sprite = spritePtr.get();
 		if(sprite->Loaded && sprite->LoadedInList && sprite->UpdatesEnabled)
 		{
@@ -394,7 +398,11 @@ void pd_api_sprite_removeAllSprites(void)
 int pd_api_sprite_getSpriteCount(void)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_getSpriteCount\n");
-	return spriteList.size();
+    uint32_t count = 0;
+    for (auto& spritePtr : spriteList) {
+        count += spritePtr->LoadedInList == true;
+    }
+	return count;
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_getSpriteCount end\n");
 }
 
