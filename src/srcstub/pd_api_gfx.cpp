@@ -2028,10 +2028,15 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 		int tilesy = (height / 8)+2;
 		bitmap = Api->graphics->newBitmap(width, height, kColorClear);
 		Api->graphics->pushContext(bitmap);
+
+        const LCDBitmapDrawMode oldDrawMode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
+        _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
 				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -xoffset, (yy*8) -yoffset, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
 		Api->graphics->popContext();
+        _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = oldDrawMode;
+
 		Api->graphics->drawBitmap(bitmap,x + _pd_api_gfx_CurrentGfxContext->drawoffsetx,  y + _pd_api_gfx_CurrentGfxContext->drawoffsety, kBitmapUnflipped);
 		Api->graphics->freeBitmap(bitmap);
 		Api->graphics->freeBitmap(pattern);
