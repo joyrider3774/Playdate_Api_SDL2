@@ -50,6 +50,7 @@ extern void _pd_api_gfx_drawFPS(int x, int y);
 extern void _pd_api_gfx_loadDefaultFonts();
 extern void _pd_api_gfx_resetContext();
 extern void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites);
+extern void _pd_api_gfx_checkBitmapNeedsRedraw(LCDBitmap *bitmap);
 
 //stub display screen
 extern void _pd_api_display();
