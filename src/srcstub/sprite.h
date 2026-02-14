@@ -27,6 +27,7 @@ class LCDSprite
 		bool hasNewPos;
 		bool hasNewMoveBy;
 		int16_t zIndex;
+        uint32_t NaturalOrder;
 		LCDBitmapDrawMode DrawMode;
 		LCDSpriteDrawFunction *DrawFunction;
 		LCDSpriteUpdateFunction *UpdateFunction;

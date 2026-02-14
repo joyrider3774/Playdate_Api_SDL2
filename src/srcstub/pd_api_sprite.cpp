@@ -26,6 +26,7 @@ int cc;
 bool _pd_api_sprite_SpriteListNeedsSort = false;
 bool _pd_api_sprite_AlwaysRedraw = false;
 bool _pd_api_sprite_need_cleanup = false;
+uint32_t _pd_api_naturalOrder = 0;
 World* world = new World(INT_MAX);
 
 void printSpliteListInfo()
@@ -94,6 +95,7 @@ void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites)
 	if(OnlyNotLoadedSprites && !_pd_api_sprite_need_cleanup)
 		return;
 	_pd_api_sprite_need_cleanup = false;
+	_pd_api_naturalOrder = 0;
 	// printf("Deleted sprites before (bumpcount:%d)\n", world->CountItems());
     // int c = 0;
 	// for (auto& spriteptr: spriteList)
@@ -148,8 +150,12 @@ void _pd_api_sprite_cleanup_sprites(bool OnlyNotLoadedSprites)
 }
 
 bool _pd_api_sprite_spriteListSortFunc (std::shared_ptr<LCDSprite> i, std::shared_ptr<LCDSprite> j) 
-{ 
-	return i.get()->zIndex < j.get()->zIndex; 
+{
+    const LCDSprite *lhs = i.get();
+    const LCDSprite *rhs = j.get();
+    return lhs->zIndex == rhs->zIndex
+        ? lhs->NaturalOrder < rhs->NaturalOrder
+        : lhs->zIndex < rhs->zIndex;
 }
 
 void _pd_api_sprite_SortList()
@@ -345,6 +351,7 @@ void pd_api_sprite_addSprite(LCDSprite *sprite)
 		return;	
 	}
 	sprite->LoadedInList = true;
+    sprite->NaturalOrder = _pd_api_naturalOrder++;
 	_pd_api_sprite_SpriteListNeedsSort = true;
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_addSprite end\n");
 }
@@ -392,6 +399,7 @@ void pd_api_sprite_removeAllSprites(void)
 		LCDSprite* sprite = spritePtr.get();	
 		pd_api_sprite_removeSprite(sprite);
 	}
+	_pd_api_naturalOrder = 0;
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_removeAllSprites end\n");
 }
 

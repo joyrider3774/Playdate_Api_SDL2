@@ -30,6 +30,8 @@ struct LCDBitmap {
 	SDL_Surface* MaskedTex;
 	uint8_t *BitmapDataMask;
 	uint8_t *BitmapDataData;
+    uint32_t BitmapDataMaskChecksum;
+    uint32_t BitmapDataDataChecksum;
 	bool MaskDirty;
 	bool BitmapDirty;
     bool TableBitmap;
@@ -306,7 +308,7 @@ void pd_api_gfx_recreatemaskedimage(LCDBitmap* bitmap)
 			if (SDL_MUSTLOCK(tmpTex))
 				SDL_UnlockSurface(tmpTex);
 		
-	}
+        }
 	}
 }
 
@@ -736,9 +738,11 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
 			bitmap->BitmapDataData = (uint8_t*) malloc(rb*bitmap->h * sizeof(uint8_t));
 		*data = bitmap->BitmapDataData;
 	}
-	
+
 	if(mask || data)
 	{
+        uint32_t maskChecksum = 0;
+        uint32_t dataChecksum = 0;
 		if(mask)
 			memset(*mask, 0, rb*bitmap->h);
 		if(data)
@@ -760,23 +764,26 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
 					if ((pval == alpha) || (pval == clear))
 					{
 						if(mask)
-							pd_api_gfx_drawpixel(*mask, x, y, rb, kColorBlack); 
+                        {
+                            pd_api_gfx_drawpixel(*mask, x, y, rb, kColorBlack);
+                            maskChecksum += x + y * bitmap->w;
+                        }
 					}
 					else
 					{
 						if(mask)
-							pd_api_gfx_drawpixel(*mask, x, y, rb, kColorWhite); 
+                            pd_api_gfx_drawpixel(*mask, x, y, rb, kColorWhite);
 						
 						if(data)
 						{
 							if(pval >= whitethreshold)
 							{
-
-								pd_api_gfx_drawpixel(*data, x, y, rb, kColorWhite); 
+								pd_api_gfx_drawpixel(*data, x, y, rb, kColorWhite);
 							}
 							else if(pval <= blackthreshold)
 							{
-								pd_api_gfx_drawpixel(*data, x, y, rb, kColorBlack); 
+								pd_api_gfx_drawpixel(*data, x, y, rb, kColorBlack);
+                                dataChecksum += x + y * bitmap->w;
 							}
 						}
 					}
@@ -786,6 +793,10 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
 			if(SDL_MUSTLOCK(bitmap->Tex))
 				SDL_UnlockSurface(bitmap->Tex);
 		}
+        if (mask)
+            bitmap->BitmapDataMaskChecksum = maskChecksum;
+        if (data)
+            bitmap->BitmapDataDataChecksum = dataChecksum;
     }
 }
 
@@ -1336,6 +1347,7 @@ int printcount = 1;
 
 void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip)
 {
+    _pd_api_gfx_checkBitmapNeedsRedraw(bitmap);
 	pd_api_gfx_recreatemaskedimage(bitmap);
     SDL_Rect dstrect;
     dstrect.x = x +  _pd_api_gfx_CurrentGfxContext->drawoffsetx;
@@ -1750,7 +1762,22 @@ void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
 
 void pd_api_gfx_tileBitmap(LCDBitmap* bitmap, int x, int y, int width, int height, LCDBitmapFlip flip)
 {
+    const LCDBitmapDrawMode oldDrawMode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
+    _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
 
+    LCDBitmap *texture = pd_api_gfx_newBitmap(width, height, kColorClear);
+    pd_api_gfx_pushContext(texture);
+    for (int j = 0; j < height; j += bitmap->h)
+    {
+        for (int i = 0; i < width; i += bitmap->w)
+        {
+            _pd_api_gfx_drawBitmapAll(bitmap, i, j, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped);
+        }
+    }
+    pd_api_gfx_popContext();
+    _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = oldDrawMode;
+    _pd_api_gfx_drawBitmapAll(texture, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip);
+    pd_api_gfx_freeBitmap(texture);
 }
 
 void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, float yscale)
@@ -2487,6 +2514,28 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 		SDL_memcpy(utf8_alloc, text, str_len + 1);
 		text_cpy = (char *)utf8_alloc;
 	}
+
+    /* Truncate text_cpy at the given length. */
+    i = 0;
+    const size_t bytecount = strlen(text_cpy);
+    for (int charindex = 0; charindex < len && i < bytecount && text_cpy[i] != '\0'; charindex++) {
+        const uint8_t entry = text_cpy[i];
+        if (entry <= 127) {
+            i++;
+        } else if (entry >> 5 == 6) {
+            i += 2;
+        } else if (entry >> 4 == 14) {
+            i += 3;
+        } else if (entry >> 3 == 30) {
+            i += 4;
+        } else {
+            // UTF-8 error
+            i++;
+        }
+    }
+    if (i < bytecount) {
+        text_cpy[i] = '\0';
+    }
 
 	/* Get the dimensions of the text surface */
 	if ((TTF_SizeUTF8(f->font, text_cpy, &width, &height) < 0) || !width) {
@@ -3455,4 +3504,89 @@ void _pd_api_gfx_freeFontList()
 void _pd_api_gfx_cleanUp()
 {
 	Api->graphics->freeBitmap(_pd_api_gfx_Playdate_Screen);
+}
+
+uint32_t _pd_api_gfx_getBitmapChecksum(LCDBitmap *bitmap, uint8_t *buffer)
+{
+    uint32_t checksum = 0;
+    const unsigned int length = bitmap->w * bitmap->h;
+    for (unsigned int index = 0; index < length; index++)
+    {
+        const int byteindex = index / 8;
+        const int indexinbyte = 1 << (index % 8);
+        if ((buffer[byteindex] & indexinbyte) != 0) {
+            checksum += index;
+        }
+    }
+    return checksum;
+}
+
+void _pd_api_gfx_checkBitmapNeedsRedraw(LCDBitmap *bitmap)
+{
+    if (!bitmap)
+    {
+        return;
+    }
+    uint32_t dataChecksum = 0;
+    uint32_t maskChecksum = 0;
+    const bool mustRedrawData = bitmap->BitmapDataData && bitmap->BitmapDataDataChecksum != (dataChecksum = _pd_api_gfx_getBitmapChecksum(bitmap, bitmap->BitmapDataData));
+    const bool mustRedrawMask = bitmap->BitmapDataMask && bitmap->BitmapDataMaskChecksum != (maskChecksum = _pd_api_gfx_getBitmapChecksum(bitmap, bitmap->BitmapDataMask));
+    
+    if (mustRedrawData || mustRedrawMask)
+    {
+        SDL_Surface* tmpTex = bitmap->Tex;
+        bool texUnlocked = true;
+        if (SDL_MUSTLOCK(tmpTex))
+            texUnlocked = SDL_LockSurface(tmpTex) == 0;
+
+        if (texUnlocked)
+        {
+            const Uint32 clear = SDL_MapRGBA(tmpTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+
+            const unsigned int width = tmpTex->w;
+            const unsigned int count = width * tmpTex->h;
+            for (unsigned int index = 0; index < count; index++)
+            {
+                const int x = index % width;
+                const int y = index / width;
+                const int pixelIndex = (y * tmpTex->pitch) + (x * tmpTex->format->BytesPerPixel);
+
+                const int byteIndex = index / 8;
+                const int indexInByte = index % 8;
+                const int flag = 1 << indexInByte;
+
+                SDL_Color color;
+                Uint32 *pixel = (Uint32*)((Uint8*)tmpTex->pixels + pixelIndex);
+                SDL_GetRGBA(*pixel, tmpTex->format, &color.r, &color.g, &color.b, &color.a);
+
+                const bool isClearColor = *pixel == clear;
+
+                if ((mustRedrawData || isClearColor) && (bitmap->BitmapDataData[byteIndex] & flag)) {
+                    color.r = pd_api_gfx_color_white.r;
+                    color.g = pd_api_gfx_color_white.g;
+                    color.b = pd_api_gfx_color_white.b;
+                } else if (mustRedrawData || isClearColor) {
+                    color.r = pd_api_gfx_color_black.r;
+                    color.g = pd_api_gfx_color_black.g;
+                    color.b = pd_api_gfx_color_black.b;
+                }
+
+                if (mustRedrawMask && (bitmap->BitmapDataMask[byteIndex] & flag)) {
+                    
+                    color.a = SDL_ALPHA_OPAQUE;
+                } else if (mustRedrawMask) {
+                    color = pd_api_gfx_color_clear;
+                }
+                *pixel = SDL_MapRGBA(tmpTex->format, color.r, color.g, color.b, color.a);
+            }
+
+            if (SDL_MUSTLOCK(tmpTex))
+                SDL_UnlockSurface(tmpTex);
+        }
+
+        if (mustRedrawData)
+            bitmap->BitmapDataDataChecksum = dataChecksum;
+        if (mustRedrawMask)
+            bitmap->BitmapDataMaskChecksum = maskChecksum;
+    }
 }

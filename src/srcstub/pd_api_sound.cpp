@@ -133,6 +133,8 @@ int SampleListCount = 0;
 
 struct AudioSample {
     Mix_Chunk *sound;
+    Mix_Chunk *remixedSound;
+    float remixedRate;
     int channel;
     char *path;
 };
@@ -142,6 +144,8 @@ AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
     printfDebug(DebugTraceFunctions, "pd_api_sound_newSampleBuffer\n");
     AudioSample *Tmp = (AudioSample*) malloc(sizeof(*Tmp));
     Tmp->sound = NULL;
+    Tmp->remixedSound = NULL;
+    Tmp->remixedRate = 1.0f;
     Tmp->channel = -1;
     Tmp->path = NULL;
     printfDebug(DebugTraceFunctions, "pd_api_sound_newSampleBuffer END\n");
@@ -302,6 +306,9 @@ void pd_api_sound_freeSample(AudioSample* sample)
     if(sample->sound)
         Mix_FreeChunk(sample->sound);
 
+    if(sample->remixedSound)
+        Mix_FreeChunk(sample->remixedSound);
+
     if(sample->channel > -1)
     {
         if(SampleList[sample->channel]->loaded)
@@ -376,7 +383,7 @@ struct SamplePlayer {
     float VolumeL;
     float VolumeR;
     float Offset;
-    int Rate;
+    float Rate;
     int Start;
     int End;
 };
@@ -389,7 +396,7 @@ SamplePlayer* pd_api_sound_newSamplePlayer(void)
     Tmp->VolumeL = 1.0f;
     Tmp->VolumeR = 1.0f;
     Tmp->Offset = 0.0f;
-    Tmp->Rate = 0;
+    Tmp->Rate = 1.0f;
     Tmp->Start = 0;
     Tmp->End = 0;
     printfDebug(DebugTraceFunctions, "pd_api_sound_newSamplePlayer end\n");
@@ -440,7 +447,41 @@ int pd_api_sound_playSamplePlayer(SamplePlayer* player, int repeat, float rate)
         return 0;
     }
 
-    int channel = Mix_PlayChannel(player->sample->channel, player->sample->sound, repeat-1);
+    Mix_Chunk *sound = player->sample->sound;
+
+    const float totalRate = rate * player->Rate;
+    if (totalRate != 1.0f)
+    {
+        if (player->sample->remixedSound == NULL || player->sample->remixedRate != totalRate)
+        {
+            if (player->sample->remixedSound)
+                Mix_FreeChunk(player->sample->remixedSound);
+            int frequency, channels;
+            Uint16 format;
+            Mix_QuerySpec(&frequency, &format, &channels);
+
+            /* Converting frequency to change the rate/pitch of the sound. */
+            SDL_AudioStream *stream = SDL_NewAudioStream(
+                 format, channels, frequency * totalRate,
+                 format, channels, frequency);
+            SDL_AudioStreamPut(stream, sound->abuf, sound->alen);
+            const int available = SDL_AudioStreamAvailable(stream);
+            Uint8 *buffer = (Uint8*)malloc(sizeof(Uint8) * available);
+
+            SDL_AudioStreamGet(stream, buffer, available);
+            SDL_FreeAudioStream(stream);
+
+            player->sample->remixedSound = (Mix_Chunk*)malloc(sizeof(Mix_Chunk));
+            player->sample->remixedSound->abuf = buffer;
+            player->sample->remixedSound->alen = available;
+            player->sample->remixedSound->allocated = 1;
+            player->sample->remixedSound->volume = sound->volume;
+            player->sample->remixedRate = totalRate;
+        }
+        sound = player->sample->remixedSound;
+    }
+
+    int channel = Mix_PlayChannel(player->sample->channel, sound, repeat-1);
     
     printfDebug(DebugTraceFunctions, "pd_api_sound_playSamplePlayer end\n");
     if(channel > -1)
