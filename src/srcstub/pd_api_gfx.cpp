@@ -719,7 +719,7 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
 	if(bitmap == NULL)
 		return;
 
-	int rb = (int)ceil(bitmap->w /8);
+	int rb = (int)ceil(bitmap->w /8.0f);
     if(rowbytes)
     {
         *rowbytes = rb;
@@ -764,26 +764,26 @@ void pd_api_gfx_getBitmapData(LCDBitmap* bitmap, int* width, int* height, int* r
 					if ((pval == alpha) || (pval == clear))
 					{
 						if(mask)
-                        {
                             pd_api_gfx_drawpixel(*mask, x, y, rb, kColorBlack);
-                            maskChecksum += x + y * bitmap->w;
-                        }
 					}
 					else
 					{
 						if(mask)
+						{
                             pd_api_gfx_drawpixel(*mask, x, y, rb, kColorWhite);
+							maskChecksum += x + y * bitmap->w;
+						}
 						
 						if(data)
 						{
 							if(pval >= whitethreshold)
 							{
 								pd_api_gfx_drawpixel(*data, x, y, rb, kColorWhite);
+								dataChecksum += x + y * bitmap->w;
 							}
 							else if(pval <= blackthreshold)
 							{
 								pd_api_gfx_drawpixel(*data, x, y, rb, kColorBlack);
-                                dataChecksum += x + y * bitmap->w;
 							}
 						}
 					}
@@ -3514,13 +3514,14 @@ void _pd_api_gfx_cleanUp()
 uint32_t _pd_api_gfx_getBitmapChecksum(LCDBitmap *bitmap, uint8_t *buffer)
 {
     uint32_t checksum = 0;
-    const unsigned int length = bitmap->w * bitmap->h;
-    for (unsigned int index = 0; index < length; index++)
+    const unsigned int rowbytes = (int)ceil(bitmap->w/8.0f);
+    for (unsigned int y = 0; y < bitmap->h; y++)
     {
-        const int byteindex = index / 8;
-        const int indexinbyte = 1 << (index % 8);
-        if ((buffer[byteindex] & indexinbyte) != 0) {
-            checksum += index;
+        for (unsigned int x = 0; x < bitmap->w; x++)
+        {
+            if (pd_api_gfx_samplepixel(buffer, x, y, rowbytes) == kColorWhite) {
+                checksum += x + y * bitmap->w;
+            }
         }
     }
     return checksum;
@@ -3549,6 +3550,7 @@ void _pd_api_gfx_checkBitmapNeedsRedraw(LCDBitmap *bitmap)
             const Uint32 clear = SDL_MapRGBA(tmpTex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 
             const unsigned int width = tmpTex->w;
+            const unsigned int rowbytes = (int)ceil(width/8.0f);
             const unsigned int count = width * tmpTex->h;
             for (unsigned int index = 0; index < count; index++)
             {
@@ -3556,28 +3558,22 @@ void _pd_api_gfx_checkBitmapNeedsRedraw(LCDBitmap *bitmap)
                 const int y = index / width;
                 const int pixelIndex = (y * tmpTex->pitch) + (x * tmpTex->format->BytesPerPixel);
 
-                const int byteIndex = index / 8;
-                const int indexInByte = index % 8;
-                const int flag = 1 << indexInByte;
-
                 SDL_Color color;
                 Uint32 *pixel = (Uint32*)((Uint8*)tmpTex->pixels + pixelIndex);
                 SDL_GetRGBA(*pixel, tmpTex->format, &color.r, &color.g, &color.b, &color.a);
 
-                const bool isClearColor = *pixel == clear;
-
-                if ((mustRedrawData || isClearColor) && (bitmap->BitmapDataData[byteIndex] & flag)) {
+                if (bitmap->BitmapDataData && pd_api_gfx_samplepixel(bitmap->BitmapDataData, x, y, rowbytes) == kColorWhite) {
                     color.r = pd_api_gfx_color_white.r;
                     color.g = pd_api_gfx_color_white.g;
                     color.b = pd_api_gfx_color_white.b;
-                } else if (mustRedrawData || isClearColor) {
+                } else if (bitmap->BitmapDataData) {
                     color.r = pd_api_gfx_color_black.r;
                     color.g = pd_api_gfx_color_black.g;
                     color.b = pd_api_gfx_color_black.b;
                 }
 
-                if (mustRedrawMask && (bitmap->BitmapDataMask[byteIndex] & flag)) {
-                    
+                if (mustRedrawMask && pd_api_gfx_samplepixel(bitmap->BitmapDataMask, x, y, rowbytes) == kColorWhite)
+                {
                     color.a = SDL_ALPHA_OPAQUE;
                 } else if (mustRedrawMask) {
                     color = pd_api_gfx_color_clear;
