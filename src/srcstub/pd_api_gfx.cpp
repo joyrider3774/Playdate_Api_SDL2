@@ -2976,8 +2976,10 @@ void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width
 {
 	if(table)
 	{
-		*count = table->count;
-		*width = table->across;
+		if(count)
+			*count = table->count;
+		if(width)
+			*width = table->across;
 	}
 }
 
