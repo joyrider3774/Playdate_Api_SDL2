@@ -421,12 +421,18 @@ void pd_api_gfx_setClipRect(int x, int y, int width, int height)
     cliprect.y = y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     cliprect.w = width;
     cliprect.h = height;
-    SDL_SetClipRect(_pd_api_gfx_getDrawTarget()->Tex, &cliprect);
+    LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
+    SDL_SetClipRect(drawTarget->Tex, &cliprect);
+    if (drawTarget->Mask)
+        SDL_SetClipRect(drawTarget->Mask->Tex, &cliprect);
 }
 
 void pd_api_gfx_clearClipRect(void)
 {
-    SDL_SetClipRect(_pd_api_gfx_getDrawTarget()->Tex, NULL);
+    LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
+    SDL_SetClipRect(drawTarget->Tex, NULL);
+    if (drawTarget->Mask)
+        SDL_SetClipRect(drawTarget->Mask->Tex, NULL);
 }
 
 void pd_api_gfx_setLineCapStyle(LCDLineCapStyle endCapStyle)
@@ -1227,6 +1233,7 @@ void pd_api_gfx_setScreenClipRect(int x, int y, int width, int height)
 // 1.1.1
 void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygonFillRule fillrule)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
     {
@@ -1245,6 +1252,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
         vy[i] = coords[(i*2)+1];
     }
 
+    SDL_Color maskColor = pd_api_gfx_color_white;
     switch (color)
     {
         case kColorBlack:
@@ -1258,10 +1266,13 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
             break;
         case kColorClear:
             filledPolygonRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, vx, vy, nPoints, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
+    if (mask)
+        filledPolygonRGBASurface(mask->Tex, vx, vy, nPoints, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 
     if (color == kColorXOR)
     {
@@ -1405,7 +1416,6 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 {
     _pd_api_gfx_checkBitmapNeedsRedraw(bitmap);
 	pd_api_gfx_recreatemaskedimage(bitmap);
-    LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
     SDL_Rect dstrect;
     dstrect.x = x +  _pd_api_gfx_CurrentGfxContext->drawoffsetx;
     dstrect.y = y +  _pd_api_gfx_CurrentGfxContext->drawoffsety;
@@ -1538,7 +1548,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 		if (requiresTargetTexture)
 		{
 			drawtargetsurface = SDL_CreateRGBSurfaceWithFormat(0, dstrect.w, dstrect.h, 32, pd_api_gfx_PIXELFORMAT);
-			SDL_BlitSurface(drawTarget->Tex, &dstrect, drawtargetsurface, NULL);
+			SDL_BlitSurface(_pd_api_gfx_getDrawTarget()->Tex, &dstrect, drawtargetsurface, NULL);
 			SDL_SetSurfaceBlendMode(drawtargetsurface, SDL_BLENDMODE_NONE);
 		}
 		
@@ -1578,6 +1588,7 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 			//in case of xor nxor we also need the target surface to compare values
 			//but the result is actually applied to the tmpsurface as well wich we'll draw one more time
 			//at the end using regular functions
+            LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
 			switch (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode)
 			{           
 				case kDrawModeBlackTransparent:
@@ -1790,15 +1801,43 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 		}
 	}
 
+    LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
+
 	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 	SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
 	SDL_BlitSurface(tmpTexture, NULL, drawTarget->Tex, &dstrect);
+
+    if (drawTarget->Mask)
+    {
+        const Uint32 clear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+        const Uint32 alpha = SDL_MapRGBA(tmpTexture->format,0,0,0,0);
+
+        SDL_Surface *maskTex = drawTarget->Mask->Tex;
+        const Uint32 white = SDL_MapRGBA(maskTex->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+
+        const int srcx = dstrect.x - _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+        const int srcy = dstrect.y - _pd_api_gfx_CurrentGfxContext->drawoffsety;
+
+        const int width = std::min(tmpTexture->w, dstrect.w);
+        const int height = std::min(tmpTexture->h, dstrect.h);
+        for (int yy = 0; (yy < height); yy++)
+        {
+            for(int xx = 0; (xx < width); xx++)
+            {
+                const Uint32 *p = (Uint32*)((Uint8 *)tmpTexture->pixels + ((yy + srcy) * tmpTexture->pitch) + ((xx + srcx) * tmpTexture->format->BytesPerPixel));
+                Uint32 *p2 = (Uint32*)((Uint8 *)maskTex->pixels + ((yy + dstrect.y) * maskTex->pitch) + ((xx + dstrect.x) * maskTex->format->BytesPerPixel));
+                const Uint32 pval = *p;
+                if (pval != alpha && pval != clear)
+                    *p2 = white;
+            }
+        }
+    }
 
 
 	if(!isOrginalTexture)
 		SDL_FreeSurface(tmpTexture);
 	
-	drawTarget->BitmapDirty = true;
+	_pd_api_gfx_getDrawTarget()->BitmapDirty = true;
 }
 
 void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotation, float centerx, float centery, float xscale, float yscale)
@@ -1847,6 +1886,7 @@ void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, 
 
 void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor color)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     int minx;
@@ -1880,6 +1920,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
 		y2 += _pd_api_gfx_CurrentGfxContext->drawoffsety;
 	}
 	
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	switch (color)
     {
         case kColorBlack:
@@ -1893,10 +1934,13 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int width, LCDColor col
             break;
         case kColorClear:
             lineRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
+    if (mask)
+        lineRGBASurface(mask->Tex, x1, y1, x2, y2, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 
     if (color == kColorXOR)
     {
@@ -1922,7 +1966,8 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
     points[2].y = y3;
     points[3].x = x1;
     points[3].y = y1;
-    
+
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     LCDBitmap *bitmap = NULL;
     int minx;
     int maxx;
@@ -1965,7 +2010,7 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 		points[3].y += _pd_api_gfx_CurrentGfxContext->drawoffsety;
 	}
 
-	
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	switch (color)
     {
         case kColorBlack:
@@ -1979,11 +2024,13 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
             break;
         case kColorClear:
             filledTrigonRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
-    
+    if (mask)
+        filledTrigonRGBASurface(mask->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
    
     if (color == kColorXOR)
     {
@@ -1999,6 +2046,7 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 
 void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
@@ -2014,6 +2062,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     rect.w = width;
     rect.h = height;
     
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	switch (color)
     {
         case kColorBlack:
@@ -2027,10 +2076,13 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
             break;
         case kColorClear:
             rectangleRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
+    if (mask)
+        rectangleRGBASurface(mask->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 	
     if (color == kColorXOR)
     {
@@ -2047,6 +2099,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 {
 	LCDBitmap *pattern = NULL;
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	Uint32 RealColor;
 	switch (color)
     {
@@ -2061,6 +2114,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
             break;
         case kColorClear:
             RealColor = SDL_MapRGBA(_pd_api_gfx_getDrawTarget()->Tex->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
 			//assume lcd pattern
@@ -2069,6 +2123,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 			break;
     }
 
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
@@ -2107,6 +2162,8 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
     	rect.h = height;
 
     	SDL_FillRect(_pd_api_gfx_getDrawTarget()->Tex, &rect, RealColor);
+        if (mask)
+            SDL_FillRect(mask->Tex, &rect, SDL_MapRGBA(mask->Tex->format, maskColor.r, maskColor.g, maskColor.b, maskColor.a));
 	}
 
 	if (color == kColorXOR)
@@ -2123,6 +2180,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 
 void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, float startAngle, float endAngle, LCDColor color) // stroked inside the rect
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
@@ -2139,7 +2197,8 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 
     x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
     y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
-    
+
+    SDL_Color maskColor = pd_api_gfx_color_white;
     switch (color)
     {
         case kColorBlack:
@@ -2153,11 +2212,13 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
             break;
         case kColorClear:
             ellipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
-    
+    if (mask)
+        ellipseRGBASurface(mask->Tex, x, y, width, height, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 
     if (color == kColorXOR)
     {
@@ -2173,6 +2234,7 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 
 void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngle, float endAngle, LCDColor color)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
@@ -2191,7 +2253,7 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
     y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
 
-         
+    SDL_Color maskColor = pd_api_gfx_color_white;
     switch (color)
     {
         case kColorBlack:
@@ -2205,10 +2267,13 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
             break;
         case kColorClear:
             filledEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
+    if (mask)
+        filledEllipseRGBASurface(mask->Tex, x, y, width, height, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
     
     if (color == kColorXOR)
     {
@@ -3163,6 +3228,7 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 
 void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
 	//for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
 	int halfLineWidth = lineWidth >> 1;
@@ -3178,7 +3244,8 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
     rect.y = color == kColorXOR ? halfLineWidth: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     rect.w = width;
     rect.h = height;
-    
+
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	for (int i = 0; i < lineWidth; i++)
 	{
 		switch (color)
@@ -3194,11 +3261,14 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 				break;
 			case kColorClear:
 				roundedRectangleRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+                maskColor = pd_api_gfx_color_black;
 				break;
 			default:
 				break;
 		
 		}
+        if (mask)
+            roundedRectangleRGBASurface(mask->Tex, rect.x+i-halfLineWidth, rect.y+i-halfLineWidth, rect.x + rect.w-1-i+halfLineWidth, rect.y + rect.h-1-i+halfLineWidth, radius, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 	}
 	
     if (color == kColorXOR)
@@ -3215,6 +3285,7 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 
 void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, LCDColor color)
 {
+    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
 	//for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
     if (color == kColorXOR)
@@ -3229,7 +3300,8 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
     rect.y = color == kColorXOR ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     rect.w = width;
     rect.h = height;
-    
+
+    SDL_Color maskColor = pd_api_gfx_color_white;
 	switch (color)
     {
         case kColorBlack:
@@ -3243,10 +3315,13 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
             break;
         case kColorClear:
             roundedBoxRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
+    if (mask)
+        roundedBoxRGBASurface(mask->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, radius, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 	
     if (color == kColorXOR)
     {
