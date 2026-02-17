@@ -252,7 +252,10 @@ void pd_api_sprite_updateAndDrawSprites(void)
 		}
 	}
 	printfDebug(DebugInfo, "pd_api_sprite_updateAndDrawSprites updates done: %d\n",c);
-	pd_api_sprite_drawSprites();
+	//don't try to draw sprites if spritelist is empty
+	//or it will clear the screen potentially which is unintended
+	if (c > 0)
+		pd_api_sprite_drawSprites();
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_updateAndDrawSprites end\n");
 }
 
