@@ -21,3 +21,7 @@ you can also provide a colors.ini file to determine the colors used for black an
 - Playdate api headers (contained in PD_API directory) are copyright by panic inc
 - bump.hpp by Polynominal (https://github.com/Polynominal/bump.hpp)
 
+# example games
+- collection of playdate games, including mine compiled with this api for html: https://joyrider3774.github.io/playdate_games_html/
+- Poker Poker Magic: https://rapcal.itch.io/poker-poker-magic
+
