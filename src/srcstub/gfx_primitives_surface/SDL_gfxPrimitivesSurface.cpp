@@ -6881,7 +6881,7 @@ int drawEllipseRGBASurface(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16
 		}
 	} else {
 		/* Outline path: Bresenham ellipse with per-point arc test */
-		int px, py;
+		int px;
 		x = 0; y = ry;
 		d1 = (double)ry * ry - (double)rx * rx * ry + 0.25 * (double)rx * rx;
 		dx = 2.0 * ry * ry * x;

@@ -2611,7 +2611,8 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 	int width, height;
 	Uint8 *utf8_alloc = NULL;
 
-	int i, numLines, rowHeight, lineskip;
+	size_t i, numLines;
+	int rowHeight, lineskip;
 	char **strLines = NULL, *text_cpy;
 	const char* sizedtext = (const char *) text; 
 	/* Convert input string to default encoding UTF-8 */
@@ -2638,7 +2639,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
     /* Truncate text_cpy at the given length. */
     i = 0;
     const size_t bytecount = strlen(text_cpy);
-    for (int charindex = 0; charindex < len && i < bytecount && text_cpy[i] != '\0'; charindex++) {
+    for (size_t charindex = 0; charindex < len && i < bytecount && text_cpy[i] != '\0'; charindex++) {
         const uint8_t entry = text_cpy[i];
         if (entry <= 127) {
             i++;
@@ -2670,7 +2671,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 	numLines = 1;
 
 	if (*text_cpy) {
-		int maxNumLines = 0;
+		size_t maxNumLines = 0;
 		size_t textlen = SDL_strlen(text_cpy);
 		numLines = 0;
 		size_t numChars = 0;
@@ -3642,9 +3643,9 @@ uint32_t _pd_api_gfx_getBitmapChecksum(LCDBitmap *bitmap, uint8_t *buffer)
 {
     uint32_t checksum = 0;
     const unsigned int rowbytes = (int)ceil(bitmap->w/8.0f);
-    for (unsigned int y = 0; y < bitmap->h; y++)
+    for (int y = 0; y < bitmap->h; y++)
     {
-        for (unsigned int x = 0; x < bitmap->w; x++)
+        for (int x = 0; x < bitmap->w; x++)
         {
             if (pd_api_gfx_samplepixel(buffer, x, y, rowbytes) == kColorWhite) {
                 checksum += x + y * bitmap->w;
