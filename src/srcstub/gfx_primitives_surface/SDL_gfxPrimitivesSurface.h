@@ -233,6 +233,9 @@ extern "C" {
 		int n, int s, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
 
 	
+	/* Draw / fill an ellipse arc (Playdate-compatible angle convention) */
+	SDL_GFXPRIMITIVES_SCOPE int drawEllipseRGBASurface(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16 width, Sint16 height, Sint16 lineWidth, float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled);
+
 	/* Ends C function definitions when using C++ */
 #ifdef __cplusplus
 }

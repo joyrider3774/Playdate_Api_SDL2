@@ -6720,3 +6720,272 @@ int thickLineRGBASurface(SDL_Surface * dst, Sint16 x1, Sint16 y1, Sint16 x2, Sin
 	return (thickLineColorSurface(dst, x1, y1, x2, y2, width, 
 		((Uint32) r << 24) | ((Uint32) g << 16) | ((Uint32) b << 8) | (Uint32) a));
 }
+
+
+
+/* ---- Helper: test if bearing q (degrees) falls within the body arc [startAngle,endAngle] */
+static int _ellipseInArc(float startAngle, float endAngle, double q)
+{
+	double eps = 0.01;
+	/* 0,0 convention = full circle */
+	if (startAngle == 0.0f && endAngle == 0.0f) return 1;
+	/* any other sa==ea = zero body */
+	if (startAngle == endAngle) return 0;
+	q = fmod(q, 360.0);
+	if (q < 0.0) q += 360.0;
+	if (startAngle <= endAngle)
+		return (q >= startAngle - eps && q <= endAngle + eps);
+	else
+		return (q >= startAngle - eps || q <= endAngle + eps);
+}
+
+/* ---- Helper: compute bearing (degrees, 0=up clockwise) from integer offset */
+static double _ellipseBearing(int px, int py)
+{
+	double a = 180.0 / M_PI * atan2((double)px, (double)-py);
+	if (a < 0.0) a += 360.0;
+	return a;
+}
+
+/*!
+\brief Draw or fill an ellipse arc with Playdate-compatible angle convention.
+
+startAngle and endAngle define the body arc in degrees, measured clockwise
+from the top (0=up). Passing both as 0 draws a full circle/ellipse.
+lineWidth is only used when filled==0.
+
+\param dst The surface to draw on.
+\param rectX Left edge of the bounding rectangle.
+\param rectY Top edge of the bounding rectangle.
+\param width Width of the bounding rectangle.
+\param height Height of the bounding rectangle.
+\param lineWidth Outline thickness (ignored when filled!=0).
+\param startAngle Start of the body arc in degrees.
+\param endAngle End of the body arc in degrees.
+\param r Red component.
+\param g Green component.
+\param b Blue component.
+\param a Alpha component.
+\param filled Non-zero to fill, zero for outline only.
+
+\returns Returns 0 on success, -1 on failure.
+*/
+int drawEllipseRGBASurface(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16 width, Sint16 height, Sint16 lineWidth, float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled)
+{
+	int result = 0;
+	int rx, ry;
+	double xc_f, yc_f;
+	int xcR, xcL, ycT, ycB;
+	int full_circle;
+	int body_inside;
+	double body_w;
+	double sa_rad, ea_rad;
+	double cos_sa, sin_sa, cos_ea, sin_ea;
+	int y_top, y_bot, y, x;
+	double dx, dy, d1, d2;
+	Uint32 color = ((Uint32) r << 24) | ((Uint32) g << 16) | ((Uint32) b << 8) | (Uint32) a;
+
+	/* Normalize angles to [0, 360) */
+	startAngle = fmodf(startAngle, 360.0f);
+	if (startAngle < 0.0f) startAngle += 360.0f;
+	endAngle = fmodf(endAngle, 360.0f);
+	if (endAngle < 0.0f) endAngle += 360.0f;
+
+	rx = width / 2;
+	ry = height / 2;
+
+	/* Float center for filled scanline math (matches Playdate pixel layout) */
+	xc_f = rectX + rx - 0.5;
+	yc_f = rectY + ry - 0.5;
+
+	/* Asymmetric integer centers for outline Bresenham */
+	xcR = rectX + rx - 1;
+	xcL = rectX + rx;
+	ycT = rectY + ry;
+	ycB = rectY + ry - 1;
+
+	if (filled) {
+		full_circle = (startAngle == 0.0f && endAngle == 0.0f);
+
+		sa_rad = startAngle * M_PI / 180.0;
+		ea_rad = endAngle   * M_PI / 180.0;
+		cos_sa = cos(sa_rad); sin_sa = sin(sa_rad);
+		cos_ea = cos(ea_rad); sin_ea = sin(ea_rad);
+
+		/* body_w: width of filled arc in degrees (0..360) */
+		body_w = fmod(endAngle - startAngle + 360.0, 360.0);
+		/* body is BETWEEN the two rays when body_w<=180, OUTSIDE when body_w>180 */
+		body_inside = (body_w <= 180.0);
+
+		y_top = (int)ceil(yc_f - ry);
+		y_bot = (int)floor(yc_f + ry);
+
+		for (y = y_top; y <= y_bot; y++) {
+			double dy_f = y - yc_f;
+			double t = 1.0 - dy_f * dy_f / ((double)ry * ry);
+			double hw, y_strip, t_sa, t_ea;
+			int xell_l, xell_r;
+
+			if (t < 0.0) continue;
+			hw = rx * sqrt(t);
+			xell_l = (int)ceil(xc_f - hw);
+			xell_r = (int)floor(xc_f + hw);
+
+			if (full_circle) {
+				result |= hlineColorSurface(dst, xell_l, xell_r, y, color);
+				continue;
+			}
+			/* sa==ea but not 0,0 → zero body, skip row */
+			if (startAngle == endAngle) continue;
+
+			y_strip = y + 0.5;
+			t_sa = (cos_sa != 0.0) ? (yc_f - y_strip) / cos_sa : -1.0;
+			t_ea = (cos_ea != 0.0) ? (yc_f - y_strip) / cos_ea : -1.0;
+
+			if (t_sa > 0.0 && t_ea > 0.0) {
+				double x_sa  = xc_f + t_sa * sin_sa;
+				double x_ea  = xc_f + t_ea * sin_ea;
+				double geo_l = (x_sa < x_ea) ? x_sa : x_ea;
+				double geo_r = (x_sa > x_ea) ? x_sa : x_ea;
+				int xl = (int)floor(geo_l);
+				int xr = (int)ceil(geo_r);
+
+				if (!body_inside) {
+					/* body OUTSIDE the ray pair → draw left wing and right wing */
+					if (geo_l <= xell_l && geo_r >= xell_r)
+						continue; /* entire row is gap */
+					else if (xl >= xr)
+						result |= hlineColorSurface(dst, xell_l, xell_r, y, color);
+					else {
+						if (xell_l <= xl) result |= hlineColorSurface(dst, xell_l, xl, y, color);
+						if (xr <= xell_r) result |= hlineColorSurface(dst, xr, xell_r, y, color);
+					}
+				} else {
+					/* body INSIDE the ray pair → draw between the rays */
+					int x_from = (int)ceil(geo_l);
+					int x_to   = (int)floor(geo_r);
+					if (x_from < xell_l) x_from = xell_l;
+					if (x_to   > xell_r) x_to   = xell_r;
+					if (x_from <= x_to)
+						result |= hlineColorSurface(dst, x_from, x_to, y, color);
+				}
+			} else {
+				/* fallback: per-pixel angle test (gap straddles 90/270 degrees) */
+				for (x = xell_l; x <= xell_r; x++) {
+					double angle = fmod(180.0 / M_PI * atan2(x - xc_f, -(y - yc_f)), 360.0);
+					if (angle < 0.0) angle += 360.0;
+					if (_ellipseInArc(startAngle, endAngle, angle))
+						result |= pixelColorSurface(dst, x, y, color);
+				}
+			}
+		}
+	} else {
+		/* Outline path: Bresenham ellipse with per-point arc test */
+		int px, py;
+		x = 0; y = ry;
+		d1 = (double)ry * ry - (double)rx * rx * ry + 0.25 * (double)rx * rx;
+		dx = 2.0 * ry * ry * x;
+		dy = 2.0 * rx * rx * y;
+
+		while (dx < dy) {
+			int pxR = xcR + x;
+			int pxL = xcL - x;
+			int pyT = ycT - y;
+			int pyB = ycB + y;
+			double aq1 = _ellipseBearing( x, -y);
+			double aq2 = _ellipseBearing(-x, -y);
+			double aq3 = _ellipseBearing(-x,  y);
+			double aq4 = _ellipseBearing( x,  y);
+
+			if (lineWidth <= 1) {
+				if (_ellipseInArc(startAngle, endAngle, aq1)) result |= pixelColorSurface(dst, pxR, pyT, color);
+				if (_ellipseInArc(startAngle, endAngle, aq2)) result |= pixelColorSurface(dst, pxL, pyT, color);
+				if (_ellipseInArc(startAngle, endAngle, aq3)) result |= pixelColorSurface(dst, pxL, pyB, color);
+				if (_ellipseInArc(startAngle, endAngle, aq4)) result |= pixelColorSurface(dst, pxR, pyB, color);
+			} else {
+				if (_ellipseInArc(startAngle, endAngle, aq1)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxR - px, pyT,      color);
+						result |= pixelColorSurface(dst, pxR,      pyT + px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq2)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxL + px, pyT,      color);
+						result |= pixelColorSurface(dst, pxL,      pyT + px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq3)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxL + px, pyB,      color);
+						result |= pixelColorSurface(dst, pxL,      pyB - px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq4)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxR - px, pyB,      color);
+						result |= pixelColorSurface(dst, pxR,      pyB - px, color);
+					}
+				}
+			}
+
+			if (d1 < 0.0) {
+				x++; dx += 2.0*ry*ry; d1 += dx + ry*ry;
+			} else {
+				x++; y--; dx += 2.0*ry*ry; dy -= 2.0*rx*rx; d1 += dx - dy + ry*ry;
+			}
+		}
+
+		d2 = (double)ry*ry*(x+0.5)*(x+0.5) + (double)rx*rx*(y-1)*(y-1) - (double)rx*rx*ry*ry;
+		while (y >= 0) {
+			int pxR = xcR + x;
+			int pxL = xcL - x;
+			int pyT = ycT - y;
+			int pyB = ycB + y;
+			double aq1 = _ellipseBearing( x, -y);
+			double aq2 = _ellipseBearing(-x, -y);
+			double aq3 = _ellipseBearing(-x,  y);
+			double aq4 = _ellipseBearing( x,  y);
+
+			if (lineWidth <= 1) {
+				if (_ellipseInArc(startAngle, endAngle, aq1)) result |= pixelColorSurface(dst, pxR, pyT, color);
+				if (_ellipseInArc(startAngle, endAngle, aq2)) result |= pixelColorSurface(dst, pxL, pyT, color);
+				if (_ellipseInArc(startAngle, endAngle, aq3)) result |= pixelColorSurface(dst, pxL, pyB, color);
+				if (_ellipseInArc(startAngle, endAngle, aq4)) result |= pixelColorSurface(dst, pxR, pyB, color);
+			} else {
+				if (_ellipseInArc(startAngle, endAngle, aq1)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxR - px, pyT,      color);
+						result |= pixelColorSurface(dst, pxR,      pyT + px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq2)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxL + px, pyT,      color);
+						result |= pixelColorSurface(dst, pxL,      pyT + px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq3)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxL + px, pyB,      color);
+						result |= pixelColorSurface(dst, pxL,      pyB - px, color);
+					}
+				}
+				if (_ellipseInArc(startAngle, endAngle, aq4)) {
+					for (px = 0; px < lineWidth; px++) {
+						result |= pixelColorSurface(dst, pxR - px, pyB,      color);
+						result |= pixelColorSurface(dst, pxR,      pyB - px, color);
+					}
+				}
+			}
+
+			if (d2 > 0.0) {
+				y--; dy -= 2.0*rx*rx; d2 += rx*rx - dy;
+			} else {
+				y--; x++; dx += 2.0*ry*ry; dy -= 2.0*rx*rx; d2 += dx - dy + rx*rx;
+			}
+		}
+	}
+
+	return result;
+}

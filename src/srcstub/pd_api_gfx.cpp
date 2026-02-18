@@ -2188,37 +2188,34 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
         bitmap = Api->graphics->newBitmap(width+1, height+1, kColorClear);
         Api->graphics->pushContext(bitmap);
     }
-    //SDL's implementation takes double while with and height with playdate api is the with of the bounding rectangle
-    width = width >> 1;
-    height = height >> 1;
     
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
-    y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
+    x = color == kColorXOR ? 0: x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
 
     SDL_Color maskColor = pd_api_gfx_color_white;
     switch (color)
     {
         case kColorBlack:
-            ellipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, lineWidth, startAngle, endAngle, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a, false);
             break;
         case kColorWhite:
-            ellipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, lineWidth, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, false);
             break;
         case kColorXOR:
-            ellipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height,  lineWidth, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, false);
             break;
         case kColorClear:
-            ellipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height,  lineWidth, startAngle, endAngle, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a, false);
             maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
     if (mask)
-        ellipseRGBASurface(mask->Tex, x, y, width, height, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
+        drawEllipseRGBASurface(mask->Tex, x, y, width, height, lineWidth, startAngle, endAngle, maskColor.r, maskColor.g, maskColor.b, maskColor.a, false);
 
     if (color == kColorXOR)
     {
@@ -2243,37 +2240,33 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
         Api->graphics->pushContext(bitmap);
     }
 
-    //SDL's implementation takes double while with and height with playdate api is the with of the bounding rectangle
-    width = width >> 1;
-    height = height >> 1;
-
     int oldx = x;
     int oldy = y;
 
-    x = color == kColorXOR ? width  : x + width + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
-    y = color == kColorXOR ? height:  y + height + _pd_api_gfx_CurrentGfxContext->drawoffsety;
+    x = color == kColorXOR ? 0 : x + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    y = color == kColorXOR ? 0 : y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
 
     SDL_Color maskColor = pd_api_gfx_color_white;
     switch (color)
     {
         case kColorBlack:
-            filledEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, 0, startAngle, endAngle, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a, true);
             break;
         case kColorWhite:
-            filledEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, 0, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, true);
             break;
         case kColorXOR:
-            filledEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, 0, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, true);
             break;
         case kColorClear:
-            filledEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            drawEllipseRGBASurface(_pd_api_gfx_getDrawTarget()->Tex, x, y, width, height, 0, startAngle, endAngle, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a, true);
             maskColor = pd_api_gfx_color_black;
             break;
         default:
             break;
     }
     if (mask)
-        filledEllipseRGBASurface(mask->Tex, x, y, width, height, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
+        drawEllipseRGBASurface(mask->Tex, x, y, width, height, 0, startAngle, endAngle, maskColor.r, maskColor.g, maskColor.b, maskColor.a, true);
     
     if (color == kColorXOR)
     {
