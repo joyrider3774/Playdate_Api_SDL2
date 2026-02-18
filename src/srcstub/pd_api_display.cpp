@@ -28,8 +28,8 @@ int pd_api_display_getHeight(void)
 void pd_api_display_setRefreshRate(float rate)
 {
     float tmp = rate;
-    if(tmp > 50)
-        tmp = 50;
+    if(tmp > 50.0f)
+        tmp = 50.0f;
     _pd_api_display_Fps = tmp;
     if (tmp > 0)
         _pd_api_display_DesiredDelta = 1000.0 / (double)_pd_api_display_Fps;
