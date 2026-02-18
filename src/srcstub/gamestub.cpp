@@ -393,7 +393,7 @@ void runMainLoop()
 
 	//calculate fps & delay
 	pd_api_elapsed = (((double)SDL_GetPerformanceCounter() - (double)StartTicks) / (double)SDL_GetPerformanceFrequency()) * 1000.0;
-	if ((_pd_api_display_DesiredDelta != 0.0) && (pd_api_elapsed < _pd_api_display_DesiredDelta))
+	if ((_pd_api_display_DesiredDelta > 0.0) && (pd_api_elapsed < _pd_api_display_DesiredDelta))
 	{
 		//SDL_Delay((Uint32)(_DisplayDesiredDelta - elapsed));
 		preciseSleep((_pd_api_display_DesiredDelta - pd_api_elapsed) / 1000.0);
