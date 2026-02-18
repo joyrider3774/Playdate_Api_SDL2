@@ -1,8 +1,8 @@
 #include "pd_api/pd_api_display.h"
 #include "gamestubcallbacks.h"
 
-float _pd_api_display_Fps = 50.0f;
-double _pd_api_display_DesiredDelta = 1000.0 / 50.0;
+float _pd_api_display_Fps = 30.0f;
+double _pd_api_display_DesiredDelta = 1000.0 / 30.0;
 unsigned int _pd_api_display_Scale = 1;
 unsigned int _pd_api_display_MosaicX = 0;
 unsigned int _pd_api_display_MosaicY = 0;
