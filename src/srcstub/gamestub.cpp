@@ -513,7 +513,11 @@ Possible options are:\n\
             WindowFlags |= SDL_WINDOW_FULLSCREEN_DESKTOP;            
         }
 
-       	SdlWindow = SDL_CreateWindow("Playdate Game", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREENRESX*windowScale, SCREENRESY*windowScale, WindowFlags);
+        const char *name = pdx_info_parser_name();
+        if (name == NULL) {
+            name = "Playdate Game";
+        }
+       	SdlWindow = SDL_CreateWindow(name, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREENRESX*windowScale, SCREENRESY*windowScale, WindowFlags);
         
         if (SdlWindow) 
         {
