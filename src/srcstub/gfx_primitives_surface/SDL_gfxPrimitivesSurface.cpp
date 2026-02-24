@@ -6495,7 +6495,7 @@ void _murphyWideline(SDL_gfxMurphyIterator *m, Sint16 x1, Sint16 y1, Sint16 x2, 
 	float offset = (float)width / 2.f;
 
 	Sint16 temp;
-	Sint16 ptx, pty, ptxx, ptxy, ml1x, ml1y, ml2x, ml2y, ml1bx, ml1by, ml2bx, ml2by;
+	Sint16 ptx, pty, ml1x, ml1y, ml2x, ml2y, ml1bx, ml1by, ml2bx, ml2by;
 
 	int d0, d1;		/* difference terms d0=perpendicular to line, d1=along line */
 
@@ -6580,8 +6580,6 @@ void _murphyWideline(SDL_gfxMurphyIterator *m, Sint16 x1, Sint16 y1, Sint16 x2, 
 		m->last2x = -32768;
 		m->last2y = -32768;
 	}
-	ptxx = ptx;
-	ptxy = pty;
 
 	for (q = 0; dd <= tk; q++) {	/* outer loop, stepping perpendicular to line */
 
@@ -6699,53 +6697,265 @@ int thickLineColorSurface(SDL_Surface * dst, Sint16 x1, Sint16 y1, Sint16 x2, Si
 	return(0);
 }
 
-/*!
-\brief Draw a thick line with alpha blending.
+/* -------------------------------------------------------------------------
+ * Internal helpers
+ * ------------------------------------------------------------------------- */
 
-\param dst The surface to draw on.
-\param x1 X coordinate of the first point of the line.
-\param y1 Y coordinate of the first point of the line.
-\param x2 X coordinate of the second point of the line.
-\param y2 Y coordinate of the second point of the line.
-\param width Width of the line in pixels. Must be >0.
-\param r The red value of the character to draw. 
-\param g The green value of the character to draw. 
-\param b The blue value of the character to draw. 
-\param a The alpha value of the character to draw.
-
-\returns Returns 0 on success, -1 on failure.
-*/	
-int thickLineRGBASurface(SDL_Surface * dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Uint8 width, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+/* Normalise angle to [0, 360). */
+static float normalise_angle(float a)
 {
-	return (thickLineColorSurface(dst, x1, y1, x2, y2, width, 
-		((Uint32) r << 24) | ((Uint32) g << 16) | ((Uint32) b << 8) | (Uint32) a));
+    a = fmodf(a, 360.0f);
+    if (a < 0.0f) a += 360.0f;
+    return a;
+}
+
+/*
+ * Is angle `a` (degrees, 0..360) within the clockwise arc [start, end]?
+ * When start < end the arc does NOT wrap; when start > end it wraps through 0.
+ */
+/*
+ * hlineColorNolock: draw a horizontal span [x1..x2] at row y.
+ * No locking — caller must already hold the surface lock.
+ * Clips to the surface clip rect.
+ */
+static void hlineColorNolock(SDL_Surface *dst, Sint16 x1, Sint16 x2, Sint16 y, Uint32 color)
+{
+    Sint16 left, right, xtmp;
+    Uint8 *pixel;
+    int dx, pixx;
+
+    if (dst->clip_rect.w == 0 || dst->clip_rect.h == 0) return;
+    if (x1 > x2) { xtmp = x1; x1 = x2; x2 = xtmp; }
+    left  = dst->clip_rect.x;
+    right = dst->clip_rect.x + (Sint16)dst->clip_rect.w - 1;
+    if (x2 < left || x1 > right) return;
+    if (y < dst->clip_rect.y || y > dst->clip_rect.y + (Sint16)dst->clip_rect.h - 1) return;
+    if (x1 < left)  x1 = left;
+    if (x2 > right) x2 = right;
+
+    dx   = x2 - x1;
+    pixx = dst->format->BytesPerPixel;
+    pixel = ((Uint8 *)dst->pixels) + pixx * (int)x1 + dst->pitch * (int)y;
+
+    switch (pixx) {
+    case 1:
+        memset(pixel, (Uint8)color, dx + 1);
+        break;
+    case 2: {
+        Uint16 c = (Uint16)color;
+        Uint8 *last = pixel + dx * 2;
+        for (; pixel <= last; pixel += 2) *(Uint16 *)pixel = c;
+        break;
+    }
+    case 3: {
+        Uint8 c0, c1, c2;
+        Uint8 *last = pixel + dx * 3;
+        if (SDL_BYTEORDER == SDL_BIG_ENDIAN) {
+            c0 = (color >> 16) & 0xFF; c1 = (color >> 8) & 0xFF; c2 = color & 0xFF;
+        } else {
+            c0 = color & 0xFF; c1 = (color >> 8) & 0xFF; c2 = (color >> 16) & 0xFF;
+        }
+        for (; pixel <= last; pixel += 3) { pixel[0] = c0; pixel[1] = c1; pixel[2] = c2; }
+        break;
+    }
+    default: {
+        Uint32 c = color;
+        Uint8 *last = pixel + dx * 4;
+        for (; pixel <= last; pixel += 4) *(Uint32 *)pixel = c;
+        break;
+    }
+    }
+}
+
+static int angle_in_arc(float a, float start, float end)
+{
+    if (start <= end)
+        return (a >= start && a <= end);
+    else
+        return (a >= start || a <= end);
+}
+
+/*
+ * hspan_arc: draw pixels in [x0..x1] on row y that fall within arc [start_a,end_a].
+ *
+ * Replaces per-pixel atan2 with O(1) span computation per row.
+ *
+ * Row angle structure (atan2(dx,-dy), Playdate convention):
+ *   dy < 0 (above centre, -dy > 0):
+ *     left half  (dx<0): angles 270°..360°  (increasing right toward 360°)
+ *     right half (dx>0): angles   0°.. 90°  (increasing right toward 90°)
+ *     Angle INCREASES from left to right across whole row (goes through 0°/360° at x=cx).
+ *   dy > 0 (below centre, -dy < 0):
+ *     left half  (dx<0): angles 180°..270°  (decreasing right toward 180°)
+ *     right half (dx>0): angles  90°..180°  (decreasing right toward 90°)
+ *     Angle DECREASES from left to right across whole row.
+ *
+ * Per-half, angle is monotone. We compute the x-intercept of each arc boundary:
+ *   arc_x(a) = cx - dy*tan(a_rad)
+ * then clip the in-arc sub-span within each half separately.
+ *
+ * For non-wrapping arc [sa, ea] (sa <= ea):
+ *   On each half, the in-arc sub-range is the x-interval where angle ∈ [sa,ea].
+ *   dy<0 (increasing): x ∈ [arc_x(sa), arc_x(ea)]  ∩ half_range
+ *   dy>0 (decreasing): x ∈ [arc_x(ea), arc_x(sa)]  ∩ half_range
+ *
+ * For wrapping arc (sa > ea): complement [ea,sa] is out-of-arc → two sub-spans.
+ */
+
+/* x-position where angle ray a_rad crosses this row (dy from centre). */
+static float arc_x(float a_rad, float cx, float dy)
+{
+    float c = cosf(a_rad);
+    if (fabsf(c) < 1e-6f)
+        return (sinf(a_rad) > 0.0f) ? 1e9f : -1e9f;
+    return cx - dy * (sinf(a_rad) / c);
+}
+
+/*
+ * draw_half_span: draw pixels from the half-row [hx0..hx1] that fall in arc [sa,ea].
+ * angle_lo/angle_hi are the angle range this half covers (angle_lo < angle_hi).
+ * increasing: 1 if angle increases left→right in this half, 0 if decreasing.
+ */
+static void draw_arc_half(SDL_Surface *dst, int hx0, int hx1, int y,
+                           float cx, float dy,
+                           float sa, float ea,        /* arc boundaries, normalized */
+                           float angle_lo, float angle_hi,   /* this half's angle range */
+                           int increasing,            /* angle direction */
+                           Uint32 color)
+{
+    int lo, hi;
+    if (hx0 > hx1) return;
+
+    /* Does the arc [sa,ea] overlap this half's angle range [angle_lo,angle_hi]? */
+    /* Compute the overlap interval. */
+    float ov_lo, ov_hi;
+
+    if (sa <= ea) {
+        /* Non-wrapping arc */
+        ov_lo = (sa > angle_lo) ? sa : angle_lo;
+        ov_hi = (ea < angle_hi) ? ea : angle_hi;
+    } else {
+        /* Wrapping arc: covers [sa,360) ∪ [0,ea].
+         * Overlap with [angle_lo,angle_hi]: take the larger of the two intersections. */
+        float ov1_lo = (sa > angle_lo) ? sa : angle_lo;
+        float ov1_hi = angle_hi;   /* [sa,360] ∩ [alo,ahi] */
+        float ov2_lo = angle_lo;
+        float ov2_hi = (ea < angle_hi) ? ea : angle_hi;  /* [0,ea] ∩ [alo,ahi] */
+
+        /* Draw first overlap */
+        if (ov1_lo <= ov1_hi) {
+            float ax = arc_x(ov1_lo * (float)(M_PI/180.0), cx, dy);
+            float bx = arc_x(ov1_hi * (float)(M_PI/180.0), cx, dy);
+            if (increasing) { lo=(int)ceilf(ax);  hi=(int)floorf(bx); }
+            else             { lo=(int)ceilf(bx);  hi=(int)floorf(ax); }
+            if (lo < hx0) lo = hx0;
+            if (hi > hx1) hi = hx1;
+            if (lo <= hi)
+                hlineColorNolock(dst, (Sint16)lo, (Sint16)hi, (Sint16)y, color);
+        }
+        /* Draw second overlap */
+        if (ov2_lo <= ov2_hi) {
+            float ax = arc_x(ov2_lo * (float)(M_PI/180.0), cx, dy);
+            float bx = arc_x(ov2_hi * (float)(M_PI/180.0), cx, dy);
+            if (increasing) { lo=(int)ceilf(ax);  hi=(int)floorf(bx); }
+            else             { lo=(int)ceilf(bx);  hi=(int)floorf(ax); }
+            if (lo < hx0) lo = hx0;
+            if (hi > hx1) hi = hx1;
+            if (lo <= hi)
+                hlineColorNolock(dst, (Sint16)lo, (Sint16)hi, (Sint16)y, color);
+        }
+        return;
+    }
+
+    if (ov_lo > ov_hi) return;   /* No overlap */
+
+    /* Map angle range to x range */
+    float ax = arc_x(ov_lo * (float)(M_PI/180.0), cx, dy);
+    float bx = arc_x(ov_hi * (float)(M_PI/180.0), cx, dy);
+    if (increasing) { lo=(int)ceilf(ax);  hi=(int)floorf(bx); }
+    else             { lo=(int)ceilf(bx);  hi=(int)floorf(ax); }
+
+    if (lo < hx0) lo = hx0;
+    if (hi > hx1) hi = hx1;
+    if (lo <= hi)
+        hlineColorNolock(dst, (Sint16)lo, (Sint16)hi, (Sint16)y, color);
+}
+
+static void hspan_arc(SDL_Surface *dst,
+                      int x0, int x1, int y,
+                      float cx, float cy,
+                      float start_a, float end_a,
+                      int full_ellipse,
+                      Uint32 color)
+{
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
+    if (y < 0 || y >= dst->h) return;
+
+    if (full_ellipse) {
+        hlineColorNolock(dst, (Sint16)x0, (Sint16)x1, (Sint16)y, color);
+        return;
+    }
+
+    float dy = (float)y - cy;
+
+    if (fabsf(dy) < 0.5f) {
+        /* Centre rows: fall back to per-pixel (≤2 rows). */
+        for (int x = x0; x <= x1; x++) {
+            float ang = atan2f((float)x - cx, -dy) * (float)(180.0 / M_PI);
+            ang = normalise_angle(ang);
+            if (angle_in_arc(ang, start_a, end_a))
+                fastPixelColorNolock(dst, x, y, color);
+        }
+        return;
+    }
+
+    /* Split row at cx.
+     * For half-integer cx (e.g. 117.5):
+     *   left half  x ∈ [x0, floor(cx)]:  dx ∈ (…, -0.5], always negative
+     *   right half x ∈ [ceil(cx),  x1]:  dx ∈ [+0.5, …), always positive
+     *   No pixel is skipped, no pixel is double-counted.
+     * For integer cx: floor(cx)==ceil(cx), so pixel cx appears in both halves.
+     *   dx=0 gives angle 0° (dy<0) or 180° (dy>0) — boundary, safe to draw twice. */
+    int left_hi  = (int)floorf(cx);   /* last pixel of left half  */
+    int right_lo = (int)ceilf(cx);    /* first pixel of right half */
+
+    if (dy < 0.0f) {
+        /* Above centre: angle increases right.
+         * Left  half: x in [x0, left_hi],  angles 270°..360°
+         * Right half: x in [right_lo, x1], angles   0°.. 90° */
+        /* Left half */
+        if (x0 <= left_hi) {
+            int h0 = x0, h1 = (left_hi < x1) ? left_hi : x1;
+            draw_arc_half(dst, h0, h1, y, cx, dy,
+                          start_a, end_a, 270.0f, 360.0f, 1, color);
+        }
+        /* Right half */
+        if (right_lo <= x1) {
+            int h0 = (right_lo > x0) ? right_lo : x0;
+            draw_arc_half(dst, h0, x1, y, cx, dy,
+                          start_a, end_a, 0.0f, 90.0f, 1, color);
+        }
+    } else {
+        /* Below centre: angle decreases right.
+         * Left  half: x in [x0, left_hi],  angles 180°..270°
+         * Right half: x in [right_lo, x1], angles  90°..180° */
+        if (x0 <= left_hi) {
+            int h0 = x0, h1 = (left_hi < x1) ? left_hi : x1;
+            draw_arc_half(dst, h0, h1, y, cx, dy,
+                          start_a, end_a, 180.0f, 270.0f, 0, color);
+        }
+        if (right_lo <= x1) {
+            int h0 = (right_lo > x0) ? right_lo : x0;
+            draw_arc_half(dst, h0, x1, y, cx, dy,
+                          start_a, end_a, 90.0f, 180.0f, 0, color);
+        }
+    }
 }
 
 
-
-/* ---- Helper: test if bearing q (degrees) falls within the body arc [startAngle,endAngle] */
-static int _ellipseInArc(float startAngle, float endAngle, double q)
-{
-	double eps = 0.01;
-	/* 0,0 convention = full circle */
-	if (startAngle == 0.0f && endAngle == 0.0f) return 1;
-	/* any other sa==ea = zero body */
-	if (startAngle == endAngle) return 0;
-	q = fmod(q, 360.0);
-	if (q < 0.0) q += 360.0;
-	if (startAngle <= endAngle)
-		return (q >= startAngle - eps && q <= endAngle + eps);
-	else
-		return (q >= startAngle - eps || q <= endAngle + eps);
-}
-
-/* ---- Helper: compute bearing (degrees, 0=up clockwise) from integer offset */
-static double _ellipseBearing(int px, int py)
-{
-	double a = 180.0 / M_PI * atan2((double)px, (double)-py);
-	if (a < 0.0) a += 360.0;
-	return a;
-}
+/* -------------------------------------------------------------------------
+ * Public API
+ * ------------------------------------------------------------------------- */
 
 /*!
 \brief Draw or fill an ellipse arc with Playdate-compatible angle convention.
@@ -6770,222 +6980,834 @@ lineWidth is only used when filled==0.
 
 \returns Returns 0 on success, -1 on failure.
 */
-int drawEllipseRGBASurface(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16 width, Sint16 height, Sint16 lineWidth, float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled)
+int drawEllipseRGBASurfacePlaydate(SDL_Surface *dst,  Sint16 rectX, Sint16 rectY, Sint16 width,  Sint16 height, Sint16 lineWidth,
+	float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled)
 {
-	int result = 0;
-	int rx, ry;
-	double xc_f, yc_f;
-	int xcR, xcL, ycT, ycB;
-	int full_circle;
-	int body_inside;
-	double body_w;
-	double sa_rad, ea_rad;
-	double cos_sa, sin_sa, cos_ea, sin_ea;
-	int y_top, y_bot, y, x;
-	double dx, dy, d1, d2;
-	Uint32 color = ((Uint32) r << 24) | ((Uint32) g << 16) | ((Uint32) b << 8) | (Uint32) a;
+    int y;
+    float cx, cy, rx, ry;
+    int full_ellipse;
+    float start_a, end_a;
+    int lw;
+    float irx, iry;
 
-	/* Normalize angles to [0, 360) */
-	startAngle = fmodf(startAngle, 360.0f);
-	if (startAngle < 0.0f) startAngle += 360.0f;
-	endAngle = fmodf(endAngle, 360.0f);
-	if (endAngle < 0.0f) endAngle += 360.0f;
+    if (!dst)               return -1;
+    if (width  <= 0)        return -1;
+    if (height <= 0)        return -1;
+    if (!filled && lineWidth <= 0) lineWidth = 1;
 
-	rx = width / 2;
-	ry = height / 2;
+    /* ------------------------------------------------------------------
+     * Geometry
+     * Centre is at the exact midpoint of the bounding rect.
+     * (Confirmed: Playdate uses float centre for sub-pixel accuracy.)
+     * ------------------------------------------------------------------ */
+    cx = rectX + width  * 0.5f;
+    cy = rectY + height * 0.5f;
+    rx = width  * 0.5f;
+    ry = height * 0.5f;
 
-	/* Float center for filled scanline math (matches Playdate pixel layout) */
-	xc_f = rectX + rx - 0.5;
-	yc_f = rectY + ry - 0.5;
+    /* ------------------------------------------------------------------
+     * Arc parameters
+     * Full ellipse: startAngle == 0 && endAngle == 0 (Playdate spec).
+     * ------------------------------------------------------------------ */
+    full_ellipse = (startAngle == 0.0f && endAngle == 0.0f);
+    start_a = 0.0f;
+    end_a   = 360.0f;
+    if (!full_ellipse) {
+        start_a = normalise_angle(startAngle);
+        end_a   = normalise_angle(endAngle);
+        /* If they collapse to the same angle treat as full ellipse */
+        if (fabsf(start_a - end_a) < 0.001f)
+            full_ellipse = 1;
+    }
 
-	/* Asymmetric integer centers for outline Bresenham */
-	xcR = rectX + rx - 1;
-	xcL = rectX + rx;
-	ycT = rectY + ry;
-	ycB = rectY + ry - 1;
+    /* ------------------------------------------------------------------
+     * Lock surface and map colour to surface pixel format
+     * ------------------------------------------------------------------ */
+    if (SDL_MUSTLOCK(dst) && SDL_LockSurface(dst) < 0)
+        return -1;
 
-	if (filled) {
-		full_circle = (startAngle == 0.0f && endAngle == 0.0f);
+    {
+        Uint32 color = SDL_MapRGBA(dst->format, r, g, b, a);
 
-		sa_rad = startAngle * M_PI / 180.0;
-		ea_rad = endAngle   * M_PI / 180.0;
-		cos_sa = cos(sa_rad); sin_sa = sin(sa_rad);
-		cos_ea = cos(ea_rad); sin_ea = sin(ea_rad);
+    if (filled) {
+        /* ================================================================
+         * FILL
+         * Scan every row in the bounding box.  For each row compute the
+         * horizontal extent of the (outer) ellipse via the ellipse equation,
+         * then pass the span to hspan_arc.
+         *
+         * hspan_arc splits the span at cx into left/right halves (each with
+         * a fixed known angle range) and uses arc_x() — O(1) per half — to
+         * compute the x-intercepts of the arc boundaries, drawing only the
+         * sub-spans that fall within the arc.  No per-pixel atan2 calls.
+         *
+         * For a partial (pie-slice) arc the angle filtering naturally
+         * produces the correct wedge including the triangular region between
+         * the two radii and the centre.
+         * ================================================================ */
+        int y0 = (int)floorf(cy - ry);
+        int y1 = (int)ceilf (cy + ry);
 
-		/* body_w: width of filled arc in degrees (0..360) */
-		body_w = fmod(endAngle - startAngle + 360.0, 360.0);
-		/* body is BETWEEN the two rays when body_w<=180, OUTSIDE when body_w>180 */
-		body_inside = (body_w <= 180.0);
+        for (y = y0; y <= y1; y++) {
+            float dy, disc, xd;
+            int x0, x1;
 
-		y_top = (int)ceil(yc_f - ry);
-		y_bot = (int)floor(yc_f + ry);
+            if (y < 0 || y >= dst->h) continue;
+            dy   = (float)y - cy;
+            disc = ry * ry - dy * dy;
+            if (disc < 0.0f) continue;
+            xd = sqrtf(disc) * rx / ry;
+            x0 = (int)ceilf (cx - xd);
+            x1 = (int)floorf(cx + xd);
 
-		for (y = y_top; y <= y_bot; y++) {
-			double dy_f = y - yc_f;
-			double t = 1.0 - dy_f * dy_f / ((double)ry * ry);
-			double hw, y_strip, t_sa, t_ea;
-			int xell_l, xell_r;
+            if (full_ellipse) {
+                if (x0 <= x1)  /* guard: x0>x1 when xd=0 and cx is half-integer */
+                    hlineColorNolock(dst, (Sint16)x0, (Sint16)x1, (Sint16)y, color);
+            } else {
+                hspan_arc(dst, x0, x1, y, cx, cy,
+                          start_a, end_a, 0, color);
+            }
+        }
 
-			if (t < 0.0) continue;
-			hw = rx * sqrt(t);
-			xell_l = (int)ceil(xc_f - hw);
-			xell_r = (int)floor(xc_f + hw);
+    } else {
+        /* ================================================================
+         * OUTLINE
+         * Draw the annulus between the outer ellipse (rx, ry) and the
+         * inner ellipse (rx-lineWidth, ry-lineWidth).
+         *
+         * From _drawEllipseRows analysis:
+         *   outer semi-axes = rx,  ry
+         *   inner semi-axes = rx - lineWidth,  ry - lineWidth
+         * When inner radii <= 0 the inner ellipse degenerates; the whole
+         * ellipse interior is drawn (equivalent to a filled ellipse).
+         * ================================================================ */
+        lw  = (int)lineWidth;
+        irx = rx - (float)lw;
+        iry = ry - (float)lw;
 
-			if (full_circle) {
-				result |= hlineColorSurface(dst, xell_l, xell_r, y, color);
-				continue;
-			}
-			/* sa==ea but not 0,0 → zero body, skip row */
-			if (startAngle == endAngle) continue;
+        {
+            int y0 = (int)floorf(cy - ry);
+            int y1 = (int)ceilf (cy + ry);
 
-			y_strip = y + 0.5;
-			t_sa = (cos_sa != 0.0) ? (yc_f - y_strip) / cos_sa : -1.0;
-			t_ea = (cos_ea != 0.0) ? (yc_f - y_strip) / cos_ea : -1.0;
+            for (y = y0; y <= y1; y++) {
+                float dy, disc_o, xd_o;
+                int   ox0, ox1;
+                int   ix0, ix1;
+                float disc_i, xd_i;
 
-			if (t_sa > 0.0 && t_ea > 0.0) {
-				double x_sa  = xc_f + t_sa * sin_sa;
-				double x_ea  = xc_f + t_ea * sin_ea;
-				double geo_l = (x_sa < x_ea) ? x_sa : x_ea;
-				double geo_r = (x_sa > x_ea) ? x_sa : x_ea;
-				int xl = (int)floor(geo_l);
-				int xr = (int)ceil(geo_r);
+                if (y < 0 || y >= dst->h) continue;
+                dy     = (float)y - cy;
 
-				if (!body_inside) {
-					/* body OUTSIDE the ray pair → draw left wing and right wing */
-					if (geo_l <= xell_l && geo_r >= xell_r)
-						continue; /* entire row is gap */
-					else if (xl >= xr)
-						result |= hlineColorSurface(dst, xell_l, xell_r, y, color);
-					else {
-						if (xell_l <= xl) result |= hlineColorSurface(dst, xell_l, xl, y, color);
-						if (xr <= xell_r) result |= hlineColorSurface(dst, xr, xell_r, y, color);
-					}
-				} else {
-					/* body INSIDE the ray pair → draw between the rays */
-					int x_from = (int)ceil(geo_l);
-					int x_to   = (int)floor(geo_r);
-					if (x_from < xell_l) x_from = xell_l;
-					if (x_to   > xell_r) x_to   = xell_r;
-					if (x_from <= x_to)
-						result |= hlineColorSurface(dst, x_from, x_to, y, color);
-				}
-			} else {
-				/* fallback: per-pixel angle test (gap straddles 90/270 degrees) */
-				for (x = xell_l; x <= xell_r; x++) {
-					double angle = fmod(180.0 / M_PI * atan2(x - xc_f, -(y - yc_f)), 360.0);
-					if (angle < 0.0) angle += 360.0;
-					if (_ellipseInArc(startAngle, endAngle, angle))
-						result |= pixelColorSurface(dst, x, y, color);
-				}
-			}
-		}
-	} else {
-		/* Outline path: Bresenham ellipse with per-point arc test */
-		int px;
-		x = 0; y = ry;
-		d1 = (double)ry * ry - (double)rx * rx * ry + 0.25 * (double)rx * rx;
-		dx = 2.0 * ry * ry * x;
-		dy = 2.0 * rx * rx * y;
+                /* Outer ellipse */
+                disc_o = ry * ry - dy * dy;
+                if (disc_o < 0.0f) continue;
+                xd_o = sqrtf(disc_o) * rx / ry;
+                ox0  = (int)ceilf (cx - xd_o);
+                ox1  = (int)floorf(cx + xd_o);
 
-		while (dx < dy) {
-			int pxR = xcR + x;
-			int pxL = xcL - x;
-			int pyT = ycT - y;
-			int pyB = ycB + y;
-			double aq1 = _ellipseBearing( x, -y);
-			double aq2 = _ellipseBearing(-x, -y);
-			double aq3 = _ellipseBearing(-x,  y);
-			double aq4 = _ellipseBearing( x,  y);
+                /* Inner ellipse (defaults to "no hole") */
+                ix0 = ox1 + 1;
+                ix1 = ox0 - 1;
+                if (irx > 0.0f && iry > 0.0f) {
+                    disc_i = iry * iry - dy * dy;
+                    if (disc_i >= 0.0f) {
+                        xd_i = sqrtf(disc_i) * irx / iry;
+                        ix0  = (int)ceilf (cx - xd_i);
+                        ix1  = (int)floorf(cx + xd_i);
+                    }
+                }
 
-			if (lineWidth <= 1) {
-				if (_ellipseInArc(startAngle, endAngle, aq1)) result |= pixelColorSurface(dst, pxR, pyT, color);
-				if (_ellipseInArc(startAngle, endAngle, aq2)) result |= pixelColorSurface(dst, pxL, pyT, color);
-				if (_ellipseInArc(startAngle, endAngle, aq3)) result |= pixelColorSurface(dst, pxL, pyB, color);
-				if (_ellipseInArc(startAngle, endAngle, aq4)) result |= pixelColorSurface(dst, pxR, pyB, color);
-			} else {
-				if (_ellipseInArc(startAngle, endAngle, aq1)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxR - px, pyT,      color);
-						result |= pixelColorSurface(dst, pxR,      pyT + px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq2)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxL + px, pyT,      color);
-						result |= pixelColorSurface(dst, pxL,      pyT + px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq3)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxL + px, pyB,      color);
-						result |= pixelColorSurface(dst, pxL,      pyB - px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq4)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxR - px, pyB,      color);
-						result |= pixelColorSurface(dst, pxR,      pyB - px, color);
-					}
-				}
-			}
+                /* Left band [ox0 .. ix0-1] */
+                if (ox0 <= ix0 - 1)
+                    hspan_arc(dst, ox0, ix0 - 1, y, cx, cy,
+                              start_a, end_a, full_ellipse, color);
 
-			if (d1 < 0.0) {
-				x++; dx += 2.0*ry*ry; d1 += dx + ry*ry;
-			} else {
-				x++; y--; dx += 2.0*ry*ry; dy -= 2.0*rx*rx; d1 += dx - dy + ry*ry;
-			}
-		}
+                /* Right band [ix1+1 .. ox1] */
+                if (ix1 + 1 <= ox1)
+                    hspan_arc(dst, ix1 + 1, ox1, y, cx, cy,
+                              start_a, end_a, full_ellipse, color);
+            }
+        }
+    }
 
-		d2 = (double)ry*ry*(x+0.5)*(x+0.5) + (double)rx*rx*(y-1)*(y-1) - (double)rx*rx*ry*ry;
-		while (y >= 0) {
-			int pxR = xcR + x;
-			int pxL = xcL - x;
-			int pyT = ycT - y;
-			int pyB = ycB + y;
-			double aq1 = _ellipseBearing( x, -y);
-			double aq2 = _ellipseBearing(-x, -y);
-			double aq3 = _ellipseBearing(-x,  y);
-			double aq4 = _ellipseBearing( x,  y);
+    } /* end color scope */
 
-			if (lineWidth <= 1) {
-				if (_ellipseInArc(startAngle, endAngle, aq1)) result |= pixelColorSurface(dst, pxR, pyT, color);
-				if (_ellipseInArc(startAngle, endAngle, aq2)) result |= pixelColorSurface(dst, pxL, pyT, color);
-				if (_ellipseInArc(startAngle, endAngle, aq3)) result |= pixelColorSurface(dst, pxL, pyB, color);
-				if (_ellipseInArc(startAngle, endAngle, aq4)) result |= pixelColorSurface(dst, pxR, pyB, color);
-			} else {
-				if (_ellipseInArc(startAngle, endAngle, aq1)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxR - px, pyT,      color);
-						result |= pixelColorSurface(dst, pxR,      pyT + px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq2)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxL + px, pyT,      color);
-						result |= pixelColorSurface(dst, pxL,      pyT + px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq3)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxL + px, pyB,      color);
-						result |= pixelColorSurface(dst, pxL,      pyB - px, color);
-					}
-				}
-				if (_ellipseInArc(startAngle, endAngle, aq4)) {
-					for (px = 0; px < lineWidth; px++) {
-						result |= pixelColorSurface(dst, pxR - px, pyB,      color);
-						result |= pixelColorSurface(dst, pxR,      pyB - px, color);
-					}
-				}
-			}
+    if (SDL_MUSTLOCK(dst))
+        SDL_UnlockSurface(dst);
 
-			if (d2 > 0.0) {
-				y--; dy -= 2.0*rx*rx; d2 += rx*rx - dy;
-			} else {
-				y--; x++; dx += 2.0*ry*ry; dy -= 2.0*rx*rx; d2 += dx - dy + rx*rx;
-			}
-		}
-	}
+    return 0;
+}
 
-	return result;
+
+/*
+ * drawLineRGBASurface - Playdate-compatible line draw for SDL surfaces.
+ *
+ * Implements the same visual output as the Playdate SDK's drawLine function.
+ *
+ * -------------------------------------------------------------------------
+ * ALGORITHM
+ *
+ * Dispatch:
+ *   lineWidth <= 0  -> no-op
+ *   lineWidth == 1  -> Bresenham thin line
+ *   lineWidth >  1  -> wide line via rotated rectangle fill
+ *
+ * Thin line (lineWidth == 1):
+ *   Standard integer Bresenham with octant selection and clip.
+ *
+ * Wide line (lineWidth > 1):
+ *   1. Compute the line angle from atan2(dy, dx).
+ *   2. Perpendicular angle = line angle + 90 degrees.
+ *   3. Perpendicular unit vector:
+ *        perp_x = cos(perp_angle)
+ *        perp_y = sin(perp_angle)
+ *   4. Asymmetric half-widths:
+ *        half_a = floor(lineWidth / 2)   -- one side
+ *        half_b = lineWidth - half_a     -- other side (= half_a+1 for odd lineWidth)
+ *   5. Four rectangle corners:
+ *        P0 = (x1 - perp_x * half_a,  y1 - perp_y * half_a)
+ *        P1 = (x1 + perp_x * half_b,  y1 + perp_y * half_b)
+ *        P2 = (x2 + perp_x * half_b,  y2 + perp_y * half_b)
+ *        P3 = (x2 - perp_x * half_a,  y2 - perp_y * half_a)
+ *      All coordinates are rounded to the nearest integer.
+ *   6. Fill the polygon P0-P1-P2-P3.
+ *   7. No rounded caps; Playdate drawLine uses flat (square) ends.
+ *
+ * -------------------------------------------------------------------------
+ * PUBLIC API
+ *
+ *   int drawLineRGBASurface(SDL_Surface *dst,
+ *                           int x1, int y1, int x2, int y2,
+ *                           int lineWidth,
+ *                           Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+ *
+ *   Returns 0 on success, -1 on bad arguments.
+ *
+ *   Matches Playdate visual output:
+ *     - lineWidth == 1  : 1-pixel Bresenham line
+ *     - lineWidth >  1  : flat-ended (square cap) rotated rectangle, filled
+ *     - lineWidth == 0  : no-op (returns 0)
+ *     - Odd lineWidth   : offset is asymmetric (floor(w/2) on one side,
+ *                         ceil(w/2) on the other), exactly as Playdate does.
+ */
+
+
+/* -------------------------------------------------------------------------
+ * Thin (1-pixel) Bresenham line
+ * Clip is done against the surface bounds.
+ * -------------------------------------------------------------------------
+ */
+static void draw_thin_line(SDL_Surface *dst, Sint16 x0, Sint16 y0, Sint16 x1, Sint16 y1, Uint32 color)
+{
+    int dx = abs(x1 - x0);
+    int dy = abs(y1 - y0);
+    int sx = (x0 < x1) ? 1 : -1;
+    int sy = (y0 < y1) ? 1 : -1;
+    int err = dx - dy;
+
+    for (;;) {
+        fastPixelColorNolock(dst, x0, y0, color);
+        if (x0 == x1 && y0 == y1) break;
+        int e2 = 2 * err;
+        if (e2 > -dy) { err -= dy; x0 += sx; }
+        if (e2 <  dx) { err += dx; y0 += sy; }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Polygon scan-fill (for the rotated-rectangle thick line).
+ *
+ * Uses a simple scanline algorithm: for each Y row find the left and right
+ * X extents contributed by each polygon edge, then fill the span.
+ * -------------------------------------------------------------------------
+ */
+
+/* Maximum vertices we need: 4 corners (plus we extend to handle clipping). */
+#define MAX_VERTS 8
+
+typedef struct { float x, y; } Vec2f;
+
+static void fill_polygon(SDL_Surface *dst, const Vec2f *verts, Sint16 n, Uint32 color)
+{
+    if (n < 3) return;
+
+    /* Bounding box. */
+    float yminf = verts[0].y, ymaxf = verts[0].y;
+    for (int i = 1; i < n; i++) {
+        if (verts[i].y < yminf) yminf = verts[i].y;
+        if (verts[i].y > ymaxf) ymaxf = verts[i].y;
+    }
+
+    /* Clamp to surface. */
+    int y0 = (int)floorf(yminf);
+    int y1 = (int)ceilf(ymaxf);
+    if (y0 < 0)       y0 = 0;
+    if (y1 >= dst->h) y1 = dst->h - 1;
+
+    for (int y = y0; y <= y1; y++) {
+        float yf = (float)y + 0.5f;   /* sample at scanline centre */
+
+        /* Collect X intersections with all edges. */
+        float xs[MAX_VERTS];
+        int   nx = 0;
+        for (int i = 0; i < n; i++) {
+            int j = (i + 1) % n;
+            float ay = verts[i].y;
+            float by = verts[j].y;
+            if ((ay <= yf && by > yf) || (by <= yf && ay > yf)) {
+                float t = (yf - ay) / (by - ay);
+                xs[nx++] = verts[i].x + t * (verts[j].x - verts[i].x);
+            }
+        }
+        if (nx < 2) continue;
+
+        /* Sort intersections (insertion sort – nx is tiny). */
+        for (int i = 1; i < nx; i++) {
+            float v = xs[i];
+            int j = i - 1;
+            while (j >= 0 && xs[j] > v) { xs[j+1] = xs[j]; j--; }
+            xs[j+1] = v;
+        }
+
+        /* Fill pairs of spans. */
+        for (int i = 0; i + 1 < nx; i += 2) {
+            int xa = (int)ceilf(xs[i]);
+            int xb = (int)floorf(xs[i+1]);
+            hlineColorNolock(dst, (Sint16)xa, (Sint16)xb, (Sint16)y, color);
+        }
+    }
+}
+
+/* -------------------------------------------------------------------------
+ * Wide line: rotated-rectangle fill
+ * Matches Playdate's LCDBitmap_drawWideLine algorithm exactly:
+ *   - perpendicular computed from atan2(dy,dx) + 90°
+ *   - asymmetric half-widths for odd lineWidth
+ *   - all 4 corners rounded via roundf
+ * -------------------------------------------------------------------------
+ */
+static void draw_wide_line(SDL_Surface *dst,
+                           Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2,
+                           Sint16 lineWidth,
+                           Uint32 color)
+{
+    float fx1 = (float)x1, fy1 = (float)y1;
+    float fx2 = (float)x2, fy2 = (float)y2;
+
+    /* Perpendicular direction (unit vector rotated 90° from line direction). */
+    float dx = fx2 - fx1;
+    float dy = fy2 - fy1;
+    float len = sqrtf(dx * dx + dy * dy);
+    if (len < 0.001f) {
+        /* Degenerate: draw a square of side lineWidth centred on the point. */
+        float half = (float)lineWidth * 0.5f;
+        Vec2f sq[4] = {
+            { fx1 - half, fy1 - half },
+            { fx1 + half, fy1 - half },
+            { fx1 + half, fy1 + half },
+            { fx1 - half, fy1 + half },
+        };
+        fill_polygon(dst, sq, 4, color);
+        return;
+    }
+
+    /* Perpendicular unit vector. */
+    float px = -dy / len;
+    float py =  dx / len;
+
+    /*
+     * Asymmetric half-widths (Playdate confirmed via floorf in prolog):
+     *   half_a = floor(lineWidth / 2)
+     *   half_b = lineWidth - half_a   (= half_a+1 for odd, half_a for even)
+     */
+    float half_a = floorf((float)lineWidth * 0.5f);
+    float half_b = (float)lineWidth - half_a;
+
+    /*
+     * Four corners, all passed through roundf (confirmed by the 4 groups of
+     * roundf calls in drawWideLine, one per corner):
+     *   P0 = p1 - perp * half_a
+     *   P1 = p1 + perp * half_b
+     *   P2 = p2 + perp * half_b
+     *   P3 = p2 - perp * half_a
+     */
+    Vec2f verts[4];
+    verts[0].x = roundf(fx1 - px * half_a);
+    verts[0].y = roundf(fy1 - py * half_a);
+    verts[1].x = roundf(fx1 + px * half_b);
+    verts[1].y = roundf(fy1 + py * half_b);
+    verts[2].x = roundf(fx2 + px * half_b);
+    verts[2].y = roundf(fy2 + py * half_b);
+    verts[3].x = roundf(fx2 - px * half_a);
+    verts[3].y = roundf(fy2 - py * half_a);
+
+    fill_polygon(dst, verts, 4, color);
+}
+
+/* -------------------------------------------------------------------------
+ * Public entry point
+ * -------------------------------------------------------------------------
+ */
+
+/*
+ * drawLineRGBASurface()
+ *
+ * Draw a line from (x1,y1) to (x2,y2) with the given lineWidth and colour.
+ * Matches Playdate SDK graphics.drawLine() behaviour.
+ *
+ * Parameters:
+ *   dst        SDL_Surface to draw on (any pixel format).
+ *   x1,y1      First endpoint (integer pixels).
+ *   x2,y2      Second endpoint (integer pixels).
+ *   lineWidth  Stroke width in pixels.  0 = no-op.  1 = Bresenham.  >1 = filled rectangle.
+ *   r,g,b,a    Colour components.
+ *
+ * Returns 0 on success, -1 if dst is NULL or lineWidth < 0.
+ */
+int drawLineRGBASurfacePlaydate(SDL_Surface *dst,
+                        Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2,
+                        Sint16 lineWidth,
+                        Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (!dst)
+        return -1;
+
+    if (lineWidth < 1)
+        lineWidth = 1;
+
+    /* Degenerate segment check (from binary: abs(dx)/2 < 2 && abs(dy)/2 < 2). */
+    int dx = x2 - x1;
+    int dy = y2 - y1;
+    if (abs(dx) < 2 && abs(dy) < 2) {
+        /* Still draw a single pixel for lineWidth >= 1. */
+        /* Playdate returns early here; we do the same. */
+        return 0;
+    }
+
+    Uint32 color = SDL_MapRGBA(dst->format, r, g, b, a);
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_LockSurface(dst);
+
+    if (lineWidth == 1) {
+        draw_thin_line(dst, x1, y1, x2, y2, color);
+    } else {
+        draw_wide_line(dst, x1, y1, x2, y2, lineWidth, color);
+    }
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_UnlockSurface(dst);
+
+    return 0;
+}
+
+/*
+ * drawRoundRectRGBASurfacePlaydate / fillRoundRectRGBASurfacePlaydate
+ * Playdate-compatible rounded-rectangle draw and fill for SDL surfaces.
+ *
+ * Implements the same visual output as the Playdate SDK's drawRoundRect and
+ * fillRoundRect functions.
+ *
+ * =========================================================================
+ * ALGORITHM
+ * =========================================================================
+ *
+ * fillRoundRect:
+ *   Scanline fill using a per-row x-inset derived from the circle equation.
+ *   For each row the horizontal inset is:
+ *     inset = radius - floor(sqrt(radius^2 - dy^2))
+ *   where dy is the distance from the row to the nearest corner-centre row.
+ *   Corner centres are at (x+r, y+r), (x+w-1-r, y+r),
+ *                         (x+r, y+h-1-r), (x+w-1-r, y+h-1-r).
+ *   radius is clamped to min(w/2, h/2) before use.
+ *
+ * drawRoundRect:
+ *   Outline drawn as four straight edge segments plus four quarter-circle arcs.
+ *
+ *   Straight edges connect the corner centres:
+ *     Top/bottom  – horizontal, from (x+radius) to (x+w-1-radius)
+ *     Left/right  – vertical,   from (y+radius) to (y+h-1-radius)
+ *
+ *   Each arc is an annular band between an outer and inner radius:
+ *     outer_radius = radius + ceil(lineWidth/2)  - 1
+ *     inner_radius = radius - floor(lineWidth/2) - 1
+ *   For each row dy the arc span is:
+ *     xo = floor(sqrt(outer_radius^2 - dy^2))      (outer pixel, inclusive)
+ *     xi = floor(sqrt(inner_radius^2 - dy^2)) + 1  (inner pixel, exclusive)
+ *   Drawing span [xi..xo] relative to the corner centre.
+ *   Using floor+1 for xi (not ceil) matches the Playdate truncation behaviour
+ *   and correctly handles perfect-square values of (inner_radius^2 - dy^2).
+ *
+ *   lineWidth asymmetry convention (same as Playdate drawLine):
+ *     floor(lineWidth/2) pixels grow inward from the nominal radius,
+ *     ceil(lineWidth/2)-1 pixels grow outward.
+ *
+ * =========================================================================
+ * PUBLIC API
+ * =========================================================================
+ *
+ *   int fillRoundRectRGBASurfacePlaydate(SDL_Surface *dst,
+ *                                Sint16 x, Sint16 y, Sint16 w, Sint16 h,
+ *                                Sint16 radius,
+ *                                Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+ *
+ *   int drawRoundRectRGBASurfacePlaydate(SDL_Surface *dst,
+ *                                Sint16 x, Sint16 y, Sint16 w, Sint16 h,
+ *                                Sint16 radius, Sint16 lineWidth,
+ *                                Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+ *
+ *   Returns 0 on success, -1 on NULL dst.
+ *
+ *   Both functions match Playdate visual output:
+ *     - Circular corners (rx == ry == radius).
+ *     - radius is clamped to min(w/2, h/2) before use.
+ *     - fillRoundRect: solid fill including all interior pixels.
+ *     - drawRoundRect: outline only; lineWidth >= 1.
+ *       lineWidth == 1 : 1-pixel outline.
+ *       lineWidth  > 1 : thick outline grown inward and outward asymmetrically,
+ *                        matching the Playdate stencil-based rendering.
+ */
+
+#include <SDL.h>
+#include <math.h>
+#include <stdlib.h>
+
+/* =========================================================================
+ * Internal helpers shared with both functions
+ * ========================================================================= */
+
+/* Provided externally – draws one pixel without locking. */
+extern int fastPixelColorNolock(SDL_Surface *dst, Sint16 x, Sint16 y, Uint32 color);
+
+/* Fill a horizontal span [x0..x1] on row y.
+ * Caller holds the surface lock.  Clips to surface bounds. */
+static void fill_hspan(SDL_Surface *dst, int y, int x0, int x1, Uint32 color)
+{
+    if (y < 0 || y >= dst->h) return;
+    if (x0 > x1) return;
+    hlineColorNolock(dst, (Sint16)x0, (Sint16)x1, (Sint16)y, color);
+}
+
+/* Draw a vertical segment on column x from y0 to y1.
+ * Caller holds the surface lock.  Clips to surface bounds.
+ * Per-pixel nolock write — no bulk vline helper available. */
+static void draw_vspan(SDL_Surface *dst, int x, int y0, int y1, Uint32 color)
+{
+    Sint16 y;
+    if (x < 0 || x >= dst->w) return;
+    if (y0 > y1) return;
+    if (y0 < 0)       y0 = 0;
+    if (y1 >= dst->h) y1 = dst->h - 1;
+    for (y = (Sint16)y0; y <= (Sint16)y1; y++)
+        fastPixelColorNolock(dst, (Sint16)x, y, color);
+}
+
+/* =========================================================================
+ * fillRoundRectRGBASurfacePlaydate
+ *
+ * Fills every row from y to y+h-1 with a horizontal span whose left and
+ * right x-extents are computed per-row:
+ *
+ *   For a row at absolute y_row:
+ *     dy = distance from y_row to the nearest corner-circle centre row:
+ *          dy = max(0,  cy_top - y_row)   if y_row is in the top arc zone
+ *          dy = max(0,  y_row - cy_bot)   if y_row is in the bottom arc zone
+ *          dy = 0                         in the straight centre band
+ *     x_inset = radius - isqrt(radius^2 - dy^2)
+ *     fill [x + x_inset .. x + w - 1 - x_inset]
+ *
+ * isqrt uses integer Newton's method (sqrtf seed + correction steps) which
+ * produces identical results to floor(sqrt(...)) without double-precision
+ * rounding issues.  The guard (ins <= w-1-ins) skips degenerate empty spans
+ * that would otherwise be drawn inverted by hlineColorNolock's swap logic.
+ *
+ * Equivalent to the Playdate binary's span-buffer approach:
+ *   The Bresenham loop at 0x150–0x216 of the inner function (0x126a50)
+ *   accumulates per-row x extents derived from the same circle geometry.
+ *   The per-row isqrt here produces identical extents without needing a
+ *   sort pass or temporary span array.
+ *
+ * Corner circle centres (confirmed from binary arg tracing):
+ *   cy_top = y + radius                  (top two corners)
+ *   cy_bot = y + h - 1 - radius          (bottom two corners)
+ *   cx_l   = x + radius                  (left two corners)
+ *   cx_r   = x + w - 1 - radius          (right two corners)
+ *
+ * Note: x_inset at dy=0 is 0 (full width), at dy=radius is radius (point).
+ * ========================================================================= */
+int fillRoundRectRGBASurfacePlaydate(SDL_Surface *dst,
+                              Sint16 x, Sint16 y, Sint16 w, Sint16 h,
+                              Sint16 radius,
+                              Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (!dst) return -1;
+    if (w <= 0 || h <= 0) return 0;
+
+    /* Clamp radius: Playdate clamps to min(w/2, h/2). */
+    int max_r = (w < h ? w : h) / 2;
+    if (radius < 0) radius = 0;
+    if (radius > max_r) radius = max_r;
+
+    Uint32 color = SDL_MapRGBA(dst->format, r, g, b, a);
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_LockSurface(dst);
+
+    {
+        int cy_top = y + radius;
+        int cy_bot = y + h - 1 - radius;
+        int r2     = radius * radius;
+
+        for (int row = y; row < y + h; row++) {
+            int ins = 0;
+            if (radius > 0) {
+                int dy;
+                if      (row < cy_top) dy = cy_top - row;
+                else if (row > cy_bot) dy = row - cy_bot;
+                else                   dy = 0;
+                if (dy > 0) {
+                    /*
+                     * ins = radius - isqrt(radius^2 - dy^2).
+                     * Integer Newton gives identical result to floor(sqrt(...)),
+                     * avoiding double-precision sqrt and float rounding.
+                     */
+                    int n  = r2 - dy * dy;
+                    int xo = (n > 0) ? (int)sqrtf((float)n) : 0;
+                    if (xo > 0 && (xo + 1) * (xo + 1) <= n) xo++;
+                    while (xo * xo > n) xo--;
+                    ins = radius - xo;
+                }
+            }
+            if (ins <= w - 1 - ins)  /* skip empty spans (ins > half-width) */
+                hlineColorNolock(dst, (Sint16)(x + ins), (Sint16)(x + w - 1 - ins),
+                                 (Sint16)row, color);
+        }
+    }
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_UnlockSurface(dst);
+
+    return 0;
+}
+
+/* =========================================================================
+ * drawRoundRectRGBASurfacePlaydate
+ *
+ * Playdate drawRoundRect algorithm:
+ *   Draws the outline by combining:
+ *     1. Four straight edge segments between corner arc endpoints.
+ *     2. Four quarter-circle arc outlines using a thick-arc approach.
+ *
+ *   For lineWidth == 1 the arcs are computed with the standard midpoint
+ *   circle algorithm plotting single pixels on the arc boundary.
+ *
+ *   For lineWidth > 1 the binary uses a stencil bitmap that pre-computes
+ *   per-row x-extents for both the outer circle (radius + half_b - 1) and
+ *   inner circle (radius - half_a), then fills the annular region.
+ *   We replicate this with two nested Bresenham passes.
+ *
+ *   lineWidth asymmetry (same convention as drawLine):
+ *     half_a = lineWidth / 2          (floor, grows inward)
+ *     half_b = lineWidth - half_a     (ceil,  grows outward)
+ *     outer_radius = radius + half_b - 1
+ *     inner_radius = radius - half_a - 1
+ *       The extra -1 ensures lineWidth==1 yields r_inner = radius-1, giving a
+ *       1px-wide arc outline (r_outer==r_inner would produce an empty annulus).
+ *       Negative r_inner means no inner-circle exclusion (solid corner fill).
+ *
+ * Arc pixel formula (per-row, matching Playdate stencil builder):
+ *   xo = floor(sqrt(r_outer^2 - dy^2))         outer boundary (inclusive)
+ *   xi = floor(sqrt(r_inner^2 - dy^2)) + 1     inner boundary (exclusive start);
+ *        = 0 when dy > r_inner or r_inner < 0
+ *   Draw span [cx±xi .. cx±xo].  Using floor+1 for xi (not ceil) correctly handles
+ *   perfect-square values of (r_inner^2 - dy^2), matching cvttss2si truncation.
+ *
+ * Straight edge coordinates:
+ *   Top:    y_top,       from (x + radius) to (x + w - 1 - radius)
+ *   Bottom: y_top + h-1, same x range
+ *   Left:   x_left,      from (y + radius) to (y + h - 1 - radius)
+ *   Right:  x_left+w-1,  same y range
+ *   (For lineWidth > 1 these become thick bands; handled by drawing
+ *    lineWidth rows/columns for each edge.)
+ * ========================================================================= */
+
+/* Draw a thick horizontal line of height `thick` centered on y,
+ * from x0 to x1.  The thickness is applied: floor(thick/2) rows above y,
+ * ceil(thick/2)-1 rows below y  (Playdate asymmetric convention). */
+static void draw_thick_hline(SDL_Surface *dst, int y, int x0, int x1,
+                              int thick, Uint32 color)
+{
+    int ha = thick / 2;          /* rows above */
+    int hb = thick - ha;         /* rows below (= ha+1 for odd) */
+    for (int row = y - ha; row < y + hb; row++)
+        fill_hspan(dst, row, x0, x1, color);
+}
+
+static void draw_thick_vline(SDL_Surface *dst, int x, int y0, int y1,
+                              int thick, Uint32 color)
+{
+    int ha = thick / 2;
+    int hb = thick - ha;
+    for (int col = x - ha; col < x + hb; col++)
+        draw_vspan(dst, col, y0, y1, color);
+}
+
+/*
+ * Draw a thick arc spanning one quadrant.
+ *
+ * cx, cy   : circle centre
+ * r_outer  : outer radius of the annular arc  (inclusive)
+ * r_inner  : inner radius (inclusive; if < 0, fills to centre)
+ * quad     : 0=top-right(NE), 1=top-left(NW), 2=bottom-left(SW), 3=bottom-right(SE)
+ *            selects which quadrant of the circle to draw.
+ *
+ * For each dy row the arc spans horizontally from the inner to outer circle boundary.
+ */
+static void draw_quarter_arc(SDL_Surface *dst, int cx, int cy,
+                              int r_outer, int r_inner,
+                              int quad, Uint32 color)
+{
+    if (r_outer < 0) return;
+
+    int ro2 = r_outer * r_outer;
+
+    /*
+     * Walk dy from 0 to r_outer.  For each row compute:
+     *   xo = floor(sqrt(r_outer^2 - dy^2))   outer x extent (inclusive)
+     *   xi = floor(sqrt(r_inner^2 - dy^2)) + 1   inner x extent (exclusive start,
+     *              = first pixel NOT in the inner fill circle)
+     *              (= 0 when dy > r_inner or r_inner < 0)
+     *
+     * This draws the annular band [xi..xo] on each side — the set of pixels inside
+     * the outer circle but outside the inner circle.
+     *
+     * Note: using floor+1 for xi (not ceil) correctly handles perfect-square values
+     * of (r_inner^2 - dy^2) where ceil would give a non-empty span when the inner
+     * fill pixel exactly coincides with the outer — matching the Playdate stencil
+     * approach (cvttss2si = truncation = floor for positive values).
+     *
+     * quad 0 (NE, top-right):    row cy-dy, cols [cx+xi .. cx+xo]
+     * quad 1 (NW, top-left):     row cy-dy, cols [cx-xo .. cx-xi]
+     * quad 2 (SW, bottom-left):  row cy+dy, cols [cx-xo .. cx-xi]
+     * quad 3 (SE, bottom-right): row cy+dy, cols [cx+xi .. cx+xo]
+     */
+    for (int dy = 0; dy <= r_outer; dy++) {
+        int dy2 = dy * dy;
+        if (dy2 > ro2) break;
+
+        int xo = (int)floor(sqrt((double)(ro2 - dy2)));
+        int xi;
+        if (r_inner >= 0 && dy <= r_inner) {
+            int ri2 = r_inner * r_inner;
+            xi = (int)floor(sqrt((double)(ri2 - dy2))) + 1;
+        } else {
+            xi = 0;
+        }
+
+        switch (quad) {
+        case 0: fill_hspan(dst, cy - dy, cx + xi, cx + xo, color); break;
+        case 1: fill_hspan(dst, cy - dy, cx - xo, cx - xi, color); break;
+        case 2: fill_hspan(dst, cy + dy, cx - xo, cx - xi, color); break;
+        case 3: fill_hspan(dst, cy + dy, cx + xi, cx + xo, color); break;
+        }
+    }
+}
+int drawRoundRectRGBASurfacePlaydate(SDL_Surface *dst,
+                              Sint16 x, Sint16 y, Sint16 w, Sint16 h,
+                              Sint16 radius, Sint16 lineWidth,
+                              Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    if (!dst) return -1;
+    if (w <= 0 || h <= 0) return 0;
+    if (lineWidth <= 0) return 0;
+
+    /* Clamp radius. */
+    int max_r = (w < h ? w : h) / 2;
+    if (radius < 0)    radius = 0;
+    if (radius > max_r) radius = max_r;
+
+    Uint32 color = SDL_MapRGBA(dst->format, r, g, b, a);
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_LockSurface(dst);
+
+    if (radius == 0) {
+        /* Degenerate: plain rectangle outline. */
+        draw_thick_hline(dst, y,         x, x + w - 1, lineWidth, color);
+        draw_thick_hline(dst, y + h - 1, x, x + w - 1, lineWidth, color);
+        draw_thick_vline(dst, x,         y, y + h - 1, lineWidth, color);
+        draw_thick_vline(dst, x + w - 1, y, y + h - 1, lineWidth, color);
+        if (SDL_MUSTLOCK(dst))
+            SDL_UnlockSurface(dst);
+        return 0;
+    }
+
+    /*
+     * Asymmetric half-widths (same convention as drawLine / Playdate):
+     *   half_a = floor(lineWidth / 2)   → grows inward
+     *   half_b = lineWidth - half_a     → grows outward
+     *
+     * Arc outer radius  = radius + half_b - 1
+     * Arc inner radius  = radius - half_a        (clamp to 0 if negative)
+     */
+    int half_a    = lineWidth / 2;
+    int half_b    = lineWidth - half_a;
+    int r_outer   = radius + half_b - 1;
+    /*
+     * r_inner is radius - half_a - 1: this ensures that for lw=1 (half_a=0)
+     * the inner radius is r-1, giving a 1px-wide arc outline at the boundary.
+     * For lw>1: r_inner = radius - half_a - 1, keeping the band ~lw pixels wide.
+     * Negative r_inner means no inner exclusion (solid corner fill).
+     */
+    int r_inner   = radius - half_a - 1;
+
+    /*
+     * Corner circle centres.
+     * The arcs exactly meet the straight edges at:
+     *   top edge:    y  (outer top of TL and TR arcs)
+     *   bottom edge: y + h - 1
+     *   left edge:   x
+     *   right edge:  x + w - 1
+     * So the arc centres are at:
+     *   cx_l = x + radius,           cy_t = y + radius
+     *   cx_r = x + w - 1 - radius,   cy_b = y + h - 1 - radius
+     */
+    int cx_l = x + radius;
+    int cx_r = x + w - 1 - radius;
+    int cy_t = y + radius;
+    int cy_b = y + h - 1 - radius;
+
+    /* ---- Straight edges ---- */
+
+    /*
+     * Top and bottom edges: horizontal between the corner centres.
+     * The arcs cover the corner regions (from cx_l/cx_r outward to x/x+w-1).
+     */
+    draw_thick_hline(dst, y,         cx_l, cx_r, lineWidth, color);
+    draw_thick_hline(dst, y + h - 1, cx_l, cx_r, lineWidth, color);
+
+    /*
+     * Left and right edges: vertical between the corner centres.
+     */
+    draw_thick_vline(dst, x,         cy_t, cy_b, lineWidth, color);
+    draw_thick_vline(dst, x + w - 1, cy_t, cy_b, lineWidth, color);
+
+    /* ---- Corner arcs ---- */
+
+    /*
+     * Four quarter-circle arcs, one per corner.
+     * quad 1 (NW) = top-left,   centre (cx_l, cy_t)
+     * quad 0 (NE) = top-right,  centre (cx_r, cy_t)
+     * quad 2 (SW) = bottom-left,  centre (cx_l, cy_b)
+     * quad 3 (SE) = bottom-right, centre (cx_r, cy_b)
+     */
+    draw_quarter_arc(dst, cx_l, cy_t, r_outer, r_inner, 1, color); /* TL */
+    draw_quarter_arc(dst, cx_r, cy_t, r_outer, r_inner, 0, color); /* TR */
+    draw_quarter_arc(dst, cx_l, cy_b, r_outer, r_inner, 2, color); /* BL */
+    draw_quarter_arc(dst, cx_r, cy_b, r_outer, r_inner, 3, color); /* BR */
+
+    if (SDL_MUSTLOCK(dst))
+        SDL_UnlockSurface(dst);
+
+    return 0;
 }

@@ -234,8 +234,17 @@ extern "C" {
 
 	
 	/* Draw / fill an ellipse arc (Playdate-compatible angle convention) */
-	SDL_GFXPRIMITIVES_SCOPE int drawEllipseRGBASurface(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16 width, Sint16 height, Sint16 lineWidth, float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled);
+	SDL_GFXPRIMITIVES_SCOPE int drawEllipseRGBASurfacePlaydate(SDL_Surface * dst, Sint16 rectX, Sint16 rectY, Sint16 width, Sint16 height, Sint16 lineWidth, float startAngle, float endAngle, Uint8 r, Uint8 g, Uint8 b, Uint8 a, int filled);
 
+	/* Draw a line (Playdate-compatible angle convention) */
+	SDL_GFXPRIMITIVES_SCOPE int drawLineRGBASurfacePlaydate(SDL_Surface *dst, Sint16 x1, Sint16 y1, Sint16 x2, Sint16 y2, Sint16 lineWidth, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+	
+	/* Draw a round rect (Playdate-compatible angle convention) */
+	SDL_GFXPRIMITIVES_SCOPE int drawRoundRectRGBASurfacePlaydate(SDL_Surface *dst, Sint16 x, Sint16 y, Sint16 w, Sint16 h, Sint16 radius, Sint16 lineWidth, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+	
+	/* Draw a filled round rect (Playdate-compatible angle convention) */
+	SDL_GFXPRIMITIVES_SCOPE int fillRoundRectRGBASurfacePlaydate(SDL_Surface *dst, Sint16 x, Sint16 y, Sint16 w, Sint16 h, Sint16 radius, Uint8 r, Uint8 g, Uint8 b, Uint8 a);
+	
 	/* Ends C function definitions when using C++ */
 #ifdef __cplusplus
 }

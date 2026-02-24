@@ -4,13 +4,14 @@
 #define DISABLEDEBUGMESSAGES 1
 #define DEBUGTRACEFUNCTIONS 0
 #define DEBUGNOTIMPLEMENTEDFUNCTIONS 0
+#define SHOWCLEARCOLOR 0
 #define DEBUGINFO 0
 #define DEBUGFPS 1
 #define DRAWBUMPRECTS 0
 #define DEBUG_JOYSTICK_BUTTONS 0
 #define COLORCONVERSIONALPHATHRESHOLD 128 //255 = fully opaque
 #define COLORCONVERSIONWHITETHRESHOLD 128 //255 = fully white 0 = fully black
-#define ENABLEBITMAPMASKS true // THEY DO NOT WORK FULLY ! i only added it for my puzzleland and retrotime game which is basic usage (it only creates a masked image when calling setmask)
+#define ENABLEBITMAPMASKS 1 // THEY DO NOT WORK FULLY ! i only added it for my puzzleland and retrotime game which is basic usage (it only creates a masked image when calling setmask)
 #ifndef SCREENRESX
 	#define SCREENRESX 400
 #endif

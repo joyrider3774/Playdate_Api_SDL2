@@ -310,7 +310,7 @@ void _pd_api_display()
 		}
 	}
 	//draw using the newly added all around function
-	_pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _pd_api_display_Scale, _pd_api_display_Scale, false, 0, 0, 0, flip);
+	_pd_api_gfx_drawBitmapAll(playdatescreen, 0, 0, _pd_api_display_Scale, _pd_api_display_Scale, false, 0, 0, 0, flip, false);
 	Api->graphics->popContext();
 
 	//now we just need to blit this bitmap to the screen, but i could not access screen->tex so added another function
