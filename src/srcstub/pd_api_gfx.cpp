@@ -2124,8 +2124,8 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 	
 	if(pattern)
 	{
-		int yoffset = minx % 8;
-		int xoffset = miny % 8;
+		int yoffset = miny % 8;
+		int xoffset = minx % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
        	bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
@@ -2262,14 +2262,14 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 
 	if(pattern)
 	{
-		int yoffset = minx % 8;
-		int xoffset = miny % 8;
+		int yoffset = miny % 8;
+		int xoffset = minx % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
        	bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);		
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-		Api->graphics->setDrawMode(kDrawModeCopy);				
+		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
         for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2357,14 +2357,14 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
     rect.h = height;
     if(pattern)
 	{
-		int yoffset = x % 8;
-		int xoffset = y % 8;
+		int yoffset = y % 8;
+		int xoffset = x % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
        	bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);		
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-		Api->graphics->setDrawMode(kDrawModeCopy);				
+		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
         for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2458,17 +2458,18 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 		int xoffset = x % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
-		bitmap = Api->graphics->newBitmap(width, height, kColorClear);
-		//white because complete mask is drawn over
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorWhite);
-		Api->graphics->pushContext(bitmap);	
+       	bitmap = Api->graphics->newBitmap(width, height, kColorClear);
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorWhite);	
+		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
+		Api->graphics->pushContext(bitmap);	
         for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -xoffset, (yy*8) -yoffset, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
 		Api->graphics->popContext();
 		bitmap->BitmapDirty = true;
-		Api->graphics->drawBitmap(bitmap, x, y, kBitmapUnflipped);
+		Api->graphics->drawBitmap(bitmap,x ,  y , kBitmapUnflipped);
+		Api->graphics->popContext();
 		Api->graphics->freeBitmap(bitmap);
 		Api->graphics->freeBitmap(pattern);
 	}
@@ -2532,14 +2533,14 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
     y = color == kColorXOR || pattern != NULL ? 0: y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
     if(pattern)
 	{
-		int yoffset = oldx % 8;
-		int xoffset = oldy % 8;
+		int yoffset = oldy % 8;
+		int xoffset = oldx % 8;
 		int tilesx = ((width+1) / 8)+2;
 		int tilesy = ((height+1) / 8)+2;
        	bitmap = Api->graphics->newBitmap(width +  1, height + 1, kColorClear);
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);		
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-		Api->graphics->setDrawMode(kDrawModeCopy);				
+		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
         for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2627,14 +2628,14 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
     y = color == kColorXOR || pattern != NULL ? 0 : y + _pd_api_gfx_CurrentGfxContext->drawoffsety;
 	if(pattern)
 	{
-		int yoffset = oldx % 8;
-		int xoffset = oldy % 8;
+		int yoffset = oldy % 8;
+		int xoffset = oldx % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
        	bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);		
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-		Api->graphics->setDrawMode(kDrawModeCopy);				
+		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
         for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -3665,8 +3666,8 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
     rect.h = height;
 	if(pattern)
 	{
-		int yoffset = x % 8;
-		int xoffset = y % 8;
+		int yoffset = y % 8;
+		int xoffset = x % 8;
 		int tilesx = ((width +drawLineWidth+1) /  8)+2;
 		int tilesy = ((height +drawLineWidth+1) / 8)+2;
 		bitmap = Api->graphics->newBitmap(width +drawLineWidth+1, height + drawLineWidth+1, kColorClear);
@@ -3764,14 +3765,14 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
     rect.h = height;
 	if(pattern)
 	{
-		int yoffset = x % 8;
-		int xoffset = y % 8;
+		int yoffset = y % 8;
+		int xoffset = x % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
 		bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
-		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);		
+		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-		Api->graphics->setDrawMode(kDrawModeCopy);				
+		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
