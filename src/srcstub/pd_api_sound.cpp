@@ -448,7 +448,8 @@ int pd_api_sound_playSamplePlayer(SamplePlayer* player, int repeat, float rate)
     }
 
     Mix_Chunk *sound = player->sample->sound;
-
+    if (rate == 0.0f)
+        rate = 1.0f;
     const float totalRate = rate * player->Rate;
     if (totalRate != 1.0f)
     {
