@@ -30,3 +30,6 @@
 #ifndef SCALINGMODE
 	#define SCALINGMODE 0
 #endif
+#ifndef MASKPRIMITIVES
+	#define MASKPRIMITIVES 1
+#endif

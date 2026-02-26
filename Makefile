@@ -23,6 +23,9 @@ FULLSCREENATSTARTUP ?= 0
 
 FORCE_ACCELERATED_RENDER ?= 0
 
+# disable for games making much use of pattern or xor drawing without masks or so it will speed them up like twinracer (can break games if disabled like dynamate)
+MASKPRIMITIVES ?= 1
+
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
 SRC_C_DIR = src/srcgame
 OBJ_DIR = ./obj
@@ -90,7 +93,7 @@ ifeq ($(LDUSEX11), 1)
 LDFLAGS += -lX11
 endif
 
-CFLAGS += -DSCALINGMODE=$(SCALINGMODE) -DFULLSCREENATSTARTUP=$(FULLSCREENATSTARTUP) -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
+CFLAGS += -DMASKPRIMITIVES=$(MASKPRIMITIVES) -DSCALINGMODE=$(SCALINGMODE) -DFULLSCREENATSTARTUP=$(FULLSCREENATSTARTUP) -DDEFAULTSOURCEDIR=$(DEFAULTSOURCEDIR) -DSCREENRESX=$(SCREENRESX) -DSCREENRESY=$(SCREENRESY) -DWINDOWSCALE=$(WINDOWSCALE)
 
 .PHONY: all clean
 

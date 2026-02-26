@@ -1380,14 +1380,15 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
        	bitmap = Api->graphics->newBitmap(width, height, kColorClear);
 		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
 		pd_api_gfx_pushDrawOffset();
+		
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
-
+#ifdef MASKPRIMITIVES		
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
 			{
@@ -1398,9 +1399,11 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES		
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		filledPolygonRGBASurface(bitmap->Mask->Tex, vx, vy , nPoints, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2209,11 +2212,11 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
-
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
 			{
@@ -2224,9 +2227,11 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES			
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		drawLineRGBASurfacePlaydate(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);		
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2363,10 +2368,11 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2378,9 +2384,11 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		filledTrigonRGBASurface(bitmap->Mask->Tex, points[0].x, points[0].y, points[1].x, points[1].y, points[2].x, points[2].y, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2474,10 +2482,11 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2489,9 +2498,11 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES		
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		rectangleRGBASurface(bitmap->Mask->Tex, rect.x, rect.y, rect.x + rect.w-1, rect.y + rect.h-1, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2587,10 +2598,11 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2602,7 +2614,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2684,10 +2696,11 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2699,9 +2712,11 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES		
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		drawEllipseRGBASurfacePlaydate(bitmap->Mask->Tex, x, y, width, height, lineWidth, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, false);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -2795,10 +2810,11 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2810,9 +2826,11 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		drawEllipseRGBASurfacePlaydate(bitmap->Mask->Tex, x, y, width, height, 0, startAngle, endAngle, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a, true);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -3847,14 +3865,15 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 		int tilesy = ((height +drawLineWidth+1) / 8)+2;
 		bitmap = Api->graphics->newBitmap(width +drawLineWidth+1, height + drawLineWidth+1, kColorClear);
 		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);
-		pd_api_gfx_pushDrawOffset();
+		pd_api_gfx_pushDrawOffset();		
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -3866,9 +3885,11 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES		
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif		
 		drawRoundRectRGBASurfacePlaydate(bitmap->Mask->Tex, rect.x, rect.y, rect.w, rect.h, radius, lineWidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
@@ -3966,10 +3987,11 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		Api->graphics->setDrawMode(kDrawModeCopy);
 		Api->graphics->pushContext(bitmap);	
-        
-		// for (int yy = 0; yy < tilesy; yy++)
-		// 	for (int xx = 0; xx < tilesx; xx++)
-		// 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#ifdef MASKPRIMITIVES        
+		for (int yy = 0; yy < tilesy; yy++)
+			for (int xx = 0; xx < tilesx; xx++)
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+#else				
 
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -3981,9 +4003,11 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
 				dst.h = 8;
 				SDL_BlitSurface(pattern->Tex, NULL, bitmap->Tex, &dst);
 			}
-		
+#endif		
 		Api->graphics->popContext();
-		//SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#ifdef MASKPRIMITIVES		
+		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
+#endif
 		fillRoundRectRGBASurfacePlaydate(bitmap->Mask->Tex, rect.x, rect.y, rect.w, rect.h, radius, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
