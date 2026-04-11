@@ -125,8 +125,33 @@ bool Rectangle::DetectCollision(const Rectangle& other,Collision* collision, mat
         float absdiffy = std::abs(diffCorner.y);
         float absdiffx = std::abs(diffCorner.x);
         auto intersectionArea = math::vec2(std::min(scale.x, absdiffx), std::min(scale.y, absdiffy));
-        collision->ti = -intersectionArea.x * intersectionArea.y;  // ti is the negative area of intersection
-        collision->overlaps = true;
+        collision->ti = -intersectionArea.x * intersectionArea.y;
+
+        // When |ti|<0.001: ContainsPoint fires spuriously due to float precision.
+        // Try segment branch: if valid use it (overlaps=false), if invalid drop it.
+        if (collision->ti > -0.001f)
+        {
+            IntersectionIndicie seg;
+            seg.ti1 = -std::numeric_limits<float>::max();
+            seg.ti2 = std::numeric_limits<float>::max();
+            auto segValid = difference.GetSegmentIntersectionIndices(ZERO, collision->move, seg);
+            if (segValid and seg.ti1 < 1.0f and
+                (std::abs(seg.ti1 - seg.ti2) >= DELTA or (seg.ti1 == 0.0f and seg.ti2 == 0.0f)) and
+                ( (0.0f < seg.ti1 + 0.001f) or (seg.ti1 == 0.0f and seg.ti2 > 0.0f) ))
+            {
+                collision->ti = seg.ti1;
+                collision->normal = seg.normalA;
+                collision->overlaps = false;
+            }
+            else
+            {
+                return false;
+            }
+        }
+        else
+        {
+            collision->overlaps = true;
+        }
     }
     else
     {
@@ -135,10 +160,13 @@ bool Rectangle::DetectCollision(const Rectangle& other,Collision* collision, mat
         indicie.ti2 = std::numeric_limits<float>::max();
         auto valid = difference.GetSegmentIntersectionIndices(ZERO,collision->move, indicie);
 
+        // added  or (indicie.ti1 == 0.0f and indicie.ti2 == 0.0f) (exact zero point), 
+		// containspoint above fails this check because of the delta, but we can't change it or it picks up floating point garbage
+		// playdate sees this as a valid collision with no overlap
         if (
             valid and indicie.ti1 < 1.0f and
-            (std::abs(indicie.ti1 - indicie.ti2) >= DELTA) and
-            ( (0.0f < indicie.ti1 + DELTA) or (0.0f == indicie.ti1 and indicie.ti2 > 0.0f) )
+            (std::abs(indicie.ti1 - indicie.ti2) >= DELTA or (indicie.ti1 == 0.0f and indicie.ti2 == 0.0f)) and
+            ( (0.0f < indicie.ti1 + DELTA) or (indicie.ti1 == 0.0f and indicie.ti2 > 0.0f) )
         )
         {
             collision->ti = indicie.ti1;

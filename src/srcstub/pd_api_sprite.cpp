@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <vector>
+#include <set>
 #include <climits>
 #include <algorithm>
 #include "bump/World.hpp"
@@ -27,7 +28,7 @@ bool _pd_api_sprite_SpriteListNeedsSort = false;
 bool _pd_api_sprite_AlwaysRedraw = false;
 bool _pd_api_sprite_need_cleanup = false;
 uint32_t _pd_api_naturalOrder = 0;
-World* world = new World(INT_MAX);
+World* world = new World(64);
 
 void printSpliteListInfo()
 {
@@ -333,8 +334,8 @@ LCDSprite* pd_api_sprite_copy(LCDSprite *sprite)
 	newSprite->Visible = sprite->Visible;
 	newSprite->zIndex = sprite->zIndex;
 	newSprite->Loaded = sprite->Loaded;
-	newSprite->CenterPointX = newSprite->CenterPointX;
-	newSprite->CenterPointY = newSprite->CenterPointY;
+	newSprite->CenterPointX = sprite->CenterPointX;
+	newSprite->CenterPointY = sprite->CenterPointY;
 	//newSprite->setBumpItem(sprite->BumpItem());
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_copy end\n");
 	return newSprite;
@@ -437,7 +438,11 @@ void pd_api_sprite_setBounds(LCDSprite *sprite, PDRect bounds)
 	sprite->CenterPointY = bounds.y + (bounds.height * sprite->CenterY);
 	if(sprite->BumpItem != nullptr)
 	{
-		world->Update(sprite->BumpItem, Rectangle(sprite->CenterPointX - (sprite->CollideRect.width * sprite->CenterX), sprite->CenterPointY - (sprite->CollideRect.height * sprite->CenterY), sprite->CollideRectBump.width, sprite->CollideRectBump.height));		
+		world->Update(sprite->BumpItem, Rectangle(
+			(sprite->CenterPointX - (sprite->BoundsRect.width * sprite->CenterX) + sprite->CollideRect.x),
+			(sprite->CenterPointY - (sprite->BoundsRect.height * sprite->CenterY) + sprite->CollideRect.y),
+			sprite->CollideRectBump.width,
+			sprite->CollideRectBump.height));
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setBounds end\n");
 }
@@ -473,7 +478,7 @@ void pd_api_sprite_moveTo(LCDSprite *sprite, float x, float y)
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_moveTo end Sprite not loaded\n");
 		return;
 	}
-	PDRect Bounds = PDRectMake(x - (sprite->BoundsRect.width / 2.0f), y - (sprite->BoundsRect.height / 2.0f), sprite->BoundsRect.width, sprite->BoundsRect.height);
+	PDRect Bounds = PDRectMake(x - (sprite->BoundsRect.width * sprite->CenterX), y - (sprite->BoundsRect.height * sprite->CenterY), sprite->BoundsRect.width, sprite->BoundsRect.height);
 	if(sprite->Bitmap)
 	{
 		int w, h;
@@ -527,7 +532,7 @@ void pd_api_sprite_setImage(LCDSprite *sprite, LCDBitmap *image, LCDBitmapFlip f
 		float x,y;
 		Api->graphics->getBitmapData(sprite->Bitmap, &w, &h, NULL, NULL, NULL);
 		Api->sprite->getPosition(sprite, &x,&y);
-		Api->sprite->setBounds(sprite, PDRectMake(x - ((float)w / 2.0f), y - ((float)h / 2.0f), (float)w, (float)h));
+		Api->sprite->setBounds(sprite, PDRectMake(x - ((float)w * sprite->CenterX), y - ((float)h * sprite->CenterY), (float)w, (float)h));
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setImage end\n");
 }
@@ -568,7 +573,7 @@ void pd_api_sprite_setSize(LCDSprite *s, float width, float height)
 		Api->sprite->getPosition(s, &x,&y);
 		int w,h;
 		Api->graphics->getBitmapData(s->Bitmap, &w, &h, NULL, NULL, NULL);
-		Api->sprite->setBounds(s, PDRectMake(x - ((float)w / 2.0f), y - ((float)h / 2.0f), (float)w, (float)h));
+		Api->sprite->setBounds(s, PDRectMake(x - ((float)w * s->CenterX), y - ((float)h * s->CenterY), (float)w, (float)h));
 	}
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setSize end\n");
 }
@@ -1064,106 +1069,179 @@ void pd_api_sprite_setCollisionResponseFunction(LCDSprite *sprite, LCDSpriteColl
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setCollisionResponseFunction end\n");
 }
 
-
-SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goalX, float goalY, float *actualX, float *actualY, int *len)// access results using SpriteCollisionInfo *info = &results[i];
+static SpriteCollisionInfo* spriteDoCollisions(LCDSprite *sprite, float goalX, float goalY, float *actualX, float *actualY, int *len, bool doMove)
 {
-	printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions\n");
 	if(len)
-	 	*len = 0;
-	float internalActualX = sprite->BoundsRect.x + (sprite->BoundsRect.width / 2);
+ 		*len = 0;
+	
+	if(!sprite)
+	{
+		SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
+		memset(Tmp, 0, sizeof(SpriteCollisionInfo));
+
+		return Tmp;
+	}
+	
+	float internalActualX = sprite->BoundsRect.x + (sprite->BoundsRect.width * sprite->CenterX);
 	if(actualX)
 		*actualX = internalActualX;
-	float internalActualY = sprite->BoundsRect.y + (sprite->BoundsRect.height / 2);
+	float internalActualY = sprite->BoundsRect.y + (sprite->BoundsRect.height * sprite->CenterY);
 	if(actualY)
 		*actualY = internalActualY;
 
-
-
-	if(sprite == NULL)
-	{
-		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions sprite == NULL\n");
-		return NULL;
-	}
-
-	if(!sprite->Loaded)
-	{
-		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end Sprite not loaded\n");
-		return NULL;
-	}
-	
 	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
 	memset(Tmp, 0, sizeof(SpriteCollisionInfo));
 	
 	if(sprite->BumpItem != nullptr)
 	{
 		CollisionResolution resolution;
-		int ccc = 0;
-		int c = 0;
-		world->Check(resolution, sprite->BumpItem, math::vec2(goalX - (sprite->CollideRectBump.width / 2.0f), goalY - (sprite->CollideRectBump.height / 2.0f)),[&c,&ccc](auto item, auto other, Collision* col){	
+		math::vec2 goal(
+			goalX - (sprite->BoundsRect.width * sprite->CenterX) + sprite->CollideRect.x,
+			goalY - (sprite->BoundsRect.height * sprite->CenterY) + sprite->CollideRect.y);
+
+		auto filter = [](auto item, auto other, Collision* col)
+		{	
 			if((item == nullptr) || (other == nullptr) || (item->UserData.GetRaw() == other->UserData.GetRaw()))
 				return false;
-			
-			ccc++;
-			Rectangle ItemRect = item->GetRectangle();
-			Rectangle OtherRect = other->GetRectangle();
+
 			LCDSprite *spriteCurrent = (LCDSprite*)(item->UserData.GetRaw());
 			LCDSprite *spriteOther = (LCDSprite*)(other->UserData.GetRaw());
-			
-			//printf("#Rects %d Checking Item %p: %f %f %f %f, Checking other %p:%f %f %f %f\n", ccc, spriteCurrent, item->GetRectangle().pos.x, item->GetRectangle().pos.y, item->GetRectangle().scale.x, item->GetRectangle().scale.y,
-			//		spriteOther, other->GetRectangle().pos.x, other->GetRectangle().pos.y, other->GetRectangle().scale.x, other->GetRectangle().scale.y);
-			//printf("#Sprite %d Checking Item %p: %f %f %f %f, Checking other %p:%f %f %f %f\n", ccc, spriteCurrent, ItemRect.x, ItemRect.y, ItemRect.width, ItemRect.height,
-			//		spriteOther, OtherRect.x, OtherRect.y, OtherRect.width, OtherRect.height);
-			// if ((ItemRect.x < OtherRect.x + OtherRect.width) &&
-			// 	(OtherRect.x < ItemRect.x + ItemRect.width) &&
-			// 	(ItemRect.y  < OtherRect.y + OtherRect.height) &&
-			// 	(OtherRect.y < ItemRect.y + ItemRect.height))
-			if (ItemRect.IsIntersecting(OtherRect))
-			{
-				c++;
-				//printf("#%d InterSecting Item %p: %f %f %f %f, InterSecting other %p:%f %f %f %f\n", c, spriteCurrent, item->GetRectangle().pos.x, item->GetRectangle().pos.y, item->GetRectangle().scale.x, item->GetRectangle().scale.y,
-				//	spriteOther, other->GetRectangle().pos.x, other->GetRectangle().pos.y, other->GetRectangle().scale.x, other->GetRectangle().scale.y);
-				
-				//printf("sprite L:%d C:%d LIL:%d other: L:%d C:%d LIL:%d\n", spriteCurrent->Loaded, spriteCurrent->CollisionsEnabled, spriteCurrent->LoadedInList,spriteOther->LoadedInList, spriteOther->CollisionsEnabled, spriteOther->Loaded);
-				if(!spriteCurrent->Loaded || !spriteOther->Loaded || !spriteCurrent->CollisionsEnabled || !spriteOther->CollisionsEnabled || !spriteCurrent->LoadedInList || !spriteOther->LoadedInList)
-				{
-					//col->Respond<plugin::physics::bump::response::Cross>();
-					return false;
-				}
-				else
-				{
-					SpriteCollisionResponseType response = kCollisionTypeFreeze;
-					if (!((spriteCurrent->CollisionResponseTypeFunction == NULL) ||
-						(spriteCurrent->CollisionResponseTypeFunction == nullptr)))
-						response = spriteCurrent->CollisionResponseTypeFunction(spriteCurrent, spriteOther);
-					switch (response)
-					{
-						case kCollisionTypeBounce:
-							col->Respond<plugin::physics::bump::response::Bounce>();
-							break;				
-						case kCollisionTypeOverlap:
-							col->Respond<plugin::physics::bump::response::Cross>();
-							break;
-						case kCollisionTypeSlide:
-							col->Respond<plugin::physics::bump::response::Slide>();
-							break;
-						default: //kCollisionTypeFreeze
-							col->Respond<plugin::physics::bump::response::Touch>();
-							break;
-				
-					}
-					return true;
 
+			if(!spriteCurrent->Loaded || !spriteOther->Loaded || !spriteCurrent->CollisionsEnabled || !spriteOther->CollisionsEnabled || !spriteCurrent->LoadedInList || !spriteOther->LoadedInList)
+			{
+				return false;
+			}
+			else
+			{
+				SpriteCollisionResponseType response = kCollisionTypeFreeze;
+				if (spriteCurrent->CollisionResponseTypeFunction != nullptr)
+					response = spriteCurrent->CollisionResponseTypeFunction(spriteCurrent, spriteOther);
+				switch (response)
+				{
+					case kCollisionTypeBounce:
+						col->Respond<plugin::physics::bump::response::Bounce>();
+						break;
+					case kCollisionTypeOverlap:
+						col->Respond<plugin::physics::bump::response::Cross>();
+						break;
+					case kCollisionTypeSlide:
+						col->Respond<plugin::physics::bump::response::Slide>();
+						break;
+					default: //kCollisionTypeFreeze
+						col->Respond<plugin::physics::bump::response::Touch>();
+						break;
+				}
+				return true;
+			}
+		};
+
+		// For checkCollisions (doMove=false) a single world->Check is correct: no world mutation wanted.
+		// For moveWithCollisions (doMove=true) we must match the Playdate simulator's doCollisions
+		// behaviour: it loops world->Move repeatedly from the resolved position with a FRESH visited
+		// set each time, until the position stops changing. This is critical for the "squeezed between
+		// two obstacles" case: without looping, the visited set blocks re-collision with the first
+		// obstacle after bouncing off the second, so the sprite wrongly passes through it.
+		// All collision events from every iteration are accumulated and returned to the caller,
+		// matching what Playdate's moveWithCollisions returns.
+
+		// Accumulated collisions across all loop iterations (returned to caller).
+		Collisions allCollisions;
+
+		if(!doMove)
+		{
+			world->Check(resolution, sprite->BumpItem, goal, filter);
+			allCollisions = resolution.collisions;
+		}
+		else
+		{
+			// Run the first world->Move unconditionally.
+			world->Move(resolution, sprite->BumpItem, goal, filter);
+			for(auto& c : resolution.collisions)
+				allCollisions.push_back(c);
+
+
+			// Convergence loop for the squeeze case: sprite bounced between two obstacles.
+			// We detect this by checking whether the initial world->Move produced 2 or more
+			// collisions — meaning the Bounce response hit a second obstacle in its internal
+			// Project call. A simple single-obstacle bounce produces only 1 collision and
+			// needs no loop. A squeeze (e.g. between a wall and another sprite) produces 2+.
+			// Exclude Cross (Overlap) response: those sprites pass through everything,
+			// so multiple collisions from corner-grazing walls are expected and the loop
+			// would spin endlessly without converging.
+			{
+				bool allCross = true;
+				for(auto& c : allCollisions)
+					if(!c->Is<response::Cross>()) { allCross = false; break; }
+
+				if(allCollisions.size() >= 2 && !allCross)
+				{
+					const int MAX_ITER = 10000;
+					int totalIter = 0;
+					math::vec2 lastSnapPos = sprite->BumpItem->GetRectangle().pos;
+					for(int iter = 0; iter < MAX_ITER && !resolution.collisions.empty(); iter++, totalIter++)
+					{
+						// Use BumpItem's current position (left by world->Move) as the new goal.
+						// This is the key: goal drifts each iteration, driving ti toward 1.
+						math::vec2 nextGoal = sprite->BumpItem->GetRectangle().pos;
+
+						// Snap BumpItem back to the last collision's touch point so the next
+						// world->Move starts from a clean non-overlapping position.
+						auto& lastCol = resolution.collisions.back();
+						lastSnapPos = lastCol->touch;
+						math::vec2 bumpScale = sprite->BumpItem->GetRectangle().scale;
+						world->Update(sprite->BumpItem, Rectangle(lastSnapPos, bumpScale));
+
+						// Retry toward the drifted goal (resolution.pos from previous iter).
+						world->Move(resolution, sprite->BumpItem, nextGoal, filter);
+
+						for(auto& c : resolution.collisions)
+							allCollisions.push_back(c);
+					}
 				}
 			}
-			return false;
-			//printf("Collision doresolve = %d\n", doResolve);	
-		});			
-		if(actualX)
-			*actualX = resolution.pos.x + (sprite->CollideRectBump.width  / 2.0f);
-		if(actualY) 
-			*actualY = resolution.pos.y + (sprite->CollideRectBump.height / 2.0f);
+		}	// end else (doMove)
 
-		for (auto& col : resolution.collisions)
+		float newActualx, newActualy;
+		if(!allCollisions.empty())
+		{
+			// Collision occurred: derive final center from where world->Move left the BumpItem.
+			math::vec2 finalBumpPos = sprite->BumpItem->GetRectangle().pos;
+			newActualx = finalBumpPos.x - sprite->CollideRect.x + (sprite->BoundsRect.width * sprite->CenterX);
+			newActualy = finalBumpPos.y - sprite->CollideRect.y + (sprite->BoundsRect.height * sprite->CenterY);
+		}
+		else
+		{
+			// No collision: use float goal directly so positions accumulate
+			// the same as on Playdate (which only snaps on collision).
+			newActualx = goalX;
+			newActualy = goalY;
+		}
+
+		if(doMove)
+		{
+			// world->Move already updated BumpItem->rect in the bump world grid.
+			// Sync the sprite's BoundsRect/CenterPoint directly without calling moveTo,
+			// which would call world->Update a second time and corrupt the grid.
+			PDRect Bounds = PDRectMake(
+				newActualx - (sprite->BoundsRect.width * sprite->CenterX),
+				newActualy - (sprite->BoundsRect.height * sprite->CenterY),
+				sprite->BoundsRect.width,
+				sprite->BoundsRect.height);
+			sprite->BoundsRect = Bounds;
+			sprite->CenterPointX = newActualx;
+			sprite->CenterPointY = newActualy;
+			sprite->CollideRectBump.x = Bounds.x + sprite->CollideRect.x;
+			sprite->CollideRectBump.y = Bounds.y + sprite->CollideRect.y;
+			sprite->Dirty = true;
+		}
+
+
+		if(actualX)
+			*actualX = newActualx;
+		if(actualY)
+			*actualY = newActualy;
+
+		for (auto& col : allCollisions)
 		{
 			Tmp = (SpriteCollisionInfo*) realloc(Tmp, ((*len) + 1) * sizeof(SpriteCollisionInfo));
 			Tmp[*len].responseType = kCollisionTypeFreeze;
@@ -1199,13 +1277,12 @@ SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goal
 			Tmp[*len].normal.y = col->normal.y;
 			Tmp[*len].ti = col->ti;
 			Tmp[*len].move.x = col->move.x;
-			Tmp[*len].move.x = col->move.y;
+			Tmp[*len].move.y = col->move.y;
 			Tmp[*len].touch.x = col->touch.x;
-			Tmp[*len].touch.y = col->touch.y;		
-			*len = (*len) +1;
+			Tmp[*len].touch.y = col->touch.y;
+			*len = (*len) + 1;
 		}
 	}
-	printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end\n");
 	if (*len == 0)
 	{
 		free(Tmp);
@@ -1214,160 +1291,46 @@ SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goal
 	return Tmp;
 }
 
+SpriteCollisionInfo* pd_api_sprite_checkCollisions(LCDSprite *sprite, float goalX, float goalY, float *actualX, float *actualY, int *len)
+{
+	printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions\n");
+ 
+	if(sprite == NULL)
+	{
+		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions sprite == NULL\n");
+		return NULL;
+	}
+ 
+	if(!sprite->Loaded)
+	{
+		printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end Sprite not loaded\n");
+		return NULL;
+	}
+ 
+	SpriteCollisionInfo *result = spriteDoCollisions(sprite, goalX, goalY, actualX, actualY, len, false);
+	printfDebug(DebugTraceFunctions,"pd_api_sprite_checkCollisions end\n");
+	return result;
+}
+ 
 SpriteCollisionInfo* pd_api_sprite_moveWithCollisions(LCDSprite *sprite, float goalX, float goalY, float *actualX, float *actualY, int *len)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions\n");
-	if(len)
-	 	*len = 0;
-	float internalActualX = sprite->BoundsRect.x + (sprite->BoundsRect.width / 2);
-	if(actualX)
-		*actualX = internalActualX;
-	float internalActualY = sprite->BoundsRect.y + (sprite->BoundsRect.height / 2);
-	if(actualY)
-		*actualY = internalActualY;
-
+ 
 	if(sprite == NULL)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions sprite == NULL\n");
 		return NULL;
 	}
-	
+ 
 	if(!sprite->Loaded)
 	{
 		printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions end Sprite not loaded\n");
 		return NULL;
 	}
-	
-	SpriteCollisionInfo *Tmp = (SpriteCollisionInfo*) malloc(sizeof(SpriteCollisionInfo));
-	memset(Tmp, 0, sizeof(SpriteCollisionInfo));
-
-
-	if(sprite->BumpItem != nullptr)
-	{
-		CollisionResolution resolution;
-		int ccc = 0;
-		int c = 0;;
-		world->Move(resolution, sprite->BumpItem, math::vec2(goalX - (sprite->CollideRectBump.width / 2.0f), goalY - (sprite->CollideRectBump.height / 2.0f)),[&ccc, &c](auto item, auto other, Collision* col)
-		{	
-			if((item == nullptr) || (other == nullptr) || (item->UserData.GetRaw() == other->UserData.GetRaw()))
-				return false;
-			
-			ccc++;
-			Rectangle ItemRect = item->GetRectangle();
-			Rectangle OtherRect = other->GetRectangle();
-			LCDSprite *spriteCurrent = (LCDSprite*)(item->UserData.GetRaw());
-			LCDSprite *spriteOther = (LCDSprite*)(other->UserData.GetRaw());
-			
-			//printf("#Rects %d Checking Item %p: %f %f %f %f, Checking other %p:%f %f %f %f\n", ccc, spriteCurrent, item->GetRectangle().pos.x, item->GetRectangle().pos.y, item->GetRectangle().scale.x, item->GetRectangle().scale.y,
-			//		spriteOther, other->GetRectangle().pos.x, other->GetRectangle().pos.y, other->GetRectangle().scale.x, other->GetRectangle().scale.y);
-			//printf("#Sprite %d Checking Item %p: %f %f %f %f, Checking other %p:%f %f %f %f\n", ccc, spriteCurrent, ItemRect.x, ItemRect.y, ItemRect.width, ItemRect.height,
-			//		spriteOther, OtherRect.x, OtherRect.y, OtherRect.width, OtherRect.height);
-			// if ((ItemRect.x < OtherRect.x + OtherRect.width) &&
-			// 	(OtherRect.x < ItemRect.x + ItemRect.width) &&
-			// 	(ItemRect.y  < OtherRect.y + OtherRect.height) &&
-			// 	(OtherRect.y < ItemRect.y + ItemRect.height))
-			if (ItemRect.IsIntersecting(OtherRect))
-			{
-				c++;
-				//printf("#%d InterSecting Item %p: %f %f %f %f, InterSecting other %p:%f %f %f %f\n", c, spriteCurrent, item->GetRectangle().pos.x, item->GetRectangle().pos.y, item->GetRectangle().scale.x, item->GetRectangle().scale.y,
-				//	spriteOther, other->GetRectangle().pos.x, other->GetRectangle().pos.y, other->GetRectangle().scale.x, other->GetRectangle().scale.y);
-				
-				//printf("sprite L:%d C:%d LIL:%d other: L:%d C:%d LIL:%d\n", spriteCurrent->Loaded, spriteCurrent->CollisionsEnabled, spriteCurrent->LoadedInList,spriteOther->LoadedInList, spriteOther->CollisionsEnabled, spriteOther->Loaded);
-				if(!spriteCurrent->Loaded || !spriteOther->Loaded || !spriteCurrent->CollisionsEnabled || !spriteOther->CollisionsEnabled || !spriteCurrent->LoadedInList || !spriteOther->LoadedInList)
-				{
-					//col->Respond<plugin::physics::bump::response::Cross>();
-					return false;
-				}
-				else
-				{
-					SpriteCollisionResponseType response = kCollisionTypeFreeze;
-					if (!((spriteCurrent->CollisionResponseTypeFunction == NULL) ||
-						(spriteCurrent->CollisionResponseTypeFunction == nullptr)))
-						response = spriteCurrent->CollisionResponseTypeFunction(spriteCurrent, spriteOther);
-					switch (response)
-					{
-						case kCollisionTypeBounce:
-							col->Respond<plugin::physics::bump::response::Bounce>();
-							break;				
-						case kCollisionTypeOverlap:
-							col->Respond<plugin::physics::bump::response::Cross>();
-							break;
-						case kCollisionTypeSlide:
-							col->Respond<plugin::physics::bump::response::Slide>();
-							break;
-						default: //kCollisionTypeFreeze
-							col->Respond<plugin::physics::bump::response::Touch>();
-							break;
-				
-					}
-					return true;
-
-				}
-			}
-			return false;
-			//printf("Collision doresolve = %d\n", doResolve);	
-		});	
-		float newActualx =  resolution.pos.x + (sprite->CollideRectBump.width / 2.0f);
-		float newActualy =  resolution.pos.y + (sprite->CollideRectBump.height / 2.0f);
-		//PDRect Rect = makePDRect()
-		//Api->sprite->setBounds(sprite, PDRectMake(resolution.pos.x, resolution.pos.y, sprite->BoundsRect.width, sprite->BoundsRect.height));
-		//sprite->BoundsRect.x = resolution.pos.x;
-		//sprite->BoundsRect.y = resolution.pos.y;
-		Api->sprite->moveTo(sprite, newActualx, newActualy);
-		if(actualX)
-			*actualX = newActualx;
-		if(actualY) 
-			*actualY = newActualy;
-		//printfDebug(DebugInfo, "Collision len in resolution.collisions %d\n", resolution.collisions.size());
-		for (auto& col : resolution.collisions)
-		{
-			Tmp = (SpriteCollisionInfo*) realloc(Tmp, ((*len) + 1) * sizeof(SpriteCollisionInfo));
-			Tmp[*len].responseType = kCollisionTypeFreeze;
-			if(col->Is<response::Touch>())
-			{
-				Tmp[*len].responseType = kCollisionTypeFreeze;
-			}
-			if(col->Is<response::Cross>())
-			{
-				Tmp[*len].responseType = kCollisionTypeOverlap;
-			}
-			if(col->Is<response::Bounce>())
-			{
-				Tmp[*len].responseType = kCollisionTypeBounce;
-			}
-			if(col->Is<response::Slide>())
-			{
-				Tmp[*len].responseType = kCollisionTypeSlide;
-			}
-			
-			Tmp[*len].other = (LCDSprite *) col->other->UserData.GetRaw();
-			Tmp[*len].otherRect.height = col->otherRect.scale.y;
-			Tmp[*len].otherRect.width = col->otherRect.scale.x;
-			Tmp[*len].otherRect.x = col->otherRect.pos.x;
-			Tmp[*len].otherRect.y = col->otherRect.pos.y;
-			Tmp[*len].sprite = (LCDSprite *) col->item->UserData.GetRaw();
-			Tmp[*len].spriteRect.height = col->itemRect.scale.y;
-			Tmp[*len].spriteRect.width = col->itemRect.scale.x;
-			Tmp[*len].spriteRect.x = col->itemRect.pos.x;
-			Tmp[*len].spriteRect.y = col->itemRect.pos.y;
-			Tmp[*len].overlaps = col->overlaps;
-			Tmp[*len].normal.x = col->normal.x;
-			Tmp[*len].normal.y = col->normal.y; //seems inverse in simulator
-			Tmp[*len].ti = col->ti;
-			Tmp[*len].move.x = col->move.x;
-			Tmp[*len].move.x = col->move.y;
-			Tmp[*len].touch.x = col->touch.x;
-			Tmp[*len].touch.y = col->touch.y;		
-			*len = (*len) +1;
-		}
-	}
+ 
+	SpriteCollisionInfo *result = spriteDoCollisions(sprite, goalX, goalY, actualX, actualY, len, true);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_moveWithCollisions end\n");
-	if (*len == 0)
-	{
-		free(Tmp);
-		return NULL;
-	}
-	return Tmp;
+	return result;
 }
 
 LCDSprite** pd_api_sprite_querySpritesAtPoint(float x, float y, int *len)
@@ -1375,21 +1338,49 @@ LCDSprite** pd_api_sprite_querySpritesAtPoint(float x, float y, int *len)
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesAtPoint\n");
 	if(len)
 		*len = 0;
-    LCDSprite ** Tmp = (LCDSprite **) malloc(sizeof(*Tmp));
-    printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_querySpritesAtPoint not implemented!\n");
+
+	LCDSprite** Tmp = (LCDSprite**) malloc(sizeof(*Tmp));
+
+	std::set<Item*> items;
+	world->QueryPoint(items, math::vec2(x, y), [](Item* item) {
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+		return sprite && sprite->Loaded && sprite->LoadedInList && sprite->CollisionsEnabled;
+	});
+
+	for (auto& item : items)
+	{
+		Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+		Tmp[*len] = (LCDSprite*)(item->UserData.GetRaw());
+		*len = (*len) + 1;
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesAtPoint end\n");
 	return Tmp;
 }
 
 LCDSprite** pd_api_sprite_querySpritesInRect(float x, float y, float width, float height, int *len)
 {
-	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesInRect end\n");
+	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesInRect\n");
 	if(len)
 		*len = 0;
-    LCDSprite ** Tmp = (LCDSprite **) malloc(sizeof(*Tmp));
-	printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_querySpritesInRect not implemented\n");
+
+	LCDSprite** Tmp = (LCDSprite**) malloc(sizeof(*Tmp));
+
+	std::set<Item*> items;
+	world->QueryRect(items, Rectangle(x, y, width, height), [](Item* item) {
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+		return sprite && sprite->Loaded && sprite->LoadedInList && sprite->CollisionsEnabled;
+	});
+
+	for (auto& item : items)
+	{
+		Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+		Tmp[*len] = (LCDSprite*)(item->UserData.GetRaw());
+		*len = (*len) + 1;
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesInRect end\n");
-    return Tmp;
+	return Tmp;
 }
 
 LCDSprite** pd_api_sprite_querySpritesAlongLine(float x1, float y1, float x2, float y2, int *len)
@@ -1397,20 +1388,73 @@ LCDSprite** pd_api_sprite_querySpritesAlongLine(float x1, float y1, float x2, fl
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesAlongLine\n");
 	if(len)
 		*len = 0;
-    LCDSprite ** Tmp = (LCDSprite **) malloc(sizeof(*Tmp));
-	printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_querySpritesAlongLine not implemented\n");
+
+	LCDSprite** Tmp = (LCDSprite**) malloc(sizeof(*Tmp));
+
+	std::set<Item*> items;
+	world->QuerySegment(items, math::vec2(x1, y1), math::vec2(x2, y2), [](Item* item) {
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+		return sprite && sprite->Loaded && sprite->LoadedInList && sprite->CollisionsEnabled;
+	});
+
+	for (auto& item : items)
+	{
+		Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+		Tmp[*len] = (LCDSprite*)(item->UserData.GetRaw());
+		*len = (*len) + 1;
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpritesAlongLine end\n");
-    return Tmp;
+	return Tmp;
 }
 
-SpriteQueryInfo* pd_api_sprite_querySpriteInfoAlongLine(float x1, float y1, float x2, float y2, int *len)// access results using SpriteQueryInfo *info = &results[i]{}
+SpriteQueryInfo* pd_api_sprite_querySpriteInfoAlongLine(float x1, float y1, float x2, float y2, int *len)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpriteInfoAlongLine\n");
-    if(len)
+	if(len)
 		*len = 0;
-	printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_querySpriteInfoAlongLine not implemented\n");
+
+	SpriteQueryInfo* Tmp = (SpriteQueryInfo*) malloc(sizeof(SpriteQueryInfo));
+	memset(Tmp, 0, sizeof(SpriteQueryInfo));
+
+	std::set<Item*> items;
+	world->QuerySegment(items, math::vec2(x1, y1), math::vec2(x2, y2), [](Item* item) {
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+		return sprite && sprite->Loaded && sprite->LoadedInList && sprite->CollisionsEnabled;
+	});
+
+	math::vec2 top(x1, y1);
+	math::vec2 bottom(x2, y2);
+	math::vec2 delta = bottom - top;
+
+	for (auto& item : items)
+	{
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+
+		IntersectionIndicie indicie;
+		indicie.ti1 = 0;
+		indicie.ti2 = 1;
+		if (!item->GetRectangle().GetSegmentIntersectionIndices(top, bottom, indicie))
+			continue;
+
+		Tmp = (SpriteQueryInfo*) realloc(Tmp, ((*len) + 1) * sizeof(SpriteQueryInfo));
+		Tmp[*len].sprite = sprite;
+		Tmp[*len].ti1 = indicie.ti1;
+		Tmp[*len].ti2 = indicie.ti2;
+		Tmp[*len].entryPoint.x = (top.x + delta.x * indicie.ti1);
+		Tmp[*len].entryPoint.y = (top.y + delta.y * indicie.ti1);
+		Tmp[*len].exitPoint.x  = (top.x + delta.x * indicie.ti2);
+		Tmp[*len].exitPoint.y  = (top.y + delta.y * indicie.ti2);;
+		*len = (*len) + 1;
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_querySpriteInfoAlongLine end\n");
-	return NULL;
+	if (*len == 0)
+	{
+		free(Tmp);
+		return NULL;
+	}
+	return Tmp;
 }
 
 LCDSprite** pd_api_sprite_overlappingSprites(LCDSprite *sprite, int *len)
@@ -1418,10 +1462,35 @@ LCDSprite** pd_api_sprite_overlappingSprites(LCDSprite *sprite, int *len)
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_overlappingSprites\n");
 	if(len)
 		*len = 0;
-    LCDSprite ** Tmp = (LCDSprite **) malloc(sizeof(*Tmp));
-	printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_overlappingSprites not implemented!\n");
+
+	LCDSprite** Tmp = (LCDSprite**) malloc(sizeof(*Tmp));
+
+	if(sprite == NULL)
+	{
+		printfDebug(DebugTraceFunctions,"pd_api_sprite_overlappingSprites end sprite == NULL\n");
+		return Tmp;
+	}
+	if(!sprite->Loaded || sprite->BumpItem == nullptr)
+	{
+		printfDebug(DebugTraceFunctions,"pd_api_sprite_overlappingSprites end sprite not loaded or no BumpItem\n");
+		return Tmp;
+	}
+
+	std::set<Item*> items;
+	world->QueryRect(items, sprite->BumpItem->GetRectangle(), [sprite](Item* item) {
+		LCDSprite* other = (LCDSprite*)(item->UserData.GetRaw());
+		return other && other != sprite && other->Loaded && other->LoadedInList && other->CollisionsEnabled;
+	});
+
+	for (auto& item : items)
+	{
+		Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+		Tmp[*len] = (LCDSprite*)(item->UserData.GetRaw());
+		*len = (*len) + 1;
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_overlappingSprites end\n");
-    return Tmp;
+	return Tmp;
 }
 
 LCDSprite** pd_api_sprite_allOverlappingSprites(int *len)
@@ -1429,10 +1498,53 @@ LCDSprite** pd_api_sprite_allOverlappingSprites(int *len)
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_allOverlappingSprites\n");
 	if(len)
 		*len = 0;
-    LCDSprite ** Tmp = (LCDSprite **) malloc(sizeof(*Tmp));
-	printfDebug(DEBUGNOTIMPLEMENTEDFUNCTIONS,"pd_api_sprite_allOverlappingSprites not implemented!\n");
+
+	LCDSprite** Tmp = (LCDSprite**) malloc(sizeof(*Tmp));
+
+	auto allItems = world->GetItems();
+	std::set<Item*> seen;
+
+	for (auto& item : allItems)
+	{
+		if (seen.find(item) != seen.end())
+			continue;
+
+		LCDSprite* sprite = (LCDSprite*)(item->UserData.GetRaw());
+		if (!sprite || !sprite->Loaded || !sprite->LoadedInList || !sprite->CollisionsEnabled)
+			continue;
+
+		std::set<Item*> overlapping;
+		world->QueryRect(overlapping, item->GetRectangle(), [item](Item* other) {
+			if (other == item)
+				return false;
+			LCDSprite* otherSprite = (LCDSprite*)(other->UserData.GetRaw());
+			return otherSprite && otherSprite->Loaded && otherSprite->LoadedInList && otherSprite->CollisionsEnabled;
+		});
+
+		if (!overlapping.empty())
+		{
+			if (seen.find(item) == seen.end())
+			{
+				Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+				Tmp[*len] = sprite;
+				*len = (*len) + 1;
+				seen.insert(item);
+			}
+			for (auto& other : overlapping)
+			{
+				if (seen.find(other) == seen.end())
+				{
+					Tmp = (LCDSprite**) realloc(Tmp, ((*len) + 1) * sizeof(*Tmp));
+					Tmp[*len] = (LCDSprite*)(other->UserData.GetRaw());
+					*len = (*len) + 1;
+					seen.insert(other);
+				}
+			}
+		}
+	}
+
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_allOverlappingSprites end\n");
-    return Tmp;
+	return Tmp;
 }
 
 
@@ -1499,8 +1611,8 @@ void pd_api_sprite_setCenter(LCDSprite* s, float x, float y)
 	if(!s)
 		return;
 
-	s->CenterX = s->CenterX;
-	s->CenterY = s->CenterY;
+	s->CenterX = x;
+	s->CenterY = y;
 }
 
 void pd_api_sprite_getCenter(LCDSprite* s, float* x, float* y)

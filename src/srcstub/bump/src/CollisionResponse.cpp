@@ -73,10 +73,10 @@ void Bounce::Resolve(
 
     auto b = col->touch;
 
-    if (col->move.x != 0 or col->move.y != 0)
+    if (col->move.x != 0.0f or col->move.y != 0.0f)
     {
         auto bn = goal - col->touch;
-        if (col->normal.x == 0)
+        if (col->normal.x == 0.0f)
         {
             bn.y = -bn.y;
         }else

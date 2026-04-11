@@ -40,7 +40,7 @@ namespace plugin::physics::bump
         {return DetectCollision(other, collision, pos);}
         bool DetectCollision(const Rectangle& other,Collision* collision, math::vec2 goal) const;
 
-        bool compare(const Rectangle& rhs){return (pos == rhs.pos and pos == rhs.scale);}
+        bool compare(const Rectangle& rhs){return (pos == rhs.pos and scale == rhs.scale);}
         inline bool operator==(const Rectangle& rhs){ return compare(rhs); }
         inline bool operator!=(const Rectangle& rhs){ return not compare(rhs); }
         inline friend std::ostream& operator<<(std::ostream& out, const Rectangle& rect) {

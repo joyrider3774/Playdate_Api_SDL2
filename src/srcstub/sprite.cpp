@@ -35,6 +35,7 @@ LCDSprite::LCDSprite()
     this->LoadedInList = false;
 	this->Loaded = true;
 	this->BumpItem = nullptr;
+	this->NaturalOrder = 0;
     printfDebug(DebugInfo, "Sprite Created %p\n", this);
 }
 

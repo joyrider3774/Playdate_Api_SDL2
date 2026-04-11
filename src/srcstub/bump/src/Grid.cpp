@@ -74,7 +74,7 @@ void Grid::Traverse(math::vec2 top, math::vec2 bottom, std::function<void(int x,
     }
     if (center.x != cBottom.x or center.y != cBottom.y)
     {
-        f(center.x,center.y);
+        f(cBottom.x, cBottom.y);
     }
 }
 Rectangle Grid::ToCellRect(const Rectangle& rect)
