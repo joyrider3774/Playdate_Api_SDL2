@@ -357,6 +357,18 @@ void pd_api_sprite_addSprite(LCDSprite *sprite)
 	sprite->LoadedInList = true;
     sprite->NaturalOrder = _pd_api_naturalOrder++;
 	_pd_api_sprite_SpriteListNeedsSort = true;
+	
+	// Re-register collision rect in bump world if it was removed (e.g. after removeSprite)
+    if (sprite->BumpItem == nullptr &&
+        !(sprite->CollideRect.width == 0 && sprite->CollideRect.height == 0))
+    {
+        sprite->BumpItem = world->Add(
+            sprite->shared_ptr_self,
+            Rectangle(sprite->CollideRectBump.x, sprite->CollideRectBump.y,
+                      sprite->CollideRect.width, sprite->CollideRect.height));
+        cc++;
+    }
+	
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_addSprite end\n");
 }
 
