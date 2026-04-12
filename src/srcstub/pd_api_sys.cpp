@@ -572,7 +572,11 @@ int pd_api_sys_vaFormatString(char **outstr, const char *fmt, va_list args)
 
 int pd_api_sys_parseString(const char *str, const char *format, ...)
 {
-	return 0;
+    va_list args;
+    va_start(args, format);
+    int result = vsscanf(str, format, args);
+    va_end(args);
+    return result;
 }
 
 void pd_api_sys_delay(uint32_t milliseconds)
