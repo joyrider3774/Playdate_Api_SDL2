@@ -462,37 +462,56 @@ SDFile*	pd_api_file_SDFileopen(const char* name, FileOptions mode)
 
 int	pd_api_file_SDFileclose(SDFile* file)
 {
-    return fclose((FILE*)file);
+    if(file)
+        return fclose((FILE*)file);
+    else
+        return -1;
 }
 
 int	pd_api_file_SDFileread(SDFile* file, void* buf, unsigned int len)
 {
-    return fread(buf, 1, len, (FILE*)file);
+     if(file)
+        return fread(buf, 1, len, (FILE*)file);
+    else
+        return -1;
 }
 
 int	pd_api_file_SDFilewrite(SDFile* file, const void* buf, unsigned int len)
 {
-    int result = fwrite(buf, 1, len, (FILE*)file);
-	#ifdef __EMSCRIPTEN__
-	fflush((FILE*)file);
-	#endif
-	_pd_api_file_sync_emscripten();
+    int result = -1;
+    if(file)
+    {
+        result = fwrite(buf, 1, len, (FILE*)file);
+	    #ifdef __EMSCRIPTEN__
+	    fflush((FILE*)file);
+	    #endif
+	    _pd_api_file_sync_emscripten();
+    }
 	return result;
 }
 
 int	pd_api_file_SDFileflush(SDFile* file)
 {
-    return fflush((FILE*)file);
+    if(file)
+        return fflush((FILE*)file);
+    else
+        return -1;
 }
 
 int	pd_api_file_SDFiletell(SDFile* file)
 {
-    return ftell((FILE*)file);
+    if (file)
+        return ftell((FILE*)file);
+    else
+        return -1;
 }
 
 int	pd_api_file_SDFileseek(SDFile* file, int pos, int whence)
 {
-    return fseek((FILE*)file, pos, whence);
+    if(file)
+        return fseek((FILE*)file, pos, whence);
+    else
+        return -1;
 }
 
 playdate_file* pd_api_file_Create_playdate_file()
