@@ -21,8 +21,11 @@ unsigned int _startTime = 0;
 uint32_t _pd_api_sys_pausedMs = 0;
 static uint32_t _pd_api_sys_pauseStartTick = 0;
 static bool _pd_api_sys_waitForMenuRelease = false;
+static PDButtonCallbackFunction* _pd_api_sys_buttonCallback = NULL;
+static void* _pd_api_sys_buttonUserdata = NULL;
 
 uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime);
+void pd_api_sys_fireButtonCallbacks(void);
 
 void _pd_api_sys_waitForMenuButtonRelease(void)
 {
@@ -76,6 +79,8 @@ void _pd_api_sys_UpdateInput()
         if (!anyHeld)
             _pd_api_sys_waitForMenuRelease = false;
     }
+
+	pd_api_sys_fireButtonCallbacks();
 
 	_CranckChange = 0.0f;
 
@@ -547,10 +552,40 @@ void pd_api_sys_clearICache(void)
 
 }
 
+void pd_api_sys_fireButtonCallbacks(void)
+{
+    if (!_pd_api_sys_buttonCallback)
+        return;
+
+    uint32_t when = pd_api_sys_getCurrentTimeMilliseconds();
+
+    // Check each button: if state changed, fire callback
+    struct { bool cur; bool prev; PDButtons btn; } buttons[] = {
+        { _pd_api_sys_input->Buttons.ButA, _pd_api_sys_input->PrevButtons.ButA, kButtonA },
+        { _pd_api_sys_input->Buttons.ButB, _pd_api_sys_input->PrevButtons.ButB, kButtonB },
+        { _pd_api_sys_input->Buttons.ButLeft || _pd_api_sys_input->Buttons.ButDpadLeft,
+          _pd_api_sys_input->PrevButtons.ButLeft || _pd_api_sys_input->PrevButtons.ButDpadLeft, kButtonLeft },
+        { _pd_api_sys_input->Buttons.ButRight || _pd_api_sys_input->Buttons.ButDpadRight,
+          _pd_api_sys_input->PrevButtons.ButRight || _pd_api_sys_input->PrevButtons.ButDpadRight, kButtonRight },
+        { _pd_api_sys_input->Buttons.ButUp || _pd_api_sys_input->Buttons.ButDpadUp,
+          _pd_api_sys_input->PrevButtons.ButUp || _pd_api_sys_input->PrevButtons.ButDpadUp,  kButtonUp },
+        { _pd_api_sys_input->Buttons.ButDown || _pd_api_sys_input->Buttons.ButDpadDown,
+          _pd_api_sys_input->PrevButtons.ButDown || _pd_api_sys_input->PrevButtons.ButDpadDown, kButtonDown },
+    };
+
+    for (int i = 0; i < 6; i++)
+    {
+        if (buttons[i].cur != buttons[i].prev)
+            _pd_api_sys_buttonCallback(buttons[i].btn, buttons[i].cur ? 1 : 0, when, _pd_api_sys_buttonUserdata);
+    }
+}
+
+
 // 2.4
 void pd_api_sys_setButtonCallback(PDButtonCallbackFunction* cb, void* buttonud, int queuesize)
 {
-
+	_pd_api_sys_buttonCallback = cb;
+    _pd_api_sys_buttonUserdata = buttonud;
 }
 
 void pd_api_sys_setSerialMessageCallback(void (*callback)(const char* data))
