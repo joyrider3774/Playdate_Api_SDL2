@@ -581,13 +581,25 @@ int pd_api_sys_parseString(const char *str, const char *format, ...)
 
 void pd_api_sys_delay(uint32_t milliseconds)
 {
-	SDL_Delay(milliseconds)
+	SDL_Delay(milliseconds);
 }
 
 // 2.7
 void pd_api_sys_getServerTime(void (*callback)(const char* time, const char* err))
 {
+	if (!callback)
+        return;
 
+    // Playdate epoch: seconds since midnight Jan 1 2000 UTC
+    // Unix epoch to Playdate epoch offset: 946684800 seconds
+    const time_t playdateEpoch = 946684800;
+    time_t now = time(NULL);
+    time_t pdTime = now - playdateEpoch;
+    if (pdTime < 0) pdTime = 0;
+
+    char buf[32];
+    snprintf(buf, sizeof(buf), "%lld", (long long)pdTime);
+    callback(buf, NULL);
 }
 
 void pd_api_sys_restartGame(const char* launchargs)
