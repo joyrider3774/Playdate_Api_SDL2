@@ -27,14 +27,14 @@ FORCE_ACCELERATED_RENDER ?= 0
 MASKPRIMITIVES ?= 1
 
 SRC_CPP_DIR = src/srcstub/sdl_rotate src/srcstub/gfx_primitives_surface src/srcstub/bump src/srcstub/bump/src src/srcstub src/srcstub/pd_api
-SRC_C_DIR = src/srcgame
+SRC_C_DIR = src/srcgame src/srcgame/end_credits src/srcgame/level src/srcgame/level_select src/srcgame/uitls src/srcgame/scoresubmit src/srcgame/src src/srcgame/lib src/srcgame/gen src/srcgame/chipmunk src/srcgame/rxi-ini src/srcgame/actors src/srcgame/systems src/srcgame/ui src/srcgame/objects src/srcgame/physics src/srcgame/utils src/srcgame/bullet src/srcgame/bullet/include src/srcgame/core src/srcgame/core/include src/srcgame/enemy src/srcgame/enemy/include src/srcgame/pd src/srcgame/pd/include src/srcgame/player src/srcgame/player/include
 OBJ_DIR = ./obj
 OUT_DIR = ./Source
 SOURCE_DIR = Source
 EXE=game
 
 ifeq ($(CPP_BUILD), 1)
-SRC_CPP_DIR += src/srcgame
+SRC_CPP_DIR += src/srcgame 
 SRC_C_DIR =
 endif
 
@@ -53,7 +53,7 @@ CC = gcc
 CPP = g++
 CPP_VERSION = c++17
 OUTPUT_ASSETS_DIR =
-CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter -Wno-error=implicit-function-declaration
+CFLAGS = -D_USE_MATH_DEFINES -DSDL2API -DTARGET_EXTENSION -Wall -Wextra -Wno-unused-parameter -Wno-error=implicit-function-declaration -Wno-incompatible-pointer-types -Wno-int-conversion
 LDFLAGS = -lSDL2_image -lSDL2_ttf -lSDL2_mixer -lSDL2_gfx
 CFLAGS_EXTRA = 
 LDFLAGS_EXTRA =
@@ -86,7 +86,7 @@ endif
 
 ifeq ($(DEBUG), 1)
 CFLAGS += -g
-OPT_LEVEL =
+OPT_LEVEL = -O0
 endif
 
 ifeq ($(LDUSEX11), 1)

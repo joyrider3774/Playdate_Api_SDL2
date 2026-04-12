@@ -581,7 +581,7 @@ int pd_api_sys_parseString(const char *str, const char *format, ...)
 
 void pd_api_sys_delay(uint32_t milliseconds)
 {
-
+	SDL_Delay(milliseconds)
 }
 
 // 2.7
