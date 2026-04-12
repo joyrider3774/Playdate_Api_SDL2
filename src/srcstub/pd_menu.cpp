@@ -75,9 +75,12 @@ void pd_menu_close(void)
     // Need to redraw here before firing the callbacks as the callbacks could draw something as well
     if (_screenSnapshot)
     {
+        Api->graphics->pushContext(NULL);
+        Api->graphics->setDrawOffset(0,0);
         Api->graphics->drawBitmap(_screenSnapshot,0,0,kBitmapUnflipped);
         Api->graphics->freeBitmap(_screenSnapshot);
         _screenSnapshot = NULL;
+        Api->graphics->popContext();
     }   
     // Fire callbacks for any items that were interacted with
     for (int i = 0; i < PD_MENU_MAX_ITEMS; i++)
