@@ -15,7 +15,7 @@
 #include "pd_api/pd_api_gfx.h"
 #include "pd_api/pd_api_sys.h"
 #include "pd_api/pd_api_lua.h"
-//#include "pd_api/pd_api_json.h"
+#include "pd_api/pd_api_json.h"
 #include "pd_api/pd_api_file.h"
 #include "pd_api/pd_api_sprite.h"
 #include "pd_api/pd_api_sound.h"
