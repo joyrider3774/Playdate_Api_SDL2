@@ -144,7 +144,7 @@ void pd_api_gfx_pushDrawOffset()
 void pd_api_gfx_popDrawOffset()
 {
 	_pd_api_gfx_CurrentGfxContext->drawoffsetx = saveddrawoffsetx;
-	 _pd_api_gfx_CurrentGfxContext->drawoffsety = saveddrawoffsety;  
+	_pd_api_gfx_CurrentGfxContext->drawoffsety = saveddrawoffsety;
 }
 
 
@@ -469,6 +469,8 @@ void pd_api_gfx_clearClipRect(void)
     SDL_SetClipRect(drawTarget->Tex, NULL);
     if (drawTarget->Mask)
         SDL_SetClipRect(drawTarget->Mask->Tex, NULL);
+    // Also clear the screen cliprect
+    SDL_SetClipRect(_pd_api_gfx_Playdate_Screen->Tex, NULL);
 }
 
 void pd_api_gfx_setLineCapStyle(LCDLineCapStyle endCapStyle)
@@ -1294,7 +1296,7 @@ void pd_api_gfx_setScreenClipRect(int x, int y, int width, int height)
     cliprect.y = y;
     cliprect.w = width;
     cliprect.h = height;
-    SDL_SetClipRect(_pd_api_gfx_getDrawTarget()->Tex, &cliprect);
+    SDL_SetClipRect(_pd_api_gfx_Playdate_Screen->Tex, &cliprect);
 }
 	
 // 1.1.1
@@ -1387,7 +1389,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
 #ifdef MASKPRIMITIVES		
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -1444,7 +1446,7 @@ void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygon
         pd_api_gfx_pushContext(_pd_api_gfx_getDrawTarget());
         pd_api_gfx_setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, minx, miny, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         pd_api_gfx_popContext();
         pd_api_gfx_freeBitmap(bitmap);
     }
@@ -1565,7 +1567,7 @@ LCDBitmap* pd_api_gfx_getBitmapMask(LCDBitmap* bitmap)
 // 1.10
 void pd_api_gfx_setStencilImage(LCDBitmap* stencil, int tile)
 {
-
+	_pd_api_gfx_CurrentGfxContext->stencil = stencil;
 }
 	
 // 1.12
@@ -1582,7 +1584,7 @@ int pd_api_gfx_getTextTracking()
 
 int printcount = 1;
 
-void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip, bool IgnoreClearColorXOR)
+void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, float yscale, bool isRotatedBitmap, const double angle, float centerx, float centery, LCDBitmapFlip flip, bool IgnoreClearColorXOR, bool IgnoreStencil)
 {
     _pd_api_gfx_checkBitmapNeedsRedraw(bitmap);
 	pd_api_gfx_recreatemaskedimage(bitmap);
@@ -1776,13 +1778,12 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 			//in case of xor nxor we also need the target surface to compare values
 			//but the result is actually applied to the tmpsurface as well wich we'll draw one more time
 			//at the end using regular functions
-            LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
 			switch (_pd_api_gfx_CurrentGfxContext->BitmapDrawMode)
 			{           
 				case kDrawModeBlackTransparent:
 				{
-					int width = std::min(drawTarget->w, dstrect.w);
-					int height = std::min(drawTarget->h, dstrect.h);
+					int width = tmpTexture->w;
+					int height = tmpTexture->h;
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1803,8 +1804,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeWhiteTransparent:
 				{
-					int width = std::min(drawTarget->w, dstrect.w);
-					int height = std::min(drawTarget->h, dstrect.h);
+					int width = tmpTexture->w;
+					int height = tmpTexture->h;
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1825,8 +1826,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeFillWhite:
 				{
-					int width = std::min(drawTarget->w, dstrect.w);
-					int height = std::min(drawTarget->h, dstrect.h);
+					int width = tmpTexture->w;
+					int height = tmpTexture->h;
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1847,8 +1848,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeFillBlack:
 				{ 
-					int width = std::min(drawTarget->w, dstrect.w);
-					int height = std::min(drawTarget->h, dstrect.h);
+					int width = tmpTexture->w;
+					int height = tmpTexture->h;
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1869,8 +1870,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				}
 				case kDrawModeInverted:
 				{
-					int width = std::min(drawTarget->w, dstrect.w);
-					int height = std::min(drawTarget->h, dstrect.h);
+					int width = tmpTexture->w;
+					int height = tmpTexture->h;
 					for (int yy = 0; (yy < height); yy++)
 					{
 						for(int xx = 0; (xx < width); xx++)
@@ -1903,8 +1904,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				{
 					if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
 					{
-						int width = std::min(drawTarget->w, dstrect.w);
-						int height = std::min(drawTarget->h, dstrect.h);
+						int width = tmpTexture->w;
+						int height = tmpTexture->h;
 						for (int yy = 0; (yy < height); yy++)
 						{
 							for(int xx = 0; (xx < width); xx++)
@@ -1944,8 +1945,8 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 				{
 					if(requiresTargetTexture && targetTextureUnlocked && drawtargetsurface)
 					{
-						int width = std::min(drawTarget->w, dstrect.w);
-						int height = std::min(drawTarget->h, dstrect.h);
+						int width = tmpTexture->w;
+						int height = tmpTexture->h;
 						for (int yy = 0; (yy < height); yy++)
 						{
 							for(int xx = 0; (xx < width); xx++)
@@ -1997,10 +1998,67 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 
     LCDBitmap *drawTarget = _pd_api_gfx_getDrawTarget();
 
+	// Apply stencil: pixels where stencil is black (below whitethreshold) become transparent
 	Uint32 cclear = SDL_MapRGBA(tmpTexture->format, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 	if(SHOWCLEARCOLOR != 1)
 		SDL_SetColorKey(tmpTexture, SDL_TRUE, cclear);
-	SDL_BlitSurface(tmpTexture, NULL, drawTarget->Tex, &dstrect);
+
+	LCDBitmap* stencil = _pd_api_gfx_CurrentGfxContext->stencil;
+	if (stencil && stencil->Tex && !IgnoreStencil)
+	{
+		// Blit pixel-by-pixel, skipping pixels where stencil is black
+		bool tmpLocked = false, stencilLocked = false, dstLocked = false;
+		if (SDL_MUSTLOCK(tmpTexture)) tmpLocked = SDL_LockSurface(tmpTexture) == 0;
+		if (SDL_MUSTLOCK(stencil->Tex)) stencilLocked = SDL_LockSurface(stencil->Tex) == 0;
+		if (SDL_MUSTLOCK(drawTarget->Tex)) dstLocked = SDL_LockSurface(drawTarget->Tex) == 0;
+
+		Uint32 swhitethreshold = SDL_MapRGBA(stencil->Tex->format,
+			pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g,
+			pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
+
+		int bw = tmpTexture->w;
+		int bh = tmpTexture->h;
+		for (int sy = 0; sy < bh; sy++)
+		{
+			int dy = dstrect.y + sy;
+			if (dy < 0 || dy >= drawTarget->Tex->h) continue;
+			for (int sx = 0; sx < bw; sx++)
+			{
+				int dx = dstrect.x + sx;
+				if (dx < 0 || dx >= drawTarget->Tex->w) continue;
+				SDL_Rect clip;
+				SDL_GetClipRect(drawTarget->Tex, &clip);
+				if (dx < clip.x || dx >= clip.x + clip.w) continue;
+				if (dy < clip.y || dy >= clip.y + clip.h) continue;
+
+				int stx = dx;
+				int sty = dy;
+				Uint32* sp = (Uint32*)((Uint8*)stencil->Tex->pixels
+					+ sty * stencil->Tex->pitch
+					+ stx * stencil->Tex->format->BytesPerPixel);
+				if (*sp <= swhitethreshold)
+					continue; // stencil black = don't write
+
+				Uint32* tp = (Uint32*)((Uint8*)tmpTexture->pixels
+					+ sy * tmpTexture->pitch
+					+ sx * tmpTexture->format->BytesPerPixel);
+				if (*tp == cclear) continue; // transparent source pixel
+
+				Uint32* dp = (Uint32*)((Uint8*)drawTarget->Tex->pixels
+					+ dy * drawTarget->Tex->pitch
+					+ dx * drawTarget->Tex->format->BytesPerPixel);
+				*dp = *tp;
+			}
+		}
+
+		if (tmpLocked) SDL_UnlockSurface(tmpTexture);
+		if (stencilLocked) SDL_UnlockSurface(stencil->Tex);
+		if (dstLocked) SDL_UnlockSurface(drawTarget->Tex);
+	}
+	else
+	{
+		SDL_BlitSurface(tmpTexture, NULL, drawTarget->Tex, &dstrect);
+	}
 
     if (drawTarget->Mask)
     {
@@ -2097,7 +2155,7 @@ void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotatio
     if (bitmap == NULL)
         return;
     
-    _pd_api_gfx_drawBitmapAll(bitmap, x, y,xscale, yscale, true, rotation, centerx, centery, kBitmapUnflipped, false);
+    _pd_api_gfx_drawBitmapAll(bitmap, x, y,xscale, yscale, true, rotation, centerx, centery, kBitmapUnflipped, false, false);
 }
 
 void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
@@ -2105,7 +2163,7 @@ void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
     if (bitmap == NULL)
         return;
    
-    _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false);
+    _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false, false);
 }
 
 void pd_api_gfx_tileBitmap(LCDBitmap* bitmap, int x, int y, int width, int height, LCDBitmapFlip flip)
@@ -2119,12 +2177,12 @@ void pd_api_gfx_tileBitmap(LCDBitmap* bitmap, int x, int y, int width, int heigh
     {
         for (int i = 0; i < width; i += bitmap->w)
         {
-            _pd_api_gfx_drawBitmapAll(bitmap, i, j, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, false);
+            _pd_api_gfx_drawBitmapAll(bitmap, i, j, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, false, true);
         }
     }
     pd_api_gfx_popContext();
     _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = oldDrawMode;
-    _pd_api_gfx_drawBitmapAll(texture, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false);
+    _pd_api_gfx_drawBitmapAll(texture, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false, false);
     pd_api_gfx_freeBitmap(texture);
 }
 
@@ -2133,7 +2191,7 @@ void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, 
     if (bitmap == NULL)
         return;
 
-    _pd_api_gfx_drawBitmapAll(bitmap, x, y, xscale, yscale, false, 0, 0, 0, kBitmapUnflipped, false);
+    _pd_api_gfx_drawBitmapAll(bitmap, x, y, xscale, yscale, false, 0, 0, 0, kBitmapUnflipped, false, false);
 }
 
 
@@ -2215,7 +2273,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2273,7 +2331,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, minx -halfdrawLineWidth, miny -halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, minx -halfdrawLineWidth, miny -halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
@@ -2371,7 +2429,7 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -2429,7 +2487,7 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, minx , miny , 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, minx , miny , 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
@@ -2485,7 +2543,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -2543,7 +2601,7 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
@@ -2601,7 +2659,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -2644,7 +2702,7 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());		
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
@@ -2699,7 +2757,7 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -2757,7 +2815,7 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
@@ -2813,7 +2871,7 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -2871,7 +2929,7 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
 		pd_api_gfx_popDrawOffset();
         Api->graphics->setDrawMode(kDrawModeXOR);
-        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, oldx, oldy, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);        
     }
@@ -3872,7 +3930,7 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -3932,7 +3990,7 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, x-halfdrawLineWidth, y-halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,true);
+        _pd_api_gfx_drawBitmapAll(bitmap, x-halfdrawLineWidth, y-halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
@@ -3990,7 +4048,7 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else				
 
 		for (int yy = 0; yy < tilesy; yy++)
@@ -4048,7 +4106,7 @@ void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, L
         Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
         Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true);
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
         Api->graphics->popContext();
         Api->graphics->freeBitmap(bitmap);
     }
