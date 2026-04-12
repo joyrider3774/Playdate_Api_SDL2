@@ -6,6 +6,7 @@
 #include "gamestubcallbacks.h"
 #include "defines.h"
 #include "gamestub.h"
+#include "pd_menu.h"
 
 CInput *_pd_api_sys_input = NULL;
 PDCallbackFunction* _pd_api_sys_DoUpdate;
@@ -17,8 +18,32 @@ Uint32 pd_api_sys_startElapsed = 0;
 float _CranckChange = 0.0f;
 float _CranckAngle = 0.0f;
 unsigned int _startTime = 0;
+uint32_t _pd_api_sys_pausedMs = 0;
+static uint32_t _pd_api_sys_pauseStartTick = 0;
+static bool _pd_api_sys_waitForMenuRelease = false;
 
 uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime);
+
+void _pd_api_sys_waitForMenuButtonRelease(void)
+{
+	_pd_api_sys_waitForMenuRelease = true;
+}
+
+void _pd_api_sys_pauseReset(void)
+{
+	_pd_api_sys_pausedMs = 0;
+	_pd_api_sys_pauseStartTick = 0;
+}
+
+void _pd_api_sys_pauseStart(void)
+{
+    _pd_api_sys_pauseStartTick = SDL_GetTicks();
+}
+
+void _pd_api_sys_pauseEnd(void)
+{
+    _pd_api_sys_pausedMs += SDL_GetTicks() - _pd_api_sys_pauseStartTick;
+}
 
 void _pd_api_sys_UpdateInput()
 {
@@ -28,6 +53,29 @@ void _pd_api_sys_UpdateInput()
 	}
 	
 	CInput_Update(_pd_api_sys_input);
+
+    if (_pd_api_sys_waitForMenuRelease)
+    {
+        bool anyHeld = _pd_api_sys_input->Buttons.ButA     ||
+                       _pd_api_sys_input->Buttons.ButB     ||
+                       _pd_api_sys_input->Buttons.ButUp    ||
+                       _pd_api_sys_input->Buttons.ButDown  ||
+                       _pd_api_sys_input->Buttons.ButLeft  ||
+                       _pd_api_sys_input->Buttons.ButRight ||
+                       _pd_api_sys_input->Buttons.ButStart;
+
+        _pd_api_sys_input->PrevButtons = _pd_api_sys_input->Buttons;
+        _pd_api_sys_input->Buttons.ButA     = false;
+        _pd_api_sys_input->Buttons.ButB     = false;
+        _pd_api_sys_input->Buttons.ButUp    = false;
+        _pd_api_sys_input->Buttons.ButDown  = false;
+        _pd_api_sys_input->Buttons.ButLeft  = false;
+        _pd_api_sys_input->Buttons.ButRight = false;
+        _pd_api_sys_input->Buttons.ButStart = false;
+
+        if (!anyHeld)
+            _pd_api_sys_waitForMenuRelease = false;
+    }
 
 	_CranckChange = 0.0f;
 
@@ -67,6 +115,15 @@ void _pd_api_sys_UpdateInput()
 	if ((_pd_api_sys_input->Buttons.ButX || _pd_api_sys_input->Buttons.NextSource) && 
 		!(_pd_api_sys_input->PrevButtons.ButX || _pd_api_sys_input->PrevButtons.NextSource))
 		_pd_api_sys_nextSourceDirCallback();
+	
+	if (_pd_api_sys_input->Buttons.ButStart &&
+        !_pd_api_sys_input->PrevButtons.ButStart)
+    {
+        if (pd_menu_isOpen)
+            pd_menu_close();
+        else
+            pd_menu_open();
+    }
 }
 
 void pd_api_sys_setUpdateCallback(PDCallbackFunction* update, void* userdata)
@@ -236,13 +293,15 @@ int pd_api_sys_formatString(char **ret, const char *fmt, ...)
 	return 0;
 
 }
+
 PDLanguage pd_api_sys_getLanguage(void)
 {
 	return kPDLanguageEnglish;
 }
+
 unsigned int pd_api_sys_getCurrentTimeMilliseconds(void)
 {
-	return _startTime + SDL_GetTicks();
+	return _startTime + SDL_GetTicks() - _pd_api_sys_pausedMs;
 }
 
 unsigned int pd_api_sys_getSecondsSinceEpoch(unsigned int *milliseconds)
@@ -286,6 +345,7 @@ int pd_api_sys_getFlipped(void)
 {
 	return 0;
 }
+
 void pd_api_sys_setAutoLockDisabled(int disable)
 {
 
@@ -293,62 +353,62 @@ void pd_api_sys_setAutoLockDisabled(int disable)
 
 void pd_api_sys_setMenuImage(LCDBitmap* bitmap, int xOffset)
 {
-
+	pd_menu_setImage(bitmap, xOffset);
 }
 
 PDMenuItem* pd_api_sys_addMenuItem(const char *title, PDMenuItemCallbackFunction* callback, void* userdata)
 {
-	return NULL;
+	return pd_menu_addItem(title, callback, userdata);
 }
 
 PDMenuItem* pd_api_sys_addCheckmarkMenuItem(const char *title, int value, PDMenuItemCallbackFunction* callback, void* userdata)
 {
-	return NULL;
+	return pd_menu_addCheckmarkItem(title, value, callback, userdata);
 }
 
 PDMenuItem* pd_api_sys_addOptionsMenuItem(const char *title, const char** optionTitles, int optionsCount, PDMenuItemCallbackFunction* f, void* userdata)
 {
-	return NULL;
+	return pd_menu_addOptionsItem(title, optionTitles, optionsCount, f, userdata);
 }
 
 void pd_api_sys_removeAllMenuItems(void)
 {
-
+	pd_menu_removeAllItems();
 }
 
 void pd_api_sys_removeMenuItem(PDMenuItem *menuItem)
 {
-
+	 pd_menu_removeItem(menuItem);
 }
 
 int pd_api_sys_getMenuItemValue(PDMenuItem *menuItem)
 {
-	return 0;
+	return pd_menu_getItemValue(menuItem);
 }
 
 void pd_api_sys_setMenuItemValue(PDMenuItem *menuItem, int value)
 {
-
+	pd_menu_setItemValue(menuItem, value);
 }
 
 const char* pd_api_sys_getMenuItemTitle(PDMenuItem *menuItem)
 {
-	return NULL;
+	 return pd_menu_getItemTitle(menuItem);
 }
 
 void pd_api_sys_setMenuItemTitle(PDMenuItem *menuItem, const char *title)
 {
-
+	 pd_menu_setItemTitle(menuItem, title);
 }
 
 void* pd_api_sys_getMenuItemUserdata(PDMenuItem *menuItem)
 {
-	return NULL;
+	return pd_menu_getItemUserdata(menuItem);
 }
 
 void pd_api_sys_setMenuItemUserdata(PDMenuItem *menuItem, void *ud)
 {
-
+	 pd_menu_setItemUserdata(menuItem, ud);
 }
 	
 int pd_api_sys_getReduceFlashing(void)

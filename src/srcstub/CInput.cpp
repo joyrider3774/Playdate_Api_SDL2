@@ -79,7 +79,7 @@ void CInput_Update(CInput* cinput)
 		if (Event.type == SDL_KEYUP)
             CInput_HandleKeyboardEvent(cinput, Event.key.keysym.sym, false);
         
-		if (Event.type == SDL_KEYDOWN)
+		if (Event.type == SDL_KEYDOWN && Event.key.repeat == 0)
             CInput_HandleKeyboardEvent(cinput, Event.key.keysym.sym, true);
 	}
 

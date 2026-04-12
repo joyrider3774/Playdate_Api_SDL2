@@ -14,6 +14,7 @@
 #include <thread>
 #include <chrono>
 #include <string.h>
+#include "pd_menu.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -101,6 +102,7 @@ void _pd_reset()
 	_pd_load_source_colors();
 	_pd_api_gfx_loadDefaultFonts();
 	_pd_api_gfx_resetContext();
+	pd_menu_init();
 	eventHandler(Api, kEventInit, 0);
 }
 
@@ -376,8 +378,19 @@ void runMainLoop()
 	//update input handler
 	_pd_api_sys_UpdateInput();
 
-	//run the update function
-	_pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
+	if (pd_menu_isOpen)
+    {
+		// handle up/down/A/ESC in menu
+        pd_menu_update();
+		// draw menu overlay
+        pd_menu_render();
+    }
+    else
+    {
+        //run the update function
+		_pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
+    }
+	
 
 	//clean sprites set as not loaded (delayed delete to prevent issues)
 	_pd_api_sprite_cleanup_sprites(true);
@@ -596,6 +609,9 @@ Possible options are:\n\
 
 						//load potential saved source dir value
 						_pd_load_source_dir();
+						
+						//init the menu
+						pd_menu_init();
 
                         //initialize handler
                         eventHandler(Api, kEventInit, 0);
