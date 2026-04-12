@@ -12,7 +12,7 @@
 #include "debug.h"
 #include "nlohmann_json/json.hpp"
 
-using json = nlohmann::json;
+using json = nlohmann::ordered_json;
 
 // ============================================================
 //  Helpers: convert nlohmann json value -> Playdate json_value
