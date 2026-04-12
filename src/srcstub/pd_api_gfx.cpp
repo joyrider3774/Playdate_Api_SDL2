@@ -3685,7 +3685,41 @@ void pd_api_gfx_setPixel(int x, int y, LCDColor c)
 
 LCDSolidColor pd_api_gfx_getBitmapPixel(LCDBitmap* bitmap, int x, int y)
 {
-	return kColorBlack;
+    if (!bitmap)
+        return kColorClear;
+
+    SDL_Surface* tex = bitmap->MaskedTex ? bitmap->MaskedTex : bitmap->Tex;
+
+    if (!tex)
+        return kColorClear;
+
+    if (x < 0 || y < 0 || x >= tex->w || y >= tex->h)
+        return kColorClear;
+
+    bool locked = false;
+    if (SDL_MUSTLOCK(tex))
+        locked = SDL_LockSurface(tex) == 0;
+
+    Uint32* p = (Uint32*)((Uint8*)tex->pixels
+        + y * tex->pitch
+        + x * tex->format->BytesPerPixel);
+    Uint32 pval = *p;
+
+    if (locked)
+        SDL_UnlockSurface(tex);
+
+    Uint32 clear = SDL_MapRGBA(tex->format,
+        pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+        pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+    Uint32 whitethreshold = SDL_MapRGBA(tex->format,
+        pd_api_gfx_color_whitetreshold.r, pd_api_gfx_color_whitetreshold.g,
+        pd_api_gfx_color_whitetreshold.b, pd_api_gfx_color_whitetreshold.a);
+
+    if (pval == clear)
+        return kColorClear;
+    if (pval > whitethreshold)
+        return kColorWhite;
+    return kColorBlack;
 }
 
 void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width)
