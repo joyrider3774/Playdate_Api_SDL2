@@ -229,24 +229,31 @@ void pd_menu_render(void)
     Api->graphics->setFont(NULL);
     Api->graphics->setDrawMode(kDrawModeCopy);
 
+    // Right-half white panel
+    
+    const int panelX = LCD_COLUMNS / 2;
+    const int panelW = LCD_COLUMNS / 2;
+    #if SCALINGMODE == 0
+    const int panelH = LCD_ROWS <= SCREENRESY ? LCD_ROWS: LCD_ROWS - (LCD_ROWS - SCREENRESY);
+    const int panelY = LCD_ROWS <= SCREENRESY ? 0 : (LCD_ROWS - SCREENRESY) / 2;
+    #else
+    const int panelH = LCD_ROWS;
+    const int panelY = 0;
+    #endif 
+
     // --- background: draw game image on left half if set, white panel on right ---
     if (_menuImage)
         Api->graphics->drawBitmap(_menuImage, _menuImageXOff, 0, kBitmapUnflipped);
 
-    // Right-half white panel
-    const int panelX = SCREENRESX / 2;
-    const int panelW = SCREENRESX / 2;
-    const int panelH = SCREENRESY;
-
-    Api->graphics->fillRect(panelX, 0, panelW, panelH, kColorWhite);
-    Api->graphics->drawRect(panelX, 0, panelW, panelH, kColorBlack);
+    Api->graphics->fillRect(panelX, panelY, panelW, panelH, kColorWhite);
+    Api->graphics->drawRect(panelX, panelY, panelW, panelH, kColorBlack);
 
     // --- title row at top ---
     const char* title = "MENU";
-    Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + 8, 4);
+    Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + 8, panelY + 4);
 
     // Separator line under title
-    Api->graphics->drawLine(panelX + 2, 22, SCREENRESX - 2, 22, 1, kColorBlack);
+    Api->graphics->drawLine(panelX + 2, panelY + 22, LCD_COLUMNS - 2, panelY + 22, 1, kColorBlack);
 
     // --- items ---
     const int itemH    = 40;
@@ -278,7 +285,7 @@ void pd_menu_render(void)
         if (selected)
         {
             // Fill selection bar black
-            Api->graphics->fillRect(panelX + 2, itemY, panelW - 4, itemH - 2, kColorBlack);
+            Api->graphics->fillRect(panelX + 2, panelY + itemY, panelW - 4, itemH - 2, kColorBlack);
 
             // Temporarily swap black->white so TTF renders font glyphs in white
             SDL_Color savedBlack = pd_api_gfx_color_black;
@@ -287,17 +294,17 @@ void pd_menu_render(void)
             if (item->type == PD_MENUITEM_OPTIONS && item->optionCount > 0)
             {
                 Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 2);
+                                        panelX + paddingX, panelY + itemY + 2);
                 const char* optStr = item->options[item->value];
                 char optDisplay[PD_MENU_MAX_OPTION_LEN + 4];
                 snprintf(optDisplay, sizeof(optDisplay), "  > %s", optStr);
                 Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 18);
+                                        panelX + paddingX, panelY + itemY + 18);
             }
             else
             {
                 Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 10);
+                                        panelX + paddingX, panelY + itemY + 10);
             }
 
             // Restore
@@ -309,17 +316,17 @@ void pd_menu_render(void)
             if (item->type == PD_MENUITEM_OPTIONS && item->optionCount > 0)
             {
                 Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 2);
+                                        panelX + paddingX, panelY + itemY + 2);
                 const char* optStr = item->options[item->value];
                 char optDisplay[PD_MENU_MAX_OPTION_LEN + 4];
                 snprintf(optDisplay, sizeof(optDisplay), "  > %s", optStr);
                 Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 18);
+                                        panelX + paddingX, panelY + itemY + 18);
             }
             else
             {
                 Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, itemY + 10);
+                                        panelX + paddingX, panelY + itemY + 10);
             }
         }
 
@@ -328,7 +335,7 @@ void pd_menu_render(void)
 
     // --- hint at bottom ---
     Api->graphics->drawText("A:select  B:close", strlen("A:select  B:close"),
-                            kASCIIEncoding, panelX + 4, panelH - 18);
+                            kASCIIEncoding, panelX + 4, panelY + panelH - 18);
 
     // Restore full graphics context (font, draw mode, clip rect, etc.)
     Api->graphics->popContext();
