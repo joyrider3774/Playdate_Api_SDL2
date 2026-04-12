@@ -2,6 +2,7 @@
 #include <string.h>
 #include <dirent.h>
 #include <vector>
+#include <sstream>
 #include <SDL_rect.h>
 #include <SDL_blendmode.h>
 #include <SDL.h>
@@ -3701,9 +3702,128 @@ void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width
 // 2.6
 void pd_api_gfx_drawTextInRect(const void* text, size_t len, PDStringEncoding encoding, int x, int y, int width, int height, PDTextWrappingMode wrap, PDTextAlignment align)
 {
-	//this is wrong but at least it will draw text
-	int w = pd_api_gfx_getTextWidth(_pd_api_gfx_CurrentGfxContext->font, text, len, encoding,0);
-	pd_api_gfx_drawText(text,len,encoding,x +(width >>1) - (w >> 1),y);
+    if (!text || len == 0 || width <= 0 || height <= 0)
+        return;
+
+    LCDFont* font = _pd_api_gfx_CurrentGfxContext->font;
+    if (!font)
+        return;
+
+    int lineHeight = pd_api_gfx_getFontHeight(font);
+    if (lineHeight <= 0)
+        lineHeight = 12;
+
+    // Work with a null-terminated copy
+    std::string src((const char*)text, len);
+    // Strip to actual content length
+    while (!src.empty() && src.back() == '\0')
+        src.pop_back();
+
+    int drawY = y;
+
+    if (wrap == kWrapClip)
+    {
+        // Single line, clipped to width
+        if (drawY + lineHeight > y + height)
+            return;
+        int w = pd_api_gfx_getTextWidth(font, src.c_str(), src.size(), encoding, 0);
+        int drawX = x;
+        if (align == kAlignTextCenter)
+            drawX = x + (width - w) / 2;
+        else if (align == kAlignTextRight)
+            drawX = x + width - w;
+        pd_api_gfx_drawText(src.c_str(), src.size(), encoding, drawX, drawY);
+        return;
+    }
+
+    // Word or character wrap: split into lines
+    // First split on explicit newlines, then wrap each segment
+    std::vector<std::string> lines;
+    std::istringstream stream(src);
+    std::string segment;
+    while (std::getline(stream, segment))
+    {
+        if (segment.empty())
+        {
+            lines.push_back("");
+            continue;
+        }
+
+        if (wrap == kWrapWord)
+        {
+            // Word wrap
+            std::string currentLine;
+            std::istringstream words(segment);
+            std::string word;
+            while (words >> word)
+            {
+                std::string test = currentLine.empty() ? word : currentLine + " " + word;
+                int w = pd_api_gfx_getTextWidth(font, test.c_str(), test.size(), encoding, 0);
+                if (w <= width)
+                {
+                    currentLine = test;
+                }
+                else
+                {
+                    if (!currentLine.empty())
+                        lines.push_back(currentLine);
+                    // If the word itself is wider than width, just add it anyway
+                    currentLine = word;
+                }
+            }
+            if (!currentLine.empty())
+                lines.push_back(currentLine);
+        }
+        else // kWrapCharacter
+        {
+            std::string currentLine;
+            for (size_t i = 0; i < segment.size(); )
+            {
+                // Get next UTF-8 character (simple byte-by-byte for ASCII)
+                size_t charLen = 1;
+                unsigned char c = (unsigned char)segment[i];
+                if      (c >= 0xF0) charLen = 4;
+                else if (c >= 0xE0) charLen = 3;
+                else if (c >= 0xC0) charLen = 2;
+                std::string ch = segment.substr(i, charLen);
+                i += charLen;
+
+                std::string test = currentLine + ch;
+                int w = pd_api_gfx_getTextWidth(font, test.c_str(), test.size(), encoding, 0);
+                if (w <= width)
+                {
+                    currentLine = test;
+                }
+                else
+                {
+                    if (!currentLine.empty())
+                        lines.push_back(currentLine);
+                    currentLine = ch;
+                }
+            }
+            if (!currentLine.empty())
+                lines.push_back(currentLine);
+        }
+    }
+
+    // Draw each line
+    for (const std::string& line : lines)
+    {
+        if (drawY + lineHeight > y + height)
+            break;
+
+        int w = line.empty() ? 0 : pd_api_gfx_getTextWidth(font, line.c_str(), line.size(), encoding, 0);
+        int drawX = x;
+        if (align == kAlignTextCenter)
+            drawX = x + (width - w) / 2;
+        else if (align == kAlignTextRight)
+            drawX = x + width - w;
+
+        if (!line.empty())
+            pd_api_gfx_drawText(line.c_str(), line.size(), encoding, drawX, drawY);
+
+        drawY += lineHeight;
+    }
 }
 
 // 2.7
