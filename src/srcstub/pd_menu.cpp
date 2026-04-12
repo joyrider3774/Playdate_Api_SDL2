@@ -9,6 +9,7 @@
 #include "defines.h"
 #include "debug.h"
 #include <SDL_mixer.h>
+#include "CInput.h"
 
 // ============================================================
 //  State
