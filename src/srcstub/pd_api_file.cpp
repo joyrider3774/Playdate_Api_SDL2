@@ -109,22 +109,7 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 	sprintf(filename, "%s/%s", _pd_api_file_save_path(), path);
     if(stat(filename, &lstats) == 0)
     {
-        stats->isdir = S_ISDIR(lstats.st_mode);
-        stats->size = lstats.st_size;
-        struct tm dt;
-        dt = *(gmtime(&lstats.st_mtime));
-        stats->m_day = dt.tm_mday;
-        stats->m_hour = dt.tm_hour;
-        stats->m_minute = dt.tm_min;
-        stats->m_month = dt.tm_mon;
-        stats->m_second = dt.tm_sec;
-        stats->m_year = 1900+dt.tm_year;
-        result = 0;
-    }
-    else
-    {
-        sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
-        if(stat(filename, &lstats) == 0)
+        if(stats)
         {
             stats->isdir = S_ISDIR(lstats.st_mode);
             stats->size = lstats.st_size;
@@ -136,6 +121,27 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
             stats->m_month = dt.tm_mon;
             stats->m_second = dt.tm_sec;
             stats->m_year = 1900+dt.tm_year;
+        }
+        result = 0;
+    }
+    else
+    {
+        sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
+        if(stat(filename, &lstats) == 0)
+        {
+            if(stats)
+            {
+                stats->isdir = S_ISDIR(lstats.st_mode);
+                stats->size = lstats.st_size;
+                struct tm dt;
+                dt = *(gmtime(&lstats.st_mtime));
+                stats->m_day = dt.tm_mday;
+                stats->m_hour = dt.tm_hour;
+                stats->m_minute = dt.tm_min;
+                stats->m_month = dt.tm_mon;
+                stats->m_second = dt.tm_sec;
+                stats->m_year = 1900+dt.tm_year;
+            }
             result = 0;
         }   
 		else
@@ -143,16 +149,19 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 			sprintf(filename, "./%s", path);
 			if(stat(filename, &lstats) == 0)
 			{
-				stats->isdir = S_ISDIR(lstats.st_mode);
-				stats->size = lstats.st_size;
-				struct tm dt;
-				dt = *(gmtime(&lstats.st_mtime));
-				stats->m_day = dt.tm_mday;
-				stats->m_hour = dt.tm_hour;
-				stats->m_minute = dt.tm_min;
-				stats->m_month = dt.tm_mon;
-				stats->m_second = dt.tm_sec;
-				stats->m_year = 1900+dt.tm_year;
+                if(stats)
+                {
+                    stats->isdir = S_ISDIR(lstats.st_mode);
+                    stats->size = lstats.st_size;
+                    struct tm dt;
+                    dt = *(gmtime(&lstats.st_mtime));
+                    stats->m_day = dt.tm_mday;
+                    stats->m_hour = dt.tm_hour;
+                    stats->m_minute = dt.tm_min;
+                    stats->m_month = dt.tm_mon;
+                    stats->m_second = dt.tm_sec;
+                    stats->m_year = 1900+dt.tm_year;
+                }
 				result = 0;
 			}
 		}
