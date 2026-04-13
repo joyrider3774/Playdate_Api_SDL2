@@ -1457,6 +1457,8 @@ uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 {
     LCDFont *f = font;
     if(!f)
+        f = _pd_api_gfx_CurrentGfxContext->font;  // use current context font, not default
+    if(!f)
         f = _pd_api_gfx_Default_Font;
 
     if(!f)
@@ -3200,9 +3202,9 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 {
     LCDFont *f = font;
     if(!f)
-	{
+        f = _pd_api_gfx_CurrentGfxContext->font;  // use current context font, not default
+    if(!f)
         f = _pd_api_gfx_Default_Font;
-	}
     
     if(!f)
 	{
@@ -3872,9 +3874,9 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 	const char* sizedtext = (const char *) text; 
 	LCDFont *f = font;
     if(!f)
-	{
+        f = _pd_api_gfx_CurrentGfxContext->font;  // use current context font, not default
+    if(!f)
         f = _pd_api_gfx_Default_Font;
-	}
 
     if(!f)
 	{
