@@ -26,7 +26,7 @@ It's probably done in a very bad way but it does seem to work for my games and o
 - delay
 - setButtonCallback (not exactly the same as on device but might work)
 
-###Sound: 
+### Sound: 
 - FilePlayer and SamplePlayer (load/play/stop/volume/loop/rate via SDL_mixer + AudioStream resampling), AudioSample (load ogg/mp3/wav)
 
 ### Sprites: 
@@ -43,7 +43,7 @@ It's probably done in a very bad way but it does seem to work for my games and o
 ### File: 
 - all operations (open/close/read/write/flush/tell/seek/stat/mkdir/unlink/rename/listfiles)
 
-## Bot Implemented
+## Not Implemented
 
 ### Graphics:
 - getFrame / getDisplayFrame — return 0 (raw 1bpp frame buffer access not implemented)
