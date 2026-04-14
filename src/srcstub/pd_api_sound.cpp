@@ -295,6 +295,7 @@ AudioSample* pd_api_sound_loadSample(const char* path)
         tmp->channel = index;
         SampleList[index]->Sample = tmp;
         SampleList[index]->loaded = true;
+        printfDebug(DebugLoadPaths, "INFO: Sample Loaded: %s\n", fullpath);
     }
     printfDebug(DebugTraceFunctions, "pd_api_sound_loadSample end\n");
     return tmp;

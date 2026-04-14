@@ -12,6 +12,7 @@ void printfDebug(int DebugKind, const char* fmt, ...)
 
     if (!(((DebugKind == DebugTraceFunctions) && DEBUGTRACEFUNCTIONS) ||
         ((DebugKind == DebugInfo) && DEBUGINFO) ||
+        ((DebugKind == DebugLoadPaths) && DEBUGLOADPATHS) ||
         ((DebugKind == DebugNotImplementedFunctions) && DEBUGNOTIMPLEMENTEDFUNCTIONS) ||
         ((DebugKind == DebugFPS) && DEBUGFPS)))
         return;

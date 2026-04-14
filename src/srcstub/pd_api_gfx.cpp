@@ -742,6 +742,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 			{
 				if(outerr)
 					*outerr = NULL;
+				printfDebug(DebugLoadPaths, "INFO: Bitmap Loaded: %s\n", fullpath);
 				result->Opaque = opaque;
 				SDL_SetSurfaceBlendMode(Img2, SDL_BLENDMODE_BLEND);
 				SDL_BlitSurface(Img2, NULL, result->Tex, NULL);				
@@ -3440,7 +3441,7 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
     if (tableLocked) SDL_UnlockSurface(tableConv);
     SDL_FreeSurface(tableConv);
 
-    printfDebug(DebugInfo, "INFO: Loaded embedded .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
+    printfDebug(DebugLoadPaths, "INFO: Loaded embedded .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
                 fntPath, cellW, cellH, (int)charList.size());
     return result;
 }
@@ -3547,7 +3548,7 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
     if (tableLocked) SDL_UnlockSurface(tableConv);
     SDL_FreeSurface(tableConv);
 
-    printfDebug(DebugInfo, "INFO: Loaded native .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
+    printfDebug(DebugLoadPaths, "INFO: Loaded native .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
            fntPath, cellW, cellH, (int)charList.size());
     return result;
 }
@@ -3676,7 +3677,7 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             	*outErr = NULL;
             TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
             result->font = font;
-            printfDebug(DebugInfo, "INFO: Loaded TTF font: %s\n", fullpath);
+            printfDebug(DebugLoadPaths, "INFO: Loaded TTF font: %s\n", fullpath);
 
             FontListEntry* Tmp = new FontListEntry();
             Tmp->path = (char *) malloc(strlen(fullpath) + 1);
