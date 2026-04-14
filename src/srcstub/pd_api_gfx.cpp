@@ -3,6 +3,7 @@
 #include <dirent.h>
 #include <vector>
 #include <sstream>
+#include <unordered_map>
 #include <SDL_rect.h>
 #include <SDL_blendmode.h>
 #include <SDL.h>
@@ -51,8 +52,19 @@ struct LCDBitmapTable {
     LCDBitmap** bitmaps;
 };
 
+struct LCDFontGlyphData {
+    SDL_Surface* surface;  // white pixels on clear background
+    int advance;           // advance width in pixels
+};
+
 struct LCDFont {
-    TTF_Font * font;
+    TTF_Font* font;        // non-null for TTF fonts, null for native .fnt fonts
+    bool isFntFont;        // true = native .fnt bitmap font
+    int cellW;             // cell width in pixels
+    int cellH;             // cell height in pixels (= font height)
+    int fntTracking;       // default tracking from .fnt file
+    std::unordered_map<uint32_t, LCDFontGlyphData> glyphs;  // codepoint -> glyph
+    std::unordered_map<uint64_t, int> kerning;               // (prev<<32|cur) -> advance adjustment
 };
 
 struct LCDFontData {
@@ -83,6 +95,7 @@ class GfxContext {
         LCDLineCapStyle linecapstyle;
         LCDFont* font;
         int tracking;
+        int leading;
         LCDBitmap* DrawTarget;
         void Assign(GfxContext* Context);
 };
@@ -98,6 +111,7 @@ void GfxContext::Assign(GfxContext* Context)
     this->linecapstyle = Context->linecapstyle;
     this->font = Context->font;
     this->tracking = Context->tracking;
+    this->leading = Context->leading;
     this->DrawTarget = Context->DrawTarget;
 }
 
@@ -127,6 +141,8 @@ LCDFont* _pd_api_gfx_FPS_Font = NULL;
 
 // Set the pixel at x, y to the specified color.
 #define pd_api_gfx_drawpixel(data, x, y, rowbytes, color) (((color) == kColorBlack) ? pd_api_gfx_setpixel((data), (x), (y), (rowbytes)) : pd_api_gfx_clearpixel((data), (x), (y), (rowbytes)))
+
+void pd_api_gfx_freeBitmap(LCDBitmap* Bitmap);
 
 inline int make_even(int n)
 {
@@ -589,7 +605,24 @@ void pd_api_gfx_clearBitmap(LCDBitmap* bitmap, LCDColor bgcolor)
             maskColor = pd_api_gfx_color_black;
 			break;
         default:
-            break;
+            // Pattern: fill with white first as base, then tile the pattern
+			SDL_FillRect(bitmap->Tex, NULL, SDL_MapRGBA(bitmap->Tex->format, 
+				pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, 
+				pd_api_gfx_color_white.b, pd_api_gfx_color_white.a));
+			// Now tile the pattern over it
+			{
+				uint8_t* patternBytes = (uint8_t*)(uintptr_t)bgcolor;
+				LCDBitmap* patternBitmap = pd_api_gfx_PatternToBitmap(patternBytes);
+				if (patternBitmap) {
+					for (int py = 0; py < bitmap->h; py += 8)
+						for (int px = 0; px < bitmap->w; px += 8) {
+							SDL_Rect dst = {px, py, 8, 8};
+							SDL_BlitSurface(patternBitmap->Tex, NULL, bitmap->Tex, &dst);
+						}
+					pd_api_gfx_freeBitmap(patternBitmap);
+				}
+			}
+			break;
     }
 	if (bitmap->Mask)
 	{
@@ -1457,12 +1490,17 @@ uint8_t pd_api_gfx_getFontHeight(LCDFont* font)
 {
     LCDFont *f = font;
     if(!f)
-        f = _pd_api_gfx_CurrentGfxContext->font;  // use current context font, not default
+        f = _pd_api_gfx_CurrentGfxContext->font;
     if(!f)
         f = _pd_api_gfx_Default_Font;
 
     if(!f)
         return 0;
+
+    #if !TTFONLY
+    if(f->isFntFont)
+        return (uint8_t)f->cellH;
+    #endif
 
     if(!f->font)
         return 0;
@@ -1478,7 +1516,7 @@ LCDBitmap* pd_api_gfx_getDisplayBufferBitmap(void)
 
 void pd_api_gfx_setTextLeading(int lineHeightAdustment)
 {
-
+    _pd_api_gfx_CurrentGfxContext->leading = lineHeightAdustment;
 }
 
 // 1.8
@@ -2943,15 +2981,562 @@ void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngl
 // LCDFont
 LCDFont* pd_api_gfx_Create_LCDFont()
 {
-    LCDFont* tmp = (LCDFont* ) malloc(sizeof(*tmp));
+    LCDFont* tmp = new LCDFont();
     tmp->font = NULL;
+    tmp->isFntFont = false;
+    tmp->cellW = 0;
+    tmp->cellH = 0;
+    tmp->fntTracking = 0;
     return tmp;
+}
+
+// ---- Native .fnt font system ----
+
+static uint32_t fnt_utf8_decode(const char* s, int* bytesConsumed)
+{
+    const uint8_t* p = (const uint8_t*)s;
+    if (!p || !*p) { *bytesConsumed = 0; return 0; }
+    if (p[0] < 0x80) { *bytesConsumed = 1; return p[0]; }
+    if ((p[0] & 0xE0) == 0xC0 && (p[1] & 0xC0) == 0x80)
+        { *bytesConsumed = 2; return ((p[0]&0x1F)<<6)|(p[1]&0x3F); }
+    if ((p[0] & 0xF0) == 0xE0 && (p[1] & 0xC0) == 0x80 && (p[2] & 0xC0) == 0x80)
+        { *bytesConsumed = 3; return ((p[0]&0x0F)<<12)|((p[1]&0x3F)<<6)|(p[2]&0x3F); }
+    if ((p[0] & 0xF8) == 0xF0)
+        { *bytesConsumed = 4; return ((p[0]&0x07)<<18)|((p[1]&0x3F)<<12)|((p[2]&0x3F)<<6)|(p[3]&0x3F); }
+    *bytesConsumed = 0; return 0xFFFD;
+}
+
+static std::vector<std::pair<uint32_t,int>> fnt_parse_file(const char* path, int* outTracking,
+    std::unordered_map<uint64_t,int>* outKerning)
+{
+    std::vector<std::pair<uint32_t,int>> result;
+    if (outTracking) *outTracking = 0;
+    FILE* f = fopen(path, "r");
+    if (!f) return result;
+    char line[512];
+    while (fgets(line, sizeof(line), f))
+    {
+        int len = (int)strlen(line);
+        while (len > 0 && (line[len-1]=='\r'||line[len-1]=='\n')) line[--len]='\0';
+        if (!len) continue;
+
+        // Handle metadata lines like "tracking=1"
+        char* firstTab = strchr(line, '\t');
+        char* eq = strchr(line, '=');
+        if (eq && (!firstTab || eq < firstTab) && eq > line && isalpha((unsigned char)*(eq-1)))
+        {
+            *eq = '\0';
+            if (strcmp(line, "tracking") == 0 && outTracking)
+                *outTracking = atoi(eq + 1);
+            continue;
+        }
+
+        // Find last tab - everything after is the advance value
+        char* lastTab = strrchr(line, '\t');
+        if (!lastTab) continue;
+        int advance = atoi(lastTab + 1);
+        *lastTab = '\0';
+
+        // Strip trailing tabs only (not spaces - space is a valid glyph character)
+        int chLen = (int)strlen(line);
+        while (chLen > 0 && line[chLen-1] == '\t')
+            line[--chLen] = '\0';
+        if (!chLen) continue;
+
+        const char* ch = line;
+        uint32_t cp;
+        if (strncmp(ch, "space", 5) == 0 || (ch[0] == ' ' && ch[1] == '\0'))
+        {
+            cp = ' ';
+            result.push_back({cp, advance});
+        }
+        else
+        {
+            int consumed = 0;
+            cp = fnt_utf8_decode(ch, &consumed);
+            if (consumed == 0) continue; // skip truly invalid UTF-8 only
+            const char* rest = ch + consumed;
+            // Strip variation selectors / ZWJ
+            while (*rest)
+            {
+                int c2 = 0;
+                uint32_t cp2 = fnt_utf8_decode(rest, &c2);
+                if (cp2 >= 0xFE00 && cp2 <= 0xFE0F) { rest += c2; continue; }
+                if (cp2 == 0x200D) { rest += c2; continue; }
+                break;
+            }
+
+            if (!*rest)
+            {
+                // Single codepoint — regular glyph entry
+                result.push_back({cp, advance});
+            }
+            else if (outKerning)
+            {
+                // Two codepoints — kerning pair
+                int consumed2 = 0;
+                uint32_t cp2 = fnt_utf8_decode(rest, &consumed2);
+                uint64_t key = ((uint64_t)cp << 32) | (uint64_t)cp2;
+                (*outKerning)[key] = advance;
+            }
+        }
+    }
+    fclose(f);
+    return result;
+}
+
+static std::string fnt_find_table_png(const char* fntPath)
+{
+    std::string path(fntPath);
+    size_t slash = path.rfind('/');
+    std::string dir  = (slash == std::string::npos) ? "" : path.substr(0, slash+1);
+    std::string base = (slash == std::string::npos) ? path : path.substr(slash+1);
+    size_t dot = base.rfind('.');
+    if (dot != std::string::npos) base = base.substr(0, dot);
+    std::string prefix = base + "-table-";
+
+    // Collect all matching PNGs - when multiple exist (e.g. font-table-8-19.png
+    // and font-table-18-13.png), pick the one with most cells to cover all glyphs.
+    std::vector<std::string> candidates;
+    DIR* d = opendir(dir.empty() ? "." : dir.c_str());
+    if (!d) return "";
+    struct dirent* entry;
+    while ((entry = readdir(d)) != nullptr)
+    {
+        std::string name(entry->d_name);
+        if (name.find(prefix) == 0
+            && name.size() > 4
+            && name.substr(name.size()-4) == ".png")
+            candidates.push_back(dir + name);
+    }
+    closedir(d);
+
+    if (candidates.empty()) return "";
+    if (candidates.size() == 1) return candidates[0];
+
+    // Multiple matches: pick the one with largest cell count
+    std::string best; int bestCells = -1;
+    for (const auto& c : candidates)
+    {
+        size_t tp = c.find("-table-"); if (tp == std::string::npos) continue;
+        const char* wp = c.c_str() + tp + 7;
+        int cw = atoi(wp);
+        const char* hp = strchr(wp, '-');
+        int ch = hp ? atoi(hp + 1) : 0;
+        if (cw <= 0 || ch <= 0) continue;
+        // Read PNG dimensions from header without full decode
+        FILE* pf = fopen(c.c_str(), "rb");
+        if (!pf) continue;
+        uint8_t hdr[24]; int read = (int)fread(hdr, 1, 24, pf); fclose(pf);
+        if (read < 24) continue;
+        // PNG IHDR: bytes 16-19 = width, 20-23 = height (big-endian)
+        int pw = (hdr[16]<<24)|(hdr[17]<<16)|(hdr[18]<<8)|hdr[19];
+        int ph = (hdr[20]<<24)|(hdr[21]<<16)|(hdr[22]<<8)|hdr[23];
+        int cells = (pw / cw) * (ph / ch);
+        if (cells > bestCells) { bestCells = cells; best = c; }
+    }
+    return best.empty() ? candidates[0] : best;
+}
+
+// Check if fnt file uses embedded base64 PNG format
+static bool fnt_is_embedded(const char* fntPath)
+{
+    FILE* f = fopen(fntPath, "rb");
+    if (!f) return false;
+    // Check for binary file - if first byte is null or non-ASCII control char, it's binary
+    unsigned char first;
+    if (fread(&first, 1, 1, f) != 1 || first < 0x09 || (first < 0x20 && first != 0x0A && first != 0x0D))
+    {
+        fclose(f);
+        return false; // binary fnt - skip
+    }
+    fclose(f);
+
+    f = fopen(fntPath, "r");
+    if (!f) return false;
+    char line[8192]; // large enough for --metrics= line which can be >1KB
+    bool foundDataLen = false, foundData = false;
+    // Need both datalen= AND data= to confirm embedded format
+    for (int i = 0; i < 20 && fgets(line, sizeof(line), f); i++)
+    {
+        if (strncmp(line, "datalen=", 8) == 0) { foundDataLen = true; continue; }
+        if (strncmp(line, "data=",    5) == 0) { foundData    = true; break; }
+        // Stop if we hit glyph entries without finding data=
+        if (strchr(line, '\t') && strncmp(line, "tracking=", 9) != 0) break;
+    }
+    fclose(f);
+    return foundDataLen && foundData;
+}
+
+// base64 decode table
+static const int b64_table[256] = {
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,62,-1,-1,-1,63,
+    52,53,54,55,56,57,58,59,60,61,-1,-1,-1,-1,-1,-1,
+    -1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9,10,11,12,13,14,
+    15,16,17,18,19,20,21,22,23,24,25,-1,-1,-1,-1,-1,
+    -1,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,
+    41,42,43,44,45,46,47,48,49,50,51,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,
+    -1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1
+};
+
+static std::vector<uint8_t> b64_decode(const char* src, size_t srcLen)
+{
+    std::vector<uint8_t> out;
+    out.reserve(srcLen * 3 / 4);
+    int val = 0, valb = -8;
+    for (size_t i = 0; i < srcLen; i++)
+    {
+        int c = b64_table[(unsigned char)src[i]];
+        if (c < 0) continue;
+        val = (val << 6) + c;
+        valb += 6;
+        if (valb >= 0)
+        {
+            out.push_back((val >> valb) & 0xFF);
+            valb -= 8;
+        }
+    }
+    return out;
+}
+
+// Load fnt with embedded base64 PNG
+static LCDFont* fnt_load_embedded_font(const char* fntPath)
+{
+    std::string b64data;
+    int cellW = 0, cellH = 0;
+    int fntTracking = 0;
+    std::unordered_map<uint64_t,int> kerningMap;
+    std::vector<std::pair<uint32_t,int>> charList;
+    // Parse JSON kerning from --metrics line
+    auto parseMetricsKerning = [&](const char* metricsLine) {
+        // Find "pairs":{ and extract kerning
+        const char* pairs = strstr(metricsLine, "\"pairs\":{");
+        if (!pairs) return;
+        pairs += 9; // skip "pairs":{
+        while (*pairs && *pairs != '}')
+        {
+            // Read "xy":[advance,...]
+            if (*pairs != '"') { pairs++; continue; }
+            pairs++; // skip "
+            // Read two chars
+            if (!pairs[0] || !pairs[1]) break;
+            int consumed1 = 0, consumed2 = 0;
+            uint32_t cp1 = fnt_utf8_decode(pairs, &consumed1);
+            uint32_t cp2 = fnt_utf8_decode(pairs + consumed1, &consumed2);
+            pairs += consumed1 + consumed2;
+            if (*pairs != '"') continue;
+            pairs++; // skip closing "
+            // Skip to [
+            while (*pairs && *pairs != '[') pairs++;
+            if (*pairs != '[') break;
+            pairs++;
+            int adj = atoi(pairs);
+            uint64_t key = ((uint64_t)cp1 << 32) | (uint64_t)cp2;
+            kerningMap[key] = adj;
+            // Skip to next entry
+            while (*pairs && *pairs != ',' && *pairs != '}') pairs++;
+        }
+    };
+
+    // Read entire file into memory to handle large data= lines
+    // Open in binary mode to avoid Windows \r\n translation messing up ftell/fread
+    FILE* fb = fopen(fntPath, "rb");
+    if (!fb) return nullptr;
+    fseek(fb, 0, SEEK_END);
+    long fileSize = ftell(fb);
+    fseek(fb, 0, SEEK_SET);
+    std::vector<char> fileBuf(fileSize + 1, 0);
+    fread(fileBuf.data(), 1, fileSize, fb);
+    fclose(fb);
+
+    // Split into lines
+    std::vector<std::string> lines;
+    {
+        char* p = fileBuf.data();
+        char* end = p + fileSize;
+        while (p < end)
+        {
+            char* nl = (char*)memchr(p, '\n', end - p);
+            size_t len = nl ? (size_t)(nl - p) : (size_t)(end - p);
+            // Strip \r
+            if (len > 0 && p[len-1] == '\r') len--;
+            lines.push_back(std::string(p, len));
+            p = nl ? nl + 1 : end;
+        }
+    }
+
+    for (const auto& lineStr : lines)
+    {
+        const char* line = lineStr.c_str();
+        if (!*line) continue;
+
+        if (strncmp(line, "--metrics=", 10) == 0)
+        {
+            parseMetricsKerning(line + 10);
+        }
+        else if (strncmp(line, "datalen=", 8) == 0)
+        {
+            // skip
+        }
+        else if (strncmp(line, "data=", 5) == 0)
+        {
+            b64data = std::string(line + 5);
+        }
+        else if (strncmp(line, "width=", 6) == 0)
+        {
+            cellW = atoi(line + 6);
+        }
+        else if (strncmp(line, "height=", 7) == 0)
+        {
+            cellH = atoi(line + 7);
+        }
+        else if (strncmp(line, "tracking=", 9) == 0)
+        {
+            fntTracking = atoi(line + 9);
+        }
+        else if (strchr(line, '\t') != nullptr)
+        {
+            // Glyph entry — any unrecognised line with a tab
+            // Make a mutable copy to strip trailing tabs
+            std::string lineCopy(line);
+            char* lineM = &lineCopy[0];
+            char* lastTab = strrchr(lineM, '\t');
+            if (!lastTab) continue;
+            int advance = atoi(lastTab + 1);
+            *lastTab = '\0';
+            int chLen = (int)strlen(lineM);
+            while (chLen > 0 && lineM[chLen-1] == '\t') lineM[--chLen] = '\0';
+            if (!chLen) continue;
+
+            const char* ch = lineM;
+            uint32_t cp;
+            if (strncmp(ch, "space", 5) == 0 || (ch[0]==' ' && ch[1]=='\0'))
+            {
+                cp = ' ';
+            }
+            else
+            {
+                int consumed = 0;
+                cp = fnt_utf8_decode(ch, &consumed);
+                // Only skip truly invalid UTF-8 (consumed==0), not U+FFFD which is a valid glyph
+                if (consumed == 0) continue;
+                // Skip kerning pairs
+                const char* rest = ch + consumed;
+                bool isKerning = false;
+                while (*rest) {
+                    int c2 = 0; uint32_t cp2 = fnt_utf8_decode(rest, &c2);
+                    if (cp2 >= 0xFE00 && cp2 <= 0xFE0F) { rest += c2; continue; }
+                    if (cp2 == 0x200D) { rest += c2; continue; }
+                    isKerning = true; break;
+                }
+                if (isKerning) continue;
+            }
+            charList.push_back({cp, advance});
+        }
+    }
+
+    if (b64data.empty() || cellW <= 0 || cellH <= 0 || charList.empty())
+        return nullptr;
+
+    // Decode base64 PNG
+    auto pngData = b64_decode(b64data.c_str(), b64data.size());
+    if (pngData.empty()) return nullptr;
+
+    // Load PNG from memory
+    SDL_RWops* rw = SDL_RWFromMem(pngData.data(), (int)pngData.size());
+    if (!rw) return nullptr;
+    SDL_Surface* table = IMG_Load_RW(rw, 1); // 1 = auto-close rw
+    if (!table) return nullptr;
+
+    // Convert and preprocess (same as fnt_load_font)
+    SDL_Surface* tableConv = SDL_ConvertSurfaceFormat(table, pd_api_gfx_PIXELFORMAT, 0);
+    SDL_FreeSurface(table);
+    if (!tableConv) return nullptr;
+
+    pd_api_gfx_MakeSurfaceBlackAndWhite(tableConv);
+
+    Uint32 transparentVal = SDL_MapRGBA(tableConv->format, 0, 0, 0, 0);
+    Uint32 clearColor = SDL_MapRGBA(tableConv->format,
+        pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+        pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+
+    int cols = tableConv->w / cellW;
+    if (cols <= 0) cols = 1;
+
+    bool tableLocked = false;
+    if (SDL_MUSTLOCK(tableConv)) tableLocked = (SDL_LockSurface(tableConv) == 0);
+
+    LCDFont* result = new LCDFont();
+    result->font      = nullptr;
+    result->isFntFont = true;
+    result->cellW     = cellW;
+    result->cellH     = cellH;
+    result->fntTracking = fntTracking;
+    result->kerning   = std::move(kerningMap);
+
+    int bpp = tableConv->format->BytesPerPixel;
+    for (int i = 0; i < (int)charList.size(); i++)
+    {
+        uint32_t cp  = charList[i].first;
+        int advance  = charList[i].second;
+        int col      = i % cols;
+        int row      = i / cols;
+        int srcX     = col * cellW;
+        int srcY     = row * cellH;
+
+        SDL_Surface* gs = SDL_CreateRGBSurfaceWithFormat(0, cellW, cellH, 32, pd_api_gfx_PIXELFORMAT);
+        SDL_SetSurfaceBlendMode(gs, SDL_BLENDMODE_NONE);
+        SDL_FillRect(gs, nullptr, clearColor);
+
+        bool glyphLocked = false;
+        if (SDL_MUSTLOCK(gs)) glyphLocked = (SDL_LockSurface(gs) == 0);
+
+        for (int py = 0; py < cellH; py++)
+        for (int px = 0; px < cellW; px++)
+        {
+            int sx = srcX + px, sy = srcY + py;
+            if (sx >= tableConv->w || sy >= tableConv->h) continue;
+            Uint32* sp = (Uint32*)((Uint8*)tableConv->pixels + sy * tableConv->pitch + sx * bpp);
+            Uint32* dp = (Uint32*)((Uint8*)gs->pixels + py * gs->pitch + px * gs->format->BytesPerPixel);
+            *dp = (*sp == transparentVal) ? clearColor : *sp;
+        }
+
+        if (glyphLocked) SDL_UnlockSurface(gs);
+
+        LCDFontGlyphData gd;
+        gd.surface = gs;
+        gd.advance = advance;
+        result->glyphs[cp] = gd;
+        if (cp == 0x24B6 || cp == 0x24DE)
+            printf("DEBUG fnt_load_embedded: stored U+%04X at cell %d, surface=%p\n", cp, i, (void*)gs);
+    }
+
+    if (tableLocked) SDL_UnlockSurface(tableConv);
+    SDL_FreeSurface(tableConv);
+
+    printfDebug(DebugInfo, "INFO: Loaded embedded .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
+                fntPath, cellW, cellH, (int)charList.size());
+    return result;
+}
+
+static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
+{
+    int fntTracking = 0;
+    std::unordered_map<uint64_t,int> kerningMap;
+    auto charList = fnt_parse_file(fntPath, &fntTracking, &kerningMap);
+    if (charList.empty()) return nullptr;
+
+    SDL_Surface* table = IMG_Load(pngPath);
+    if (!table) return nullptr;
+
+    // Extract cellW, cellH from filename: ...-table-W-H.png
+    int cellW = 0, cellH = 0;
+    {
+        std::string name(pngPath);
+        size_t sl = name.rfind('/');
+        if (sl != std::string::npos) name = name.substr(sl+1);
+        size_t dt = name.rfind('.');
+        if (dt != std::string::npos) name = name.substr(0, dt);
+        size_t p2 = name.rfind('-');
+        if (p2 != std::string::npos) {
+            cellH = atoi(name.c_str() + p2 + 1);
+            name = name.substr(0, p2);
+            size_t p1 = name.rfind('-');
+            if (p1 != std::string::npos) cellW = atoi(name.c_str() + p1 + 1);
+        }
+    }
+    if (cellW <= 0 || cellH <= 0) {
+        int nGlyphs = (int)charList.size();
+        int cols = 16;
+        cellW = table->w / cols;
+        cellH = table->h / ((nGlyphs + cols - 1) / cols);
+    }
+
+    SDL_Surface* tableConv = SDL_ConvertSurfaceFormat(table, pd_api_gfx_PIXELFORMAT, 0);
+    SDL_FreeSurface(table);
+    if (!tableConv) return nullptr;
+
+    // Apply same preprocessing as loadBitmap does
+    pd_api_gfx_MakeSurfaceBlackAndWhite(tableConv);
+
+    // After MakeSurfaceBlackAndWhite: pixels are either
+    // pd_api_gfx_color_white, pd_api_gfx_color_black, or transparent {0,0,0,0}
+    // Transparent = background, white or black = glyph pixel
+    Uint32 transparentVal = SDL_MapRGBA(tableConv->format, 0, 0, 0, 0);
+    Uint32 clearColor = SDL_MapRGBA(tableConv->format,
+        pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+        pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+
+    int cols = tableConv->w / cellW;
+    if (cols <= 0) cols = 1;
+
+    bool tableLocked = false;
+    if (SDL_MUSTLOCK(tableConv)) tableLocked = (SDL_LockSurface(tableConv) == 0);
+
+    LCDFont* result = new LCDFont();
+    result->font      = nullptr;
+    result->isFntFont = true;
+    result->cellW     = cellW;
+    result->cellH     = cellH;
+    result->fntTracking = fntTracking;
+    result->kerning   = std::move(kerningMap);
+
+    int bpp = tableConv->format->BytesPerPixel;
+    for (int i = 0; i < (int)charList.size(); i++)
+    {
+        uint32_t cp  = charList[i].first;
+        int advance  = charList[i].second;
+        int col      = i % cols;
+        int row      = i / cols;
+        int srcX     = col * cellW;
+        int srcY     = row * cellH;
+
+        SDL_Surface* gs = SDL_CreateRGBSurfaceWithFormat(0, cellW, cellH, 32, pd_api_gfx_PIXELFORMAT);
+        SDL_SetSurfaceBlendMode(gs, SDL_BLENDMODE_NONE);
+        SDL_FillRect(gs, nullptr, clearColor);
+
+        bool glyphLocked = false;
+        if (SDL_MUSTLOCK(gs)) glyphLocked = (SDL_LockSurface(gs) == 0);
+
+        for (int py = 0; py < cellH; py++)
+        for (int px = 0; px < cellW; px++)
+        {
+            int sx = srcX + px, sy = srcY + py;
+            if (sx >= tableConv->w || sy >= tableConv->h) continue;
+            Uint32* sp = (Uint32*)((Uint8*)tableConv->pixels + sy * tableConv->pitch + sx * bpp);
+            Uint32* dp = (Uint32*)((Uint8*)gs->pixels + py * gs->pitch + px * gs->format->BytesPerPixel);
+            // After MakeSurfaceBlackAndWhite: transparent = background, anything else = glyph pixel
+            // Store actual color (white or black) as-is — draw mode will handle rendering
+            *dp = (*sp == transparentVal) ? clearColor : *sp;
+        }
+
+        if (glyphLocked) SDL_UnlockSurface(gs);
+
+        LCDFontGlyphData gd;
+        gd.surface = gs;
+        gd.advance = advance;
+        result->glyphs[cp] = gd;
+    }
+
+    if (tableLocked) SDL_UnlockSurface(tableConv);
+    SDL_FreeSurface(tableConv);
+
+    printfDebug(DebugInfo, "INFO: Loaded native .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
+           fntPath, cellW, cellH, (int)charList.size());
+    return result;
 }
 
 LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
-	if(outErr)
-    	*outErr = loaderror;
     LCDFont* result = NULL;
     char* tmpfullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
 	char* fullpath =  (char *) malloc((strlen(path) + 17) * sizeof(char));
@@ -2994,6 +3579,59 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
         }
     }
 
+    // Try native .fnt font first
+    #if !TTFONLY
+    {
+        char fntpath[1024];
+        strncpy(fntpath, fullpath, 1023);
+        fntpath[1023] = '\0';
+        char* fext = strrchr(fntpath, '.');
+        if (fext) strcpy(fext, ".fnt");
+        else strncat(fntpath, ".fnt", 1023 - strlen(fntpath));
+
+        struct stat fntstat;
+        if (stat(fntpath, &fntstat) == 0)
+        {
+            // Try embedded format first (base64 PNG inside fnt)
+            if (fnt_is_embedded(fntpath))
+            {
+                LCDFont* fntFont = fnt_load_embedded_font(fntpath);
+                if (fntFont)
+                {
+                    if (outErr) *outErr = nullptr;
+                    FontListEntry* Tmp = new FontListEntry();
+                    Tmp->path = (char*)malloc(strlen(fullpath) + 1);
+                    strcpy(Tmp->path, fullpath);
+                    Tmp->font = fntFont;
+                    fontlist.push_back(Tmp);
+                    free(fullpath);
+                    free(tmpfullpath);
+                    return fntFont;
+                }
+            }
+
+            // Try separate table PNG
+            std::string pngPath = fnt_find_table_png(fntpath);
+            if (!pngPath.empty())
+            {
+                LCDFont* fntFont = fnt_load_font(fntpath, pngPath.c_str());
+                if (fntFont)
+                {
+                    if (outErr) *outErr = nullptr;
+                    FontListEntry* Tmp = new FontListEntry();
+                    Tmp->path = (char*)malloc(strlen(fullpath) + 1);
+                    strcpy(Tmp->path, fullpath);
+                    Tmp->font = fntFont;
+                    fontlist.push_back(Tmp);
+                    free(fullpath);
+                    free(tmpfullpath);
+                    return fntFont;
+                }
+            }
+        }
+    }
+    #endif
+
     TTF_Font* font = TTF_OpenFont(fullpath, 12);
     if(font)
     {
@@ -3004,6 +3642,7 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             	*outErr = NULL;
             TTF_SetFontStyle(font, TTF_STYLE_NORMAL);
             result->font = font;
+            printfDebug(DebugInfo, "INFO: Loaded TTF font: %s\n", fullpath);
 
             FontListEntry* Tmp = new FontListEntry();
             Tmp->path = (char *) malloc(strlen(fullpath) + 1);
@@ -3042,6 +3681,7 @@ void _pd_api_gfx_resetContext()
     _pd_api_gfx_CurrentGfxContext->linecapstyle = kLineCapStyleButt;
     _pd_api_gfx_CurrentGfxContext->stencil = NULL;
     _pd_api_gfx_CurrentGfxContext->tracking = 0;
+    _pd_api_gfx_CurrentGfxContext->leading = 0;
 }
 
 LCDFontPage* pd_api_gfx_getFontPage(LCDFont* font, uint32_t c)
@@ -3210,20 +3850,64 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 	{
         return 0;
 	}
-    
-    if(!f->font)
-	{
-        return 0;
-	}
-	
-	if(len == 0)
+
+    if(len == 0)
 	{
 		return 0;
 	}
 
-	if(strlen((char*)text) == 0)
+	if(!text || strlen((char*)text) == 0)
 	{
 		return 0;
+	}
+
+    // Native .fnt font - measure from advance widths directly
+    #if !TTFONLY
+    if(f->isFntFont)
+    {
+        const char* s = (const char*)text;
+        size_t strLen = strlen(s);
+        size_t bytePos = 0, cpCount = 0;
+        int width = 0;
+        int maxWidth = 0;
+        int track = tracking + f->fntTracking;
+        uint32_t prevCp = 0;
+        while(bytePos < strLen && (encoding == kASCIIEncoding ? bytePos < (size_t)len : cpCount < (size_t)len))
+        {
+            int consumed = 0;
+            uint32_t cp = fnt_utf8_decode(s + bytePos, &consumed);
+            if(!cp || consumed == 0) break;
+            bytePos += consumed;
+            cpCount++;
+            if(cp == '\n')
+            {
+                if(width > 0 && track > 0) width -= track;
+                if(width > maxWidth) maxWidth = width;
+                width = 0;
+                prevCp = 0;
+                continue;
+            }
+            auto it = f->glyphs.find(cp);
+            int adv = (it != f->glyphs.end()) ? it->second.advance : f->cellW / 2;
+            if (prevCp != 0 && !f->kerning.empty())
+            {
+                uint64_t key = ((uint64_t)prevCp << 32) | (uint64_t)cp;
+                auto kit = f->kerning.find(key);
+                if (kit != f->kerning.end())
+                    width += kit->second;
+            }
+            prevCp = cp;
+            width += adv + track;
+        }
+        if(width > 0 && track > 0) width -= track;
+        if(width > maxWidth) maxWidth = width;
+        return (maxWidth < 0) ? 0 : maxWidth;
+    }
+    #endif
+
+    if(!f->font)
+	{
+        return 0;
 	}
 
 	// char *sizedtext = (char *) malloc((len + 1) * sizeof(char));
@@ -3438,7 +4122,7 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 			width = SDL_max(width, 1);
 		}
 	} 
-	height = rowHeight + lineskip * (numLines - 1);
+	height = rowHeight + (lineskip + _pd_api_gfx_CurrentGfxContext->leading) * (numLines - 1);
 
 	return width;
 }
@@ -3453,6 +4137,166 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
     {
         return -1;
     }
+
+    // Native .fnt font path
+    #if !TTFONLY
+    if(_pd_api_gfx_CurrentGfxContext->font->isFntFont)
+    {
+        LCDFont* f = _pd_api_gfx_CurrentGfxContext->font;
+        const char* s = (const char*)text;
+        size_t strLen = strlen(s);
+        size_t bytePos = 0, cpCount = 0;
+        int curX = x;
+        int curY = y;
+        int track = _pd_api_gfx_CurrentGfxContext->tracking + f->fntTracking;
+        uint32_t prevCp = 0;
+        while(bytePos < strLen && (encoding == kASCIIEncoding ? bytePos < (size_t)len : cpCount < (size_t)len))
+        {
+            int consumed = 0;
+            // kASCIIEncoding and kUTF8Encoding both use UTF-8; encoding only affects length counting
+            uint32_t cp = fnt_utf8_decode(s + bytePos, &consumed);
+            if(!cp || consumed == 0) break;
+            bytePos += consumed;
+            cpCount++;
+
+            if(cp == '\n') {
+                curX = x;
+                curY += f->cellH + _pd_api_gfx_CurrentGfxContext->leading;
+                prevCp = 0;
+                continue;
+            }
+
+            auto it = f->glyphs.find(cp);
+            if(it == f->glyphs.end()) {
+                if (cp == 0x24B6 || cp == 0x24DE)
+                    printf("DEBUG drawText: U+%04X NOT FOUND in glyph map (map size=%zu)\n", cp, f->glyphs.size());
+                // Apply kerning for missing glyphs too
+                if (prevCp != 0 && !f->kerning.empty())
+                {
+                    uint64_t key = ((uint64_t)prevCp << 32) | (uint64_t)cp;
+                    auto kit = f->kerning.find(key);
+                    if (kit != f->kerning.end())
+                        curX += kit->second;
+                }
+                curX += f->cellW / 2 + track;
+                prevCp = cp;
+                continue;
+            }
+
+            // Apply kerning BEFORE drawing so dstX is correct
+            if (prevCp != 0 && !f->kerning.empty())
+            {
+                uint64_t key = ((uint64_t)prevCp << 32) | (uint64_t)cp;
+                auto kit = f->kerning.find(key);
+                if (kit != f->kerning.end())
+                    curX += kit->second;
+            }
+
+            if (cp == 0x24B6 || cp == 0x24DE)
+                printf("DEBUG drawText: U+%04X found, drawing at curX=%d curY=%d, surface=%p\n", cp, curX, curY, (void*)it->second.surface);
+
+            const LCDFontGlyphData& gd = it->second;
+
+            // Blit glyph directly, skipping clear pixels, applying draw mode
+            LCDBitmap* drawTarget = _pd_api_gfx_getDrawTarget();
+            SDL_Surface* dst = drawTarget->Tex;
+
+            int dstX = curX + _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+            int dstY = curY + _pd_api_gfx_CurrentGfxContext->drawoffsety;
+
+            SDL_Rect clip;
+            SDL_GetClipRect(dst, &clip);
+
+            Uint32 clearVal = SDL_MapRGBA(gd.surface->format,
+                pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+                pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            Uint32 whiteVal = SDL_MapRGBA(dst->format,
+                pd_api_gfx_color_white.r, pd_api_gfx_color_white.g,
+                pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            Uint32 blackVal = SDL_MapRGBA(dst->format,
+                pd_api_gfx_color_black.r, pd_api_gfx_color_black.g,
+                pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+
+            bool srcLocked = false, dstLocked = false;
+            if (SDL_MUSTLOCK(gd.surface)) srcLocked = SDL_LockSurface(gd.surface) == 0;
+            if (SDL_MUSTLOCK(dst)) dstLocked = SDL_LockSurface(dst) == 0;
+
+            LCDBitmapDrawMode mode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
+
+            Uint32 srcWhiteVal = SDL_MapRGBA(gd.surface->format,
+                pd_api_gfx_color_white.r, pd_api_gfx_color_white.g,
+                pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+
+            for (int py = 0; py < gd.surface->h; py++)
+            {
+                int dy = dstY + py;
+                if (dy < 0 || dy >= dst->h) continue;
+                if (dy < clip.y || dy >= clip.y + clip.h) continue;
+                for (int px = 0; px < gd.surface->w; px++)
+                {
+                    int dx = dstX + px;
+                    if (dx < 0 || dx >= dst->w) continue;
+                    if (dx < clip.x || dx >= clip.x + clip.w) continue;
+
+                    Uint32* sp = (Uint32*)((Uint8*)gd.surface->pixels
+                        + py * gd.surface->pitch
+                        + px * gd.surface->format->BytesPerPixel);
+                    if (*sp == clearVal) continue; // transparent bg pixel
+
+                    Uint32* dp = (Uint32*)((Uint8*)dst->pixels
+                        + dy * dst->pitch
+                        + dx * dst->format->BytesPerPixel);
+
+                    // Determine if source glyph pixel is white or black
+                    bool isWhiteGlyph = (*sp == srcWhiteVal);
+
+                    switch (mode)
+                    {
+                        case kDrawModeCopy:
+                            // Copy as-is: white glyph→white, black glyph→black
+                            *dp = isWhiteGlyph ? whiteVal : blackVal;
+                            break;
+                        case kDrawModeFillWhite:
+                            *dp = whiteVal;
+                            break;
+                        case kDrawModeFillBlack:
+                            *dp = blackVal;
+                            break;
+                        case kDrawModeInverted:
+                            // Invert: white glyph→black, black glyph→white
+                            *dp = isWhiteGlyph ? blackVal : whiteVal;
+                            break;
+                        case kDrawModeXOR:
+                        case kDrawModeNXOR:
+                        {
+                            Uint8 r,g,b,a;
+                            SDL_GetRGBA(*dp, dst->format, &r,&g,&b,&a);
+                            *dp = (r > 128) ? blackVal : whiteVal;
+                            break;
+                        }
+                        case kDrawModeBlackTransparent:
+                            if (!isWhiteGlyph) *dp = blackVal;
+                            break;
+                        case kDrawModeWhiteTransparent:
+                            if (isWhiteGlyph) *dp = whiteVal;
+                            break;
+                        default:
+                            *dp = isWhiteGlyph ? whiteVal : blackVal;
+                            break;
+                    }
+                }
+            }
+
+            if (srcLocked) SDL_UnlockSurface(gd.surface);
+            if (dstLocked) SDL_UnlockSurface(dst);
+            drawTarget->BitmapDirty = true;
+
+            prevCp = cp;
+            curX += gd.advance + track;
+        }
+        return 0;
+    }
+    #endif
 
     int result = -1;
     if (_pd_api_gfx_CurrentGfxContext->font->font)
@@ -3605,7 +4449,7 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 				width = SDL_max(width, 1);
 			}
 		} 
-		height = rowHeight + lineskip * (numLines - 1);
+		height = rowHeight + (lineskip + _pd_api_gfx_CurrentGfxContext->leading) * (numLines - 1);
 
 		/* Render each line */
 		for (i = 0; i < numLines; i++) {
@@ -3624,8 +4468,8 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 
 			ystart = y;
 			xstart = x;
-			/* Move to i-th line */
-			ystart += i * lineskip;
+			/* Move to i-th line, including leading */
+			ystart += i * (lineskip + _pd_api_gfx_CurrentGfxContext->leading);
 		
 			SDL_Surface* TextSurface = TTF_RenderUTF8_Solid(_pd_api_gfx_CurrentGfxContext->font->font, newtext, pd_api_gfx_color_black);
 			if (TextSurface) 
@@ -3883,6 +4727,32 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
         return 0;
 	}
 
+    // Native .fnt font - word wrap and count lines
+    #if !TTFONLY
+    if(f->isFntFont)
+    {
+        const char* s = (const char*)text;
+        size_t strLen = strlen(s);
+        size_t bytePos = 0, cpCount = 0;
+        int lineWidth = 0;
+        int lines = 1;
+        while(bytePos < strLen && (encoding == kASCIIEncoding ? bytePos < (size_t)len : cpCount < (size_t)len))
+        {
+            int consumed = 0;
+            uint32_t cp = fnt_utf8_decode(s + bytePos, &consumed);
+            if(!cp || consumed == 0) break;
+            bytePos += consumed;
+            cpCount++;
+            if(cp == '\n') { lines++; lineWidth = 0; continue; }
+            auto it = f->glyphs.find(cp);
+            int adv = (it != f->glyphs.end()) ? it->second.advance : f->cellW/2;
+            lineWidth += adv + tracking;
+            if(maxwidth > 0 && lineWidth > maxwidth) { lines++; lineWidth = adv; }
+        }
+        return lines * (f->cellH + extraLeading);
+    }
+    #endif
+
     if(!f->font)
 	{
         return 0;
@@ -4029,7 +4899,7 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 			width = SDL_max(width, 1);
 		}
 	} 
-	height = rowHeight + lineskip * (numLines - 1);
+	height = rowHeight + (lineskip + _pd_api_gfx_CurrentGfxContext->leading) * (numLines - 1);
 
 	return height;
 }
@@ -4443,6 +5313,7 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
     _pd_api_gfx_CurrentGfxContext->linecapstyle = kLineCapStyleButt;
     _pd_api_gfx_CurrentGfxContext->stencil = NULL;
     _pd_api_gfx_CurrentGfxContext->tracking = 0;
+    _pd_api_gfx_CurrentGfxContext->leading = 0;
     gfxstack.push_back(_pd_api_gfx_CurrentGfxContext);
 
     //SDL_SetRenderTarget(Renderer, _Playdate_Screen->Tex);
@@ -4565,9 +5436,19 @@ void _pd_api_gfx_freeFontList()
             free(font->path);
         if(font->font)
 		{
-            if(font->font->font)
+            if(font->font->isFntFont)
+            {
+                for(auto& pair : font->font->glyphs)
+                    if(pair.second.surface)
+                        SDL_FreeSurface(pair.second.surface);
+                font->font->glyphs.clear();
+                font->font->kerning.clear();
+            }
+            else if(font->font->font)
+            {
                 TTF_CloseFont(font->font->font);
-			free(font->font);
+            }
+            delete font->font;
 		}
 		delete font;
     }
