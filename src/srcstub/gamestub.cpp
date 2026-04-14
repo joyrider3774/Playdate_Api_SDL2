@@ -35,8 +35,8 @@ double pd_api_elapsed;
 //mapped value of clear must lie between black and white and its value may not be bigger than whitethreshold or lower than blackthreshold
 
 SDL_Color  pd_api_gfx_color_clear = {128, 255, 255, SDL_ALPHA_OPAQUE};
-SDL_Color  pd_api_gfx_color_white = {177, 175, 168, SDL_ALPHA_OPAQUE};
-SDL_Color  pd_api_gfx_color_black = {49, 47, 40, SDL_ALPHA_OPAQUE};
+SDL_Color  pd_api_gfx_color_white = {215, 212, 204, SDL_ALPHA_OPAQUE};
+SDL_Color  pd_api_gfx_color_black = {50, 47, 41, SDL_ALPHA_OPAQUE};
 SDL_Color  pd_api_gfx_color_whitetreshold = {155, 155, 155, SDL_ALPHA_OPAQUE};
 SDL_Color  pd_api_gfx_color_blacktreshold = {100, 100, 100, SDL_ALPHA_OPAQUE};
 
