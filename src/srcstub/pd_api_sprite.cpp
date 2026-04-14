@@ -229,7 +229,7 @@ void pd_api_sprite_drawSprites(void)
 	if (DRAWBUMPRECTS)
 		_pd_api_sprite_drawBumpItems();
 
-	printfDebug(DebugInfo, "pd_api_sprite_drawSprites draws done: %d\n",c);
+	//printfDebug(DebugInfo, "pd_api_sprite_drawSprites draws done: %d\n",c);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_drawSprites end\n");
 }
 
@@ -252,7 +252,7 @@ void pd_api_sprite_updateAndDrawSprites(void)
 			sprite->UpdateFunction(sprite);
 		}
 	}
-	printfDebug(DebugInfo, "pd_api_sprite_updateAndDrawSprites updates done: %d\n",c);
+	//printfDebug(DebugInfo, "pd_api_sprite_updateAndDrawSprites updates done: %d\n",c);
 	//don't try to draw sprites if spritelist is empty
 	//or it will clear the screen potentially which is unintended
 	if (c > 0)
