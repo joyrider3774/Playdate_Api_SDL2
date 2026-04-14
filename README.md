@@ -1,14 +1,94 @@
 # Playdate Api SDL2
 An attempt to reimplement the Playdate Handheld C Api in SDL2
 
-i've used this to create windows (and linux) binaries to for my playdate game's from unaltered source code for the playdate. I attempted to reimplement the Playdate API headers in SDL2. It's probably done in a very bad way but it does seem to work for my games and a tetris game i tested from someone else on github. A Lot is still not implemented and probably never will. A basic sprite class has been implemented as well as collision detection using bump.hpp (https://github.com/Polynominal/bump.hpp), The C Sprite example is working but a lot of the other games i tried do not work correctly. Audio is also only basic implementations for File and SamplePlayer, File routines have been implemented as well as well as some of the display and graphics functions. There might still be some issues with some of the graphics functions compared to playdate but for my game's i'm happy with it
+I attempted to reimplement the Playdate API headers in SDL2, I've used this to create windows (and linux) binaries to for my playdate game's from unaltered source code for the playdate.
+It's probably done in a very bad way but it does seem to work for my games and other games on github.
+
+## Implemented
+
+### Graphics:
+- Bitmap operations — load (no gif), new, free, copy, clear, getBitmapData (converts to 1bpp), rotate, scale, tile, drawBitmap, drawScaledBitmap, drawRotatedBitmap, tileBitmap
+- Primitives — drawLine, fillRect, drawRect, fillTriangle, fillPolygon, drawEllipse, fillEllipse, drawRoundRect, fillRoundRect (all via drawBitmapAll)
+- Stencil — applied in drawBitmapAll (covers all primitives and bitmap drawing, but not fnt drawText)
+- Context — push/pop, draw mode, clip rect, draw offset, background color, tracking, leading
+- Fonts — native .fnt + TTF, drawText, getTextWidth, getFontHeight, drawTextInRect, getTextHeightForMaxWidth
+- Bitmap tables — new, free, load, getTableBitmap, getBitmapTableInfo
+- copyFrameBufferBitmap — returns copy of screen bitmap
+- getDisplayBufferBitmap — returns the screen bitmap directly (no copy)
+
+### System: 
+- buttons
+- crank (simulated by 2 buttons rotating 5 degrees in a certain directions)
+- timer (elapsed/epoch/ms)
+- memory (realloc/formatString)
+- menu items (Fake menu system implemented with standard/checkmark/options/setMenuImage)
+- datetime conversion
+- delay
+- setButtonCallback (not exactly the same as on device but might work)
+
+###Sound: 
+- FilePlayer and SamplePlayer (load/play/stop/volume/loop/rate via SDL_mixer + AudioStream resampling), AudioSample (load ogg/mp3/wav)
+
+### Sprites: 
+- full lifecycle
+- image
+- Z-order
+- draw mode
+- flip
+- visibility
+- stencil
+- tags
+- collision world (checkCollisions, moveWithCollisions, all query functions)
+
+### File: 
+- all operations (open/close/read/write/flush/tell/seek/stat/mkdir/unlink/rename/listfiles)
+
+## Bot Implemented
+
+### Graphics:
+- getFrame / getDisplayFrame — return 0 (raw 1bpp frame buffer access not implemented)
+- setColorToPattern — empty no-op (LCDPattern colors never substituted)
+- checkMaskCollision — always returns 0
+- getFontPage / getPageGlyph / getGlyphKerning — return NULL/0
+- makeFontFromData — returns NULL
+- Stencil on fnt drawText — not applied (draws directly, bypasses drawBitmapAll)
+- tilemap sub-API — newTilemap returns NULL, all ops empty
+- video sub-API
+- videostream sub-API
+
+### System:
+- getLanguage — hardcoded English, ignores system locale
+- getAccelerometer
+- getBatteryPercentage / getBatteryVoltage — hardcoded 100% / 5.0V
+- getFlipped, getReduceFlashing — always 0
+- setPeripheralsEnabled, setAutoLockDisabled, clearICache — empty no-ops
+- restartGame, getLaunchArgs, sendMirrorData, setSerialMessageCallback — empty/hardcoded
+
+### Sound:
+- PDSynth — all functions empty, produces no sound
+- PDSynthLFO, PDSynthEnvelope, PDSynthSignal, PDSynthInstrument — all empty
+- SequenceTrack / SoundSequence — note events not triggered
+- All audio effects (TwoPoleFilter, OnePoleFilter, BitCrusher, RingModulator, DelayLine, Overdrive) — setters empty, no DSP
+
+### Other:
+- Lua API — non-functional (all calls return 0/error)
+- Scoreboards — all return -1
+- Network/HTTP — not present
 
 # how to
 1. place your playdate game's unaltered source code files inside src/srcgame
 2. place your playdate game's Source directory (containing assets) inside Source + make sure it contains a pdxinfo file with a bundleID set (it's used to determine unique save folder)
-3. Convert fonts (fnt+png) files to TTF files by using [bitsnpicas](https://github.com/kreativekorp/bitsnpicas) to export to BDF file, then open BDF file in [fontforge studio](https://fontforge.org/en-US/) and export to ttf. So that the ttf font files match exactly as on the playdate, the export from bitsnpicas to ttf does not help here as it does not export in same size fonts as used on playdate. Another more easier way to convert the playdate fnt files to loadable ttf files with same size is to open the playdate font in bitsnpicas and then inside bitsnpicase export the font as a windows 3.1 fnt file. Then rename the fnt files to .ttf. This is what i'm doing lately and (recent) SDL2_ttf (versions) seems to be able to load these fonts as well.
+3. OPTIONALLY (fnt loading is now supported, ttf no longer required): Convert fonts (fnt+png) files to TTF files:
+   by using [bitsnpicas](https://github.com/kreativekorp/bitsnpicas) to export to BDF file, 
+   then open BDF file in [fontforge studio](https://fontforge.org/en-US/) and export to ttf. 
+   So that the ttf font files match exactly as on the playdate, the export from bitsnpicas to 
+   ttf does not help here as it does not export in same size fonts as used on playdate. 
+   
+   Another more easier way to convert the playdate fnt files to loadable ttf files with same size is 
+   to open the playdate font in bitsnpicas and then inside bitsnpicase export the font as a windows 3.1 fnt file. 
+   Then rename the fnt files to .ttf. (recent) SDL2_ttf (versions) seems to be able to load these fonts as well.
 4. Compile using the provided makefile.
-5. if all goes well compiled binary should be named game(.exe) in Source directory
+5. If all goes well compiled binary should be named game(.exe) in Source directory
 
 # colorize your games
 if you place a "Source1" or "Source2", ... folder inside the "Source" folder you can swap source folders by press F3 when the game is running.
