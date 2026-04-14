@@ -260,7 +260,7 @@ AudioSample* pd_api_sound_loadSample(const char* path)
         tmp->sound = Mix_LoadWAV(tmp->path); 
         if(tmp->sound == NULL) 
         { 
-            printfDebug(DebugInfo, "Unable to load Audio file \"%s\": %s\n", path, Mix_GetError());
+            printfDebug(DebugLoadPaths, "INFO: FAILED LOADING Audio Sample (Mix_LoadWAV failed: %s): %s\n", Mix_GetError(), tmp->path);
         }
         
         bool found = false;

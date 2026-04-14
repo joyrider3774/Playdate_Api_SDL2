@@ -748,11 +748,15 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 				SDL_BlitSurface(Img2, NULL, result->Tex, NULL);				
 				SDL_SetSurfaceBlendMode(result->Tex, SDL_BLENDMODE_NONE);
 				//SDL_SetSurfaceRLE(result->Tex, SDL_RLEACCEL);
-				}
+			}
 			SDL_FreeSurface(Img2);
 		}
+		else
+			printfDebug(DebugLoadPaths, "INFO: FAILED LOADING Bitmap (SDL_ConvertSurfaceFormat failed): %s\n", fullpath); 
 		SDL_FreeSurface(Img);
-    }   
+    }
+	else
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING Bitmap (imgLoad failed): %s\n", fullpath); 
     free(fullpath);
 	free(tmpfullpath);
     return result;
@@ -3268,7 +3272,11 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
     // Read entire file into memory to handle large data= lines
     // Open in binary mode to avoid Windows \r\n translation messing up ftell/fread
     FILE* fb = fopen(fntPath, "rb");
-    if (!fb) return nullptr;
+    if (!fb) 
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (fopen failed): %s\n", fntPath); 
+		return nullptr;
+	}
     fseek(fb, 0, SEEK_END);
     long fileSize = ftell(fb);
     fseek(fb, 0, SEEK_SET);
@@ -3363,22 +3371,41 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
     }
 
     if (b64data.empty() || cellW <= 0 || cellH <= 0 || charList.empty())
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (b64data.empty() || cellW <= 0 || cellH <= 0 || charList.empty()): %s\n", fntPath); 
         return nullptr;
+	}
 
     // Decode base64 PNG
     auto pngData = b64_decode(b64data.c_str(), b64data.size());
-    if (pngData.empty()) return nullptr;
+    if (pngData.empty()) 
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (empty pngData): %s\n", fntPath); 
+		return nullptr;
+	}
 
     // Load PNG from memory
     SDL_RWops* rw = SDL_RWFromMem(pngData.data(), (int)pngData.size());
-    if (!rw) return nullptr;
+    if (!rw)
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (reading (rw) png from memory failed): %s\n", fntPath); 
+		return nullptr;
+	}
     SDL_Surface* table = IMG_Load_RW(rw, 1); // 1 = auto-close rw
-    if (!table) return nullptr;
+    if (!table)
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (reading (table) png from memory failed): %s\n", fntPath); 
+		return nullptr;
+	}
 
     // Convert and preprocess (same as fnt_load_font)
     SDL_Surface* tableConv = SDL_ConvertSurfaceFormat(table, pd_api_gfx_PIXELFORMAT, 0);
     SDL_FreeSurface(table);
-    if (!tableConv) return nullptr;
+    if (!tableConv)
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING embedded font (SDL_ConvertSurfaceFormat failed): %s\n", fntPath);  
+		return nullptr;
+	}
 
     pd_api_gfx_MakeSurfaceBlackAndWhite(tableConv);
 
@@ -3391,7 +3418,8 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
     if (cols <= 0) cols = 1;
 
     bool tableLocked = false;
-    if (SDL_MUSTLOCK(tableConv)) tableLocked = (SDL_LockSurface(tableConv) == 0);
+    if (SDL_MUSTLOCK(tableConv)) 
+		tableLocked = (SDL_LockSurface(tableConv) == 0);
 
     LCDFont* result = new LCDFont();
     result->font      = nullptr;
@@ -3416,7 +3444,8 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
         SDL_FillRect(gs, nullptr, clearColor);
 
         bool glyphLocked = false;
-        if (SDL_MUSTLOCK(gs)) glyphLocked = (SDL_LockSurface(gs) == 0);
+        if (SDL_MUSTLOCK(gs)) 
+			glyphLocked = (SDL_LockSurface(gs) == 0);
 
         for (int py = 0; py < cellH; py++)
         for (int px = 0; px < cellW; px++)
@@ -3434,11 +3463,10 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
         gd.surface = gs;
         gd.advance = advance;
         result->glyphs[cp] = gd;
-        if (cp == 0x24B6 || cp == 0x24DE)
-            printf("DEBUG fnt_load_embedded: stored U+%04X at cell %d, surface=%p\n", cp, i, (void*)gs);
     }
 
-    if (tableLocked) SDL_UnlockSurface(tableConv);
+    if (tableLocked) 
+		SDL_UnlockSurface(tableConv);
     SDL_FreeSurface(tableConv);
 
     printfDebug(DebugLoadPaths, "INFO: Loaded embedded .fnt font: %s (cellW=%d cellH=%d glyphs=%d)\n",
@@ -3451,10 +3479,18 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
     int fntTracking = 0;
     std::unordered_map<uint64_t,int> kerningMap;
     auto charList = fnt_parse_file(fntPath, &fntTracking, &kerningMap);
-    if (charList.empty()) return nullptr;
+    if (charList.empty())
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING fnt font (fnt_parse_file failed): %s\n", fntPath);
+		return nullptr;
+	}
 
     SDL_Surface* table = IMG_Load(pngPath);
-    if (!table) return nullptr;
+    if (!table)
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING fnt font (IMG_Load(%s) failed): %s\n", fntPath, pngPath);
+		return nullptr;
+	}
 
     // Extract cellW, cellH from filename: ...-table-W-H.png
     int cellW = 0, cellH = 0;
@@ -3481,7 +3517,11 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
 
     SDL_Surface* tableConv = SDL_ConvertSurfaceFormat(table, pd_api_gfx_PIXELFORMAT, 0);
     SDL_FreeSurface(table);
-    if (!tableConv) return nullptr;
+    if (!tableConv) 
+	{
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING fnt font (SDL_ConvertSurfaceFormat failed): %s\n", fntPath);
+		return nullptr;
+	}
 
     // Apply same preprocessing as loadBitmap does
     pd_api_gfx_MakeSurfaceBlackAndWhite(tableConv);
@@ -3498,7 +3538,8 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
     if (cols <= 0) cols = 1;
 
     bool tableLocked = false;
-    if (SDL_MUSTLOCK(tableConv)) tableLocked = (SDL_LockSurface(tableConv) == 0);
+    if (SDL_MUSTLOCK(tableConv)) 
+		tableLocked = (SDL_LockSurface(tableConv) == 0);
 
     LCDFont* result = new LCDFont();
     result->font      = nullptr;
@@ -3523,7 +3564,8 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
         SDL_FillRect(gs, nullptr, clearColor);
 
         bool glyphLocked = false;
-        if (SDL_MUSTLOCK(gs)) glyphLocked = (SDL_LockSurface(gs) == 0);
+        if (SDL_MUSTLOCK(gs)) 
+			glyphLocked = (SDL_LockSurface(gs) == 0);
 
         for (int py = 0; py < cellH; py++)
         for (int px = 0; px < cellW; px++)
@@ -3685,7 +3727,11 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             Tmp->font = result;
             fontlist.push_back(Tmp);
         }
-    }   
+		else
+			printfDebug(DebugLoadPaths, "INFO: FAILED LOADING TTF font (pd_api_gfx_Create_LCDFont failed): %s\n", fullpath);
+    }
+	else
+		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING TTF font (TTF_OpenFont failed): %s\n", fullpath);
 
     free(fullpath);
 	free(tmpfullpath);
