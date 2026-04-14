@@ -607,9 +607,12 @@ Possible options are:\n\
                         Api->scoreboards = pd_api_scoreboards_Create_playdate_scoreboards();
                         Api->json = pd_api_json_Create_playdate_json();
 
-						//load potential saved source dir value
+						//load potential saved source dir value (also loads correct colors)
 						_pd_load_source_dir();
-						
+						//load default fonts AFTER source dir+colors are set so glyph surfaces
+						//are baked with the correct clearColor for this source dir
+						_pd_api_gfx_loadDefaultFonts();
+						_pd_api_gfx_resetContext();
 						//init the menu
 						pd_menu_init();
 

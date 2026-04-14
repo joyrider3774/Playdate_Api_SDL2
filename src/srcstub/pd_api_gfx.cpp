@@ -694,28 +694,37 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 	if(outerr)
     	*outerr = loaderror;
     LCDBitmap* result = NULL;
-    char ext[5];
-    char* tmpfullpath = (char *) malloc((strlen(path) + 7) * sizeof(char));
-	char* fullpath = (char *) malloc((strlen(path) + 17) * sizeof(char));
+    char* tmpfullpath = (char*)malloc(MAXPATH);
+	char* fullpath    = (char*)malloc(MAXPATH);
     bool needextension = true;
     if(strlen(path) > 4)
     {
-        strcpy(ext, path + (strlen(path) - 4));
-        needextension = strcasecmp(ext, ".PNG") != 0;
+        const char* ext4 = path + (strlen(path) - 4);
+        needextension = strcasecmp(ext4, ".png") != 0;
     }
-    if (needextension)
-	{
-        sprintf(tmpfullpath,"./%s.png", path);
+    
+	if (needextension)
+    {
+		snprintf(tmpfullpath, MAXPATH, "%s.png", path);
 	}
     else
 	{
-        sprintf(tmpfullpath, "./%s", path);
+        snprintf(tmpfullpath, MAXPATH, "%s", path);
 	}
 
-	sprintf(fullpath, "./%s/%s",_pd_api_get_current_source_dir(), tmpfullpath);
+    const char* srcDir = _pd_api_get_current_source_dir();
+    if (strcmp(srcDir, ".") == 0)
+	{
+        snprintf(fullpath, MAXPATH, "./%s", tmpfullpath);
+	}
+    else
+	{
+        snprintf(fullpath, MAXPATH, "./%s/%s", srcDir, tmpfullpath);
+	}
+
 	struct stat lstats;
 	if(stat(fullpath, &lstats) != 0)
-		sprintf(fullpath, "./%s", tmpfullpath);
+		snprintf(fullpath, MAXPATH, "./%s", tmpfullpath);
 
     SDL_Surface* Img = IMG_Load(fullpath);
     if(Img)
@@ -1203,8 +1212,16 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 
 LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
 {
-	char* fullpath = (char *) malloc((strlen(path) + 17) * sizeof(char));
-    sprintf(fullpath, "./%s/%s", _pd_api_get_current_source_dir(), path);
+	char* fullpath = (char*)malloc(MAXPATH);
+    const char* srcDir = _pd_api_get_current_source_dir();
+    if (strcmp(srcDir, ".") == 0)
+	{
+        snprintf(fullpath, MAXPATH, "./%s", path);
+	}
+    else
+	{
+        snprintf(fullpath, MAXPATH, "./%s/%s", srcDir, path);
+	}
 	LCDBitmapTable *result = _pd_api_gfx_do_loadBitmapTable(fullpath, outerr);
 	free(fullpath);
 	if(!result)
@@ -3538,33 +3555,50 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
 LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
     LCDFont* result = NULL;
-    char* tmpfullpath =  (char *) malloc((strlen(path) + 7) * sizeof(char));
-	char* fullpath =  (char *) malloc((strlen(path) + 17) * sizeof(char));
-    sprintf(tmpfullpath, "./%s", path);
+    // Build paths with enough room for sourceDir prefix + .ttf extension
+    // Use MAXPATH to avoid any overflow issues
+    char* tmpfullpath = (char*)malloc(MAXPATH);
+    char* fullpath    = (char*)malloc(MAXPATH);
+
+    // Normalize the input extension to .ttf for the TTF path
+    // Copy path, find extension, force .ttf (4-char extensions only, e.g. .fnt->.ttf)
+    strncpy(tmpfullpath, path, MAXPATH-5);
+	tmpfullpath[MAXPATH-5] = '\0';
     char* ext = strrchr(tmpfullpath, '.');
-    if (ext)
-    {
-        if(strlen(ext) == 4)
-        {
-            ext[1] = 't';
-            ext[2] = 't';
-            ext[3] = 'f';
-        }
-        else
-		{
-			sprintf(tmpfullpath, "./%s.ttf", path);
-		}
-    }
-    else
+    if (ext && strlen(ext) == 4) 
 	{
-        sprintf(tmpfullpath, "./%s.ttf", path);
+        ext[1]='t';
+		ext[2]='t';
+		ext[3]='f';
+    }
+	else
+	{
+		if (ext && strlen(ext) != 4)
+		{
+			// non-4-char extension: append .ttf
+			strncat(tmpfullpath, ".ttf", MAXPATH-strlen(tmpfullpath)-1);
+		}
+		else
+		{
+			if (!ext)
+			{
+				strncat(tmpfullpath, ".ttf", MAXPATH-strlen(tmpfullpath)-1);
+			}
+		}
 	}
 
+    // Build full path: "./{sourceDir}/{path}.ttf"
+    // When sourceDir="." this gives "./{path}.ttf" (no double ./)
+    const char* srcDir = _pd_api_get_current_source_dir();
+    if (strcmp(srcDir, ".") == 0)
+        snprintf(fullpath, MAXPATH, "./%s", tmpfullpath);
+    else
+        snprintf(fullpath, MAXPATH, "./%s/%s", srcDir, tmpfullpath);
 
-	sprintf(fullpath, "./%s/%s",_pd_api_get_current_source_dir(), tmpfullpath);
-	struct stat lstats;
-	if(stat(fullpath, &lstats) != 0)
-		sprintf(fullpath, "%s", tmpfullpath);
+    // If not found with source dir, fall back to plain "./{path}.ttf"
+    struct stat lstats;
+    if (stat(fullpath, &lstats) != 0)
+        snprintf(fullpath, MAXPATH, "./%s", tmpfullpath);
 
 	//check font list to see if we already loaded the font
     for (auto& font : fontlist)
@@ -3660,8 +3694,8 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 void _pd_api_gfx_loadDefaultFonts()
 {
 	const char* err;
-	_pd_api_gfx_Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light.ttf", &err);
-    _pd_api_gfx_FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold.ttf", &err);
+	_pd_api_gfx_Default_Font =  pd_api_gfx_loadFont("System/Fonts/Asheville-Sans-14-Light", &err);
+    _pd_api_gfx_FPS_Font =  pd_api_gfx_loadFont("System/Fonts/Roobert-10-Bold", &err);
 }
 
 void _pd_api_gfx_resetContext()
@@ -5297,7 +5331,6 @@ playdate_graphics* pd_api_gfx_Create_playdate_graphics()
     playdate_graphics *Tmp = (playdate_graphics*) malloc(sizeof(*Tmp));
     
     _pd_api_gfx_Playdate_Screen = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorWhite);
-    _pd_api_gfx_loadDefaultFonts();
     
     _pd_api_gfx_CurrentGfxContext = new GfxContext();
     _pd_api_gfx_CurrentGfxContext->BackgroundColor = kColorWhite;
