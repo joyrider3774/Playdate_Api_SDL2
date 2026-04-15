@@ -43,6 +43,15 @@ It's probably done in a very bad way but it does seem to work for my games and o
 ### File: 
 - all operations (open/close/read/write/flush/tell/seek/stat/mkdir/unlink/rename/listfiles)
 
+### JSON:
+
+- Decoder (decode, decodeString) — fully implemented using nlohmann JSON
+  walks the parsed tree and fires all decoder callbacks (willDecodeSublist, didDecodeSublist, didDecodeTableValue, didDecodeArrayValue, shouldDecodeTableValueForKey, shouldDecodeArrayValueAtIndex, decodeError) for nested objects and arrays
+- Encoder (initEncoder) — fully implemented
+  streaming writer that calls the game-provided writeStringFunc
+  supports all scalar types (null, bool, int, double, string with escaping),
+  tables/objects, arrays, pretty-printing with indentation, and comma separation
+
 ## Not Implemented
 
 ### Graphics:
