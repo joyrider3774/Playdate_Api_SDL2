@@ -157,6 +157,15 @@ AudioSample* pd_api_sound_newSampleBuffer(int byteCount)
 AudioSample* pd_api_sound_loadSample(const char* path)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_loadSample\n");
+
+    // Strip .pda extension — Playdate compiled audio format, we use .ogg/.wav/.mp3 instead
+    char stripped[MAXPATH];
+    strncpy(stripped, path, MAXPATH-1);
+    stripped[MAXPATH-1] = '\0';
+    if (strlen(stripped) > 4 && strcasecmp(stripped + strlen(stripped) - 4, ".pda") == 0)
+        stripped[strlen(stripped) - 4] = '\0';
+    path = stripped;
+
     char* fullpath = (char*)malloc(MAXPATH);
     bool needextension = true;
     struct stat lstats;

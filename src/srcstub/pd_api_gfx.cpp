@@ -701,6 +701,15 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
     LCDBitmap* result = NULL;
     char* tmpfullpath = (char*)malloc(MAXPATH);
 	char* fullpath    = (char*)malloc(MAXPATH);
+
+    // Strip .pdi extension — Playdate compiled image format, we use .png instead
+    char stripped[MAXPATH];
+    strncpy(stripped, path, MAXPATH-1);
+    stripped[MAXPATH-1] = '\0';
+    if (strlen(stripped) > 4 && strcasecmp(stripped + strlen(stripped) - 4, ".pdi") == 0)
+        stripped[strlen(stripped) - 4] = '\0';
+    path = stripped;
+
     bool needextension = true;
     if(strlen(path) > 4)
     {
@@ -1222,6 +1231,14 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 
 LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
 {
+    // Strip .pdt extension — Playdate compiled image table format
+    char stripped[MAXPATH];
+    strncpy(stripped, path, MAXPATH-1);
+    stripped[MAXPATH-1] = '\0';
+    if (strlen(stripped) > 4 && strcasecmp(stripped + strlen(stripped) - 4, ".pdt") == 0)
+        stripped[strlen(stripped) - 4] = '\0';
+    path = stripped;
+
 	char* fullpath = (char*)malloc(MAXPATH);
     const char* srcDir = _pd_api_get_current_source_dir();
     if (strcmp(srcDir, ".") == 0)
@@ -3706,6 +3723,14 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
     // Use MAXPATH to avoid any overflow issues
     char* tmpfullpath = (char*)malloc(MAXPATH);
     char* fullpath    = (char*)malloc(MAXPATH);
+
+    // Strip .pft extension — Playdate compiled font format, we use .fnt/.ttf instead
+    char stripped[MAXPATH];
+    strncpy(stripped, path, MAXPATH-1);
+    stripped[MAXPATH-1] = '\0';
+    if (strlen(stripped) > 4 && strcasecmp(stripped + strlen(stripped) - 4, ".pft") == 0)
+        stripped[strlen(stripped) - 4] = '\0';
+    path = stripped;
 
     // Normalize the input extension to .ttf for the TTF path
     // Copy path, find extension, force .ttf (4-char extensions only, e.g. .fnt->.ttf)
