@@ -10,6 +10,7 @@ It's probably done in a very bad way but it does seem to work for my games and o
 - Bitmap operations — load (no gif), new, free, copy, clear, getBitmapData (converts to 1bpp), rotate, scale, tile, drawBitmap, drawScaledBitmap, drawRotatedBitmap, tileBitmap
 - Primitives — drawLine, fillRect, drawRect, fillTriangle, fillPolygon, drawEllipse, fillEllipse, drawRoundRect, fillRoundRect (all via drawBitmapAll)
 - Stencil — applied in drawBitmapAll (covers all primitives and bitmap drawing, but not fnt drawText)
+- getFrame / getDisplayFrame — (raw 1bpp frame buffer access implemented)
 - Context — push/pop, draw mode, clip rect, draw offset, background color, tracking, leading
 - Fonts — native .fnt + TTF, drawText, getTextWidth, getFontHeight, drawTextInRect, getTextHeightForMaxWidth
 - Bitmap tables — new, free, load, getTableBitmap, getBitmapTableInfo
@@ -55,7 +56,6 @@ It's probably done in a very bad way but it does seem to work for my games and o
 ## Not Implemented
 
 ### Graphics:
-- getFrame / getDisplayFrame — return 0 (raw 1bpp frame buffer access not implemented)
 - setColorToPattern — empty no-op (LCDPattern colors never substituted)
 - checkMaskCollision — always returns 0
 - getFontPage / getPageGlyph / getGlyphKerning — return NULL/0
