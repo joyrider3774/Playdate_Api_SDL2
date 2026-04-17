@@ -231,7 +231,16 @@ void _pd_api_display()
 	Uint8 r,g,b,a;
 	SDL_Texture* target;
 	LCDColor bgColor;
-	
+
+	// Snapshot the completed frame for getDisplayFrame(), and auto-push pd_gfx_framebuffer
+	// to Tex if the game used getFrame() but did not call markUpdatedRows.
+	// Skip the push (but still snapshot) when the menu is open — the menu draws
+	// directly onto the SDL surface and the push would overwrite it.
+	if (!pd_menu_isOpen)
+		_pd_api_gfx_flushFramebuffer();
+	else
+		_pd_api_gfx_snapshotFramebuffer();
+
 	//clear fullbackground of the real screen (in case display offset is used)
 	target = SDL_GetRenderTarget(Renderer);
 					

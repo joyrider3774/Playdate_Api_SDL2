@@ -18,6 +18,9 @@ extern SDL_Color pd_api_gfx_color_white;
 extern SDL_Color pd_api_gfx_color_black; 
 extern SDL_Color pd_api_gfx_color_whitetreshold;
 extern SDL_Color pd_api_gfx_color_blacktreshold;
+extern void _pd_api_gfx_flushFramebuffer(void);
+extern void _pd_api_gfx_snapshotFramebuffer(void);
+
 int main(int argv, char** args);
 
 #endif

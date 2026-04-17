@@ -18,11 +18,16 @@
 #include "pd_api/pd_api_gfx.h"
 #include "gamestubcallbacks.h"
 #include "gamestub.h"
+#include "pd_menu.h"
 #include "defines.h"
 #include "debug.h"
 
 
 const char loaderror[] = "Failed loading!";
+static uint8_t pd_gfx_framebuffer[LCD_ROWSIZE * LCD_ROWS];
+static uint8_t pd_gfx_display_framebuffer[LCD_ROWSIZE * LCD_ROWS]; // last completed frame
+static bool pd_gfx_framebuffer_valid = false;
+static bool pd_gfx_rows_pushed = false; // true if markUpdatedRows was called this frame
 
 struct LCDBitmap;
 
@@ -1260,14 +1265,32 @@ LCDBitmap* pd_api_gfx_getTableBitmap(LCDBitmapTable* table, int idx)
 }
 
 // raw framebuffer access
-uint8_t* pd_api_gfx_getFrame(void) // row stride = LCD_ROWSIZE
+
+uint8_t* pd_api_gfx_getFrame(void)
 {
-    return 0;
+    // Always re-read from Tex into pd_gfx_framebuffer.
+    // On real hardware getFrame() returns a pointer into the hardware framebuffer
+    // which is always up to date. In the stub, Tex is kept up to date by clear()
+    // and markUpdatedRows(), so reading from it here gives the correct starting
+    // state for the game to render into this frame.
+    uint8_t* data = NULL;
+    int w, h, rb;
+    pd_api_gfx_getBitmapData(_pd_api_gfx_Playdate_Screen, &w, &h, &rb, NULL, &data);
+    if (!data)
+        return NULL;
+    memset(pd_gfx_framebuffer, 0, sizeof(pd_gfx_framebuffer));
+    for (int y = 0; y < h; y++)
+        memcpy(pd_gfx_framebuffer + y * LCD_ROWSIZE, data + y * rb, rb);
+    pd_gfx_framebuffer_valid = true;
+    // Do NOT clear BitmapDirty here — the display pipeline needs it to know
+    // the screen has been modified. markUpdatedRows will set it after pushing.
+    return pd_gfx_framebuffer;
 }
 
 uint8_t* pd_api_gfx_getDisplayFrame(void) // row stride = LCD_ROWSIZE
 {
-    return 0;
+    // Returns the last completed frame — snapshot taken at end of previous display cycle
+    return pd_gfx_display_framebuffer;
 }
 
 LCDBitmap* pd_api_gfx_getDebugBitmap(void) // valid in simulator only, function is NULL on device
@@ -1280,9 +1303,90 @@ LCDBitmap* pd_api_gfx_copyFrameBufferBitmap(void)
     return pd_api_gfx_copyBitmap(_pd_api_gfx_Playdate_Screen);
 }
 
+// Push pd_gfx_framebuffer rows [start..end] to the SDL surface.
+// Called by markUpdatedRows and automatically by _pd_api_gfx_flushFramebuffer.
+static void _pd_api_gfx_pushRowsToSurface(int start, int end)
+{
+    SDL_Surface* surf = _pd_api_gfx_Playdate_Screen->Tex;
+    Uint32 white = SDL_MapRGBA(surf->format, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+    Uint32 black = SDL_MapRGBA(surf->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+
+    bool unlocked = true;
+    if (SDL_MUSTLOCK(surf))
+        unlocked = SDL_LockSurface(surf) == 0;
+
+    if (unlocked)
+    {
+        for (int y = start; y <= end; y++)
+        {
+            uint8_t* row = pd_gfx_framebuffer + y * LCD_ROWSIZE;
+            for (int x = 0; x < LCD_COLUMNS; x++)
+            {
+                bool isWhite = (row[x / 8] >> (7 - (x % 8))) & 1;
+                Uint32* p = (Uint32*)((Uint8*)surf->pixels + y * surf->pitch + x * surf->format->BytesPerPixel);
+                *p = isWhite ? white : black;
+            }
+        }
+        if (SDL_MUSTLOCK(surf))
+            SDL_UnlockSurface(surf);
+    }
+}
+
+// Snapshots the current Tex into pd_gfx_display_framebuffer for getDisplayFrame().
+// Called directly when the menu is open so we capture the menu-overlaid frame.
+void _pd_api_gfx_snapshotFramebuffer(void)
+{
+    uint8_t* data = NULL;
+    int w, h, rb;
+    pd_api_gfx_getBitmapData(_pd_api_gfx_Playdate_Screen, &w, &h, &rb, NULL, &data);
+    if (data)
+    {
+        memset(pd_gfx_display_framebuffer, 0, sizeof(pd_gfx_display_framebuffer));
+        for (int y = 0; y < h; y++)
+            memcpy(pd_gfx_display_framebuffer + y * LCD_ROWSIZE, data + y * rb, rb);
+    }
+}
+
+// Called by _pd_api_display() to ensure any getFrame() writes are visible
+// even if the game never called markUpdatedRows (which is optional on real hardware).
+// Also snapshots the completed frame into pd_gfx_display_framebuffer for getDisplayFrame().
+void _pd_api_gfx_flushFramebuffer(void)
+{
+    // Only auto-push if getFrame() was used AND markUpdatedRows wasn't already called
+    if (pd_gfx_framebuffer_valid && !pd_gfx_rows_pushed)
+        _pd_api_gfx_pushRowsToSurface(0, LCD_ROWS - 1);
+
+    pd_gfx_rows_pushed = false;
+
+    _pd_api_gfx_snapshotFramebuffer();
+}
+
 void pd_api_gfx_markUpdatedRows(int start, int end)
 {
+    if (start > end)
+	{
+		int tmp = end;
+		end = start;
+		start = tmp;
+	}
 
+	if (start < 0)
+		start = 0;
+
+    if (end >= LCD_ROWS)
+		end = LCD_ROWS - 1;
+
+    if (!pd_gfx_framebuffer_valid)
+		return;
+
+    // Don't push when the menu is open — the menu draws directly onto Tex
+    // and the push would overwrite the menu overlay.
+    if (!pd_menu_isOpen)
+    {
+        _pd_api_gfx_pushRowsToSurface(start, end);
+        _pd_api_gfx_Playdate_Screen->BitmapDirty = true;
+    }
+    pd_gfx_rows_pushed = true;
 }
 
 void pd_api_gfx_display(void)
@@ -5559,6 +5663,14 @@ uint32_t _pd_api_gfx_getBitmapChecksum(LCDBitmap *bitmap, uint8_t *buffer)
 void _pd_api_gfx_checkBitmapNeedsRedraw(LCDBitmap *bitmap)
 {
     if (!bitmap)
+    {
+        return;
+    }
+    // Never rewrite the screen bitmap from BitmapDataData — it is managed by
+    // getFrame/markUpdatedRows and _pd_api_gfx_pushRowsToSurface already keeps
+    // Tex in sync.  Letting the checksum logic run here would overwrite the
+    // rendered frame with stale pre-render data.
+    if (bitmap == _pd_api_gfx_Playdate_Screen)
     {
         return;
     }
