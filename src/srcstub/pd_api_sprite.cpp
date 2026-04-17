@@ -201,7 +201,19 @@ void pd_api_sprite_drawSprites(void)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_drawSprites\n");
 	LCDColor tmp = getBackgroundDrawColor();
-	if(tmp != kColorClear)
+	
+	bool hasVisibleSprites = false;
+    for (auto& spritePtr : spriteList)
+    {
+        LCDSprite* sprite = spritePtr.get();
+        if(sprite->Loaded && sprite->LoadedInList && (sprite->Visible || _pd_api_sprite_AlwaysRedraw))
+        {
+            hasVisibleSprites = true;
+            break;
+        }
+    }
+
+	if(tmp != kColorClear && hasVisibleSprites)
 		Api->graphics->clear(tmp);
 	_pd_api_sprite_SortList();
 	int c =0;	
