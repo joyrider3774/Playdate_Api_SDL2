@@ -131,6 +131,15 @@ typedef struct SampleChannelEntry SampleChannelEntry;
 SampleChannelEntry** SampleList = NULL;
 int SampleListCount = 0;
 
+// Forward declaration — defined later after FilePlayer struct is complete
+#if FILEPLAYER_WALLCLOCK_TRACKING
+static float _pd_api_sound_filePlayerCurrentOffset(struct FilePlayer* player);
+#endif
+
+// Track all live FilePlayer instances so we can update pause state on menu resume
+static FilePlayer** FilePlayerList = NULL;
+static int FilePlayerListCount = 0;
+
 struct AudioSample {
     Mix_Chunk *sound;
     Mix_Chunk *remixedSound;
@@ -764,6 +773,22 @@ playdate_sound_sampleplayer* pd_api_sound_Create_playdate_sound_sampleplayer(voi
 //playdate_sound_fileplayer
 struct FilePlayer {
     SamplePlayer* Player;
+    bool playing;
+    // Finish/loop callbacks
+    sndCallbackProc* finishCallback;
+    void* finishUserdata;
+    sndCallbackProc* loopCallback;
+    void* loopUserdata;
+    int loopCount;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    Uint32 startTick;          // SDL_GetTicks() when playback started (adjusted for seeks/rate changes)
+    Uint32 durationMs;         // total playback duration in ms at rate=1.0
+    Uint32 pausedTick;         // SDL_GetTicks() when paused, 0 if not paused
+    Uint32 totalPausedMs;      // accumulated paused time to subtract from elapsed
+    float rate;                // playback rate (1.0 = normal, 2.0 = double speed)
+    float offsetAtRateChange;  // audio offset in seconds at the moment rate last changed
+    float lastOffset;
+#endif
 };
 
 FilePlayer* pd_api_sound_newFilePlayer(void)
@@ -771,6 +796,28 @@ FilePlayer* pd_api_sound_newFilePlayer(void)
     printfDebug(DebugTraceFunctions, "pd_api_sound_newFilePlayer\n");
     FilePlayer *Tmp = (FilePlayer*) malloc(sizeof(*Tmp));
     Tmp->Player = pd_api_sound_newSamplePlayer();
+    Tmp->playing = false;
+    Tmp->finishCallback = NULL;
+    Tmp->finishUserdata = NULL;
+    Tmp->loopCallback = NULL;
+    Tmp->loopUserdata = NULL;
+    Tmp->loopCount = 0;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    Tmp->startTick = 0;
+    Tmp->durationMs = 0;
+    Tmp->pausedTick = 0;
+    Tmp->totalPausedMs = 0;
+    Tmp->rate = 1.0f;
+    Tmp->offsetAtRateChange = 0.0f;
+    Tmp->lastOffset = 0.0f;
+#endif
+    // Register in global list so pd_api_sound_resumeAllFilePlayers can find it
+    FilePlayer** newList = (FilePlayer**)realloc(FilePlayerList, (FilePlayerListCount + 1) * sizeof(FilePlayer*));
+    if (newList)
+    {
+        FilePlayerList = newList;
+        FilePlayerList[FilePlayerListCount++] = Tmp;
+    }
     printfDebug(DebugTraceFunctions, "pd_api_sound_newFilePlayer end\n");
     return Tmp;
 }
@@ -788,10 +835,20 @@ void pd_api_sound_freeFilePlayer(FilePlayer* player)
         printfDebug(DebugTraceFunctions, "pd_api_sound_freeFilePlayer end player->Player = NULL\n");
         return;
     }
+    // Remove from global list to prevent resumeAllFilePlayers accessing freed memory
+    for (int i = 0; i < FilePlayerListCount; i++)
+    {
+        if (FilePlayerList[i] == player)
+        {
+            FilePlayerList[i] = FilePlayerList[--FilePlayerListCount];
+            break;
+        }
+    }
+    // Stop SDL_mixer channel before freeing to avoid use-after-free on audio buffer
+    pd_api_sound_stopSamplePlayer(player->Player);
     pd_api_sound_freeSample(player->Player->sample);
     pd_api_sound_freeSamplePlayer(player->Player);
     free(player);
-    player = NULL;
     printfDebug(DebugTraceFunctions, "pd_api_sound_freeFilePlayer end\n");
 }
 
@@ -814,6 +871,22 @@ int pd_api_sound_loadIntoFilePlayer(FilePlayer* player, const char* path)
     if (sample)
     {
         pd_api_sound_setSampleSamplePlayer(player->Player, sample);
+        // Reset playback state — duration will be recalculated on next play()
+        player->playing = false;
+        player->finishCallback = NULL;
+        player->finishUserdata = NULL;
+        player->loopCallback = NULL;
+        player->loopUserdata = NULL;
+        player->loopCount = 0;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+        player->startTick = 0;
+        player->durationMs = 0;
+        player->pausedTick = 0;
+        player->totalPausedMs = 0;
+        player->rate = 1.0f;
+        player->offsetAtRateChange = 0.0f;
+        player->lastOffset = 0.0f;
+#endif
         printfDebug(DebugTraceFunctions, "pd_api_sound_loadIntoFilePlayer end\n");
         return 1;
     }
@@ -839,11 +912,44 @@ int pd_api_sound_FilePlayerplay(FilePlayer* player, int repeat)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerplay end player->Player = NULL\n");
         return -1;
     }
+    // Rate is already applied at the SamplePlayer level via setRateSamplePlayer,
+    // so pass 1.0f here to avoid double-applying it.
     int tmp = pd_api_sound_playSamplePlayer(player->Player, repeat, 1.0f);
+    player->playing = true;
+    // Do NOT reset callbacks — they survive across play() calls on real hardware
+    player->loopCount = 0;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    player->startTick = SDL_GetTicks();
+    player->pausedTick = 0;
+    player->totalPausedMs = 0;
+    // Do NOT reset rate — games may set rate once and call play() multiple times
+    player->offsetAtRateChange = 0.0f;
+    player->lastOffset = 0.0f;
+    // repeat=0 means loop forever in Playdate API
+    if (repeat == 0)
+    {
+        player->durationMs = 0xFFFFFFFF; // effectively infinite
+    }
+    else if (player->Player->sample && player->Player->sample->sound)
+    {
+        Mix_Chunk* chunk = player->Player->sample->sound;
+        int freq = 0; Uint16 fmt = 0; int chans = 0;
+        Mix_QuerySpec(&freq, &fmt, &chans);
+        int bytesPerSample = (fmt & 0xFF) / 8 * chans;
+        Uint64 singleDurationMs = (bytesPerSample > 0 && freq > 0)
+            ? (chunk->alen * 1000ULL / (freq * bytesPerSample))
+            : 300000;
+        Uint64 totalMs = singleDurationMs * (Uint64)repeat;
+        player->durationMs = (totalMs > 0xFFFFFFFEULL) ? 0xFFFFFFFE : (Uint32)totalMs;
+    }
+    else
+    {
+        player->durationMs = 300000; // 5 min fallback
+    }
+#endif
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerplay end\n");
     return tmp;
 }
-
 int pd_api_sound_FilePlayerisPlaying(FilePlayer* player)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerisPlaying\n");
@@ -852,14 +958,19 @@ int pd_api_sound_FilePlayerisPlaying(FilePlayer* player)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerisPlaying end player = NULL\n");
         return -1;
     }
-    if(player->Player == NULL)
+    if(!player->playing)
     {
-        printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerisPlaying end player->Player = NULL\n");
-        return -1;
+        return 0;
     }
-    int tmp = pd_api_sound_isPlayingSamplePlayer(player->Player);
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    float offsetSec = _pd_api_sound_filePlayerCurrentOffset(player);
+    float durationSec = player->durationMs / 1000.0f;
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerisPlaying end\n");
-    return tmp;
+    return (offsetSec < durationSec) ? 1 : 0;
+#else
+    printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerisPlaying end\n");
+    return 1; // playing until stop() is called
+#endif
 }
 
 void pd_api_sound_FilePlayerpause(FilePlayer* player)
@@ -876,11 +987,127 @@ void pd_api_sound_FilePlayerpause(FilePlayer* player)
         return;
     }
     pd_api_sound_setPausedSamplePlayer(player->Player, 1);
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    if (player->playing && player->pausedTick == 0)
+        player->pausedTick = SDL_GetTicks();
+#endif
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerpause end\n");
 }
 
-void pd_api_sound_FilePlayerstop(FilePlayer* player)
+#if FILEPLAYER_WALLCLOCK_TRACKING
+// Returns current playback offset in seconds, accounting for rate and pauses
+static float _pd_api_sound_filePlayerCurrentOffset(FilePlayer* player)
 {
+    if (!player->playing)
+        return 0.0f;
+    Uint32 now = SDL_GetTicks();
+    Uint32 pausedSoFar = player->totalPausedMs;
+    if (player->pausedTick != 0)
+        pausedSoFar += now - player->pausedTick;
+    // Use signed arithmetic to prevent Uint32 underflow when pausedSoFar > elapsed
+    Sint32 elapsedMs = (Sint32)(now - player->startTick) - (Sint32)pausedSoFar;
+    float wallElapsed = (elapsedMs > 0) ? elapsedMs / 1000.0f : 0.0f;
+    return player->offsetAtRateChange + wallElapsed * player->rate;
+}
+#endif // FILEPLAYER_WALLCLOCK_TRACKING
+
+#if FILEPLAYER_WALLCLOCK_TRACKING
+// Called by pd_menu_open() to freeze all FilePlayer wall-clock timers
+void pd_api_sound_pauseAllFilePlayers(void)
+{
+    Uint32 now = SDL_GetTicks();
+    for (int i = 0; i < FilePlayerListCount; i++)
+    {
+        FilePlayer* p = FilePlayerList[i];
+        if (p && p->playing && p->pausedTick == 0)
+            p->pausedTick = now;
+    }
+}
+
+// Called by pd_menu_close() to fix up wall-clock pause accounting for all FilePlayers
+void pd_api_sound_resumeAllFilePlayers(void)
+{
+    Uint32 now = SDL_GetTicks();
+    for (int i = 0; i < FilePlayerListCount; i++)
+    {
+        FilePlayer* p = FilePlayerList[i];
+        if (p && p->playing && p->pausedTick != 0)
+        {
+            p->totalPausedMs += now - p->pausedTick;
+            p->pausedTick = 0;
+        }
+    }
+}
+#else
+void pd_api_sound_pauseAllFilePlayers(void) {}
+void pd_api_sound_resumeAllFilePlayers(void) {}
+#endif
+
+// Called once per frame from runMainLoop to fire finish/loop callbacks.
+void pd_api_sound_pollFilePlayerCallbacks(void)
+{
+    int count = FilePlayerListCount;
+    if (count == 0)
+        return;
+    FilePlayer** snapshot = (FilePlayer**)alloca(count * sizeof(FilePlayer*));
+    for (int i = 0; i < count; i++)
+        snapshot[i] = FilePlayerList[i];
+
+    for (int i = 0; i < count; i++)
+    {
+        FilePlayer* p = snapshot[i];
+        if (!p || !p->playing)
+            continue;
+
+#if FILEPLAYER_WALLCLOCK_TRACKING
+        int freq = 0; Uint16 fmt = 0; int chans = 0;
+        Mix_QuerySpec(&freq, &fmt, &chans);
+        int bytesPerSample = (fmt & 0xFF) / 8 * chans;
+
+        float currentOffset = _pd_api_sound_filePlayerCurrentOffset(p);
+        float durationSec = p->durationMs / 1000.0f;
+        bool isLooping = (p->durationMs == 0xFFFFFFFF);
+
+        if (!isLooping)
+        {
+            if (currentOffset >= durationSec && p->finishCallback)
+            {
+                p->playing = false;
+                sndCallbackProc* cb = p->finishCallback;
+                void* ud = p->finishUserdata;
+                p->finishCallback = NULL;
+                cb((SoundSource*)p, ud);
+            }
+        }
+        else
+        {
+            if (p->loopCallback && p->Player && p->Player->sample && p->Player->sample->sound
+                && bytesPerSample > 0 && freq > 0)
+            {
+                float singleDuration = p->Player->sample->sound->alen / (float)(freq * bytesPerSample);
+                if (singleDuration > 0.0f)
+                {
+                    int newLoopCount = (int)(currentOffset / singleDuration);
+                    while (p->loopCount < newLoopCount)
+                    {
+                        p->loopCount++;
+                        p->loopCallback((SoundSource*)p, p->loopUserdata);
+                        if (!p->playing)
+                            break;
+                    }
+                }
+            }
+        }
+#else
+        // Without wall-clock tracking, only fire finish callback when stop() is
+        // explicitly called (handled in stop()) — no automatic finish detection.
+        // Loop callbacks not supported without wall-clock tracking.
+        (void)p;
+#endif
+    }
+}
+
+void pd_api_sound_FilePlayerstop(FilePlayer* player){
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerstop\n");
     if(player == NULL)
     {
@@ -893,6 +1120,10 @@ void pd_api_sound_FilePlayerstop(FilePlayer* player)
         return;
     }
     pd_api_sound_stopSamplePlayer(player->Player);
+    player->playing = false;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    player->pausedTick = 0;
+#endif
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayerstop end\n");
 }
 
@@ -938,15 +1169,17 @@ float pd_api_sound_FilePlayergetLength(FilePlayer* player)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetLength end player = NULL\n");
         return 0.0f;
     }
-    if(player->Player == NULL)
-    {
-        printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetLength end player->Player = NULL\n");
-        return 0.0f;
-    }
-    float tmp = pd_api_sound_getLengthSamplePlayer(player->Player);
+    // Return the natural file duration we computed at play() time.
+    // For looping (repeat=0) durationMs is 0xFFFFFFFF — return 0 to indicate unknown,
+    // matching real Playdate behaviour where looping files return 0 from getLength.
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetLength end\n");
-    return tmp;
-
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    if (player->durationMs == 0xFFFFFFFF)
+        return 0.0f;
+    return player->durationMs / 1000.0f;
+#else
+    return 0.0f;
+#endif
 }
 
 void pd_api_sound_FilePlayersetOffset(FilePlayer* player, float offset)
@@ -957,12 +1190,28 @@ void pd_api_sound_FilePlayersetOffset(FilePlayer* player, float offset)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetOffset end player = NULL\n");
         return;
     }
-    if(player->Player == NULL)
+    // Adjust startTick so getOffset() returns the requested offset going forward.
+    // offsetAtRateChange is set to the requested offset, startTick reset to now,
+    // so helper returns: offset + 0 * rate = offset immediately, then advances from there.
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    player->offsetAtRateChange = offset;
+    player->startTick = SDL_GetTicks();
+    player->totalPausedMs = 0;
+    if (player->pausedTick != 0)
+        player->pausedTick = SDL_GetTicks();
+    if (player->Player && player->Player->sample && player->Player->sample->sound)
     {
-        printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetOffset end player->Player = NULL\n");
-        return;
+        int freq = 0; Uint16 fmt = 0; int chans = 0;
+        Mix_QuerySpec(&freq, &fmt, &chans);
+        int bytesPerSample = (fmt & 0xFF) / 8 * chans;
+        if (bytesPerSample > 0 && freq > 0)
+        {
+            float singleDuration = player->Player->sample->sound->alen / (float)(freq * bytesPerSample);
+            if (singleDuration > 0.0f)
+                player->loopCount = (int)(offset / singleDuration);
+        }
     }
-    pd_api_sound_setOffsetSamplePlayer(player->Player, offset);
+#endif
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetOffset end\n");
 }
 
@@ -979,6 +1228,29 @@ void pd_api_sound_FilePlayersetRate(FilePlayer* player, float rate)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetRate end player->Player = NULL\n");
         return;
     }
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    if (player->playing && rate != player->rate)
+    {
+        player->offsetAtRateChange = _pd_api_sound_filePlayerCurrentOffset(player);
+        player->startTick = SDL_GetTicks();
+        player->totalPausedMs = 0;
+        if (player->pausedTick != 0)
+            player->pausedTick = SDL_GetTicks();
+        if (player->Player && player->Player->sample && player->Player->sample->sound)
+        {
+            int freq = 0; Uint16 fmt = 0; int chans = 0;
+            Mix_QuerySpec(&freq, &fmt, &chans);
+            int bytesPerSample = (fmt & 0xFF) / 8 * chans;
+            if (bytesPerSample > 0 && freq > 0)
+            {
+                float singleDuration = player->Player->sample->sound->alen / (float)(freq * bytesPerSample);
+                if (singleDuration > 0.0f)
+                    player->loopCount = (int)(player->offsetAtRateChange / singleDuration);
+            }
+        }
+    }
+    player->rate = (rate > 0.0f) ? rate : 1.0f;
+#endif
     pd_api_sound_setRateSamplePlayer(player->Player, rate);
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetRate end\n");
 }
@@ -1010,12 +1282,24 @@ int pd_api_sound_FilePlayerdidUnderrun(FilePlayer* player)
 void pd_api_sound_FilePlayersetFinishCallback(FilePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetFinishCallback\n");
+    if(player == NULL)
+    {
+        return;
+    }
+    player->finishCallback = callback;
+    player->finishUserdata = userdata;
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetFinishCallback end\n");
 }
 
 void pd_api_sound_FilePlayersetLoopCallback(FilePlayer* player, sndCallbackProc callback, void* userdata)
 {
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetLoopCallback\n");
+    if(player == NULL)
+    {
+        return;
+    }
+    player->loopCallback = callback;
+    player->loopUserdata = userdata;
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayersetLoopCallback end\n");
 }
 
@@ -1027,14 +1311,19 @@ float pd_api_sound_FilePlayergetOffset(FilePlayer* player)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetOffset end player = NULL\n");
         return 0.0f;
     }
-    if(player->Player == NULL)
+    if(!player->playing)
     {
-        printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetOffset end player->Player = NULL\n");
         return 0.0f;
     }
-    float tmp = pd_api_sound_getOffsetSamplePlayer(player->Player);
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    float offsetSec = _pd_api_sound_filePlayerCurrentOffset(player);
+    float durationSec = player->durationMs / 1000.0f;
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetOffset end\n");
-    return tmp;
+    return (offsetSec < durationSec) ? offsetSec : durationSec;
+#else
+    printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetOffset end\n");
+    return 0.0f;
+#endif
 }
 
 float pd_api_sound_FilePlayergetRate(FilePlayer* player)
@@ -1045,14 +1334,12 @@ float pd_api_sound_FilePlayergetRate(FilePlayer* player)
         printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetRate end player = NULL\n");
         return 0.0f;
     }
-    if(player->Player == NULL)
-    {
-        printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetRate end player->Player = NULL\n");
-        return 0.0f;
-    }
-    float tmp = pd_api_sound_getRateSamplePlayer(player->Player);
     printfDebug(DebugTraceFunctions, "pd_api_sound_FilePlayergetRate end\n");
-    return tmp;
+#if FILEPLAYER_WALLCLOCK_TRACKING
+    return player->rate;
+#else
+    return 1.0f;
+#endif
 }
 
 void pd_api_sound_FilePlayersetStopOnUnderrun(FilePlayer* player, int flag)

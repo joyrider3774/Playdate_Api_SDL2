@@ -403,7 +403,10 @@ void runMainLoop()
 
 	//clean sprites set as not loaded (delayed delete to prevent issues)
 	_pd_api_sprite_cleanup_sprites(true);
-	
+
+	// Poll FilePlayer finish/loop callbacks
+	pd_api_sound_pollFilePlayerCallbacks();
+
 	//flip / display screen
 	_pd_api_display();
 

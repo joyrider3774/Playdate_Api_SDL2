@@ -11,6 +11,9 @@
 #include <SDL_mixer.h>
 #include "CInput.h"
 
+extern void pd_api_sound_resumeAllFilePlayers(void);
+extern void pd_api_sound_pauseAllFilePlayers(void);
+
 // ============================================================
 //  State
 // ============================================================
@@ -63,6 +66,7 @@ void pd_menu_open(void)
         return;
     _pd_api_sys_pauseStart();
     Mix_Pause(-1);   // pause all SDL_mixer channels
+    pd_api_sound_pauseAllFilePlayers(); // freeze FilePlayer wall-clock timers
     pd_menu_isOpen = true;
     _selectedIndex = 0;
     // Create a fresh input instance for menu navigation, isolated from game input
@@ -158,6 +162,7 @@ void pd_menu_close(void)
     pd_menu_isOpen = false;
         
     Mix_Resume(-1);   // resume all SDL_mixer channels  
+    pd_api_sound_resumeAllFilePlayers(); // fix up FilePlayer wall-clock pause accounting
     _pd_api_sys_pauseEnd();
     Api->system->resetElapsedTime();
     // Fire Resume system event 
