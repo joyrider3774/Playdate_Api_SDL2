@@ -78,21 +78,41 @@ static void walk_json(json_decoder* dec, const json& j,
         {
             if (val.is_object() || val.is_array())
             {
+                // Save current callbacks — willDecodeSublist during the child walk
+                // may overwrite them, but the parent's handlers must be restored
+                // after the child is done so subsequent sibling keys decode correctly.
+                auto savedTableValue   = dec->didDecodeTableValue;
+                auto savedArrayValue   = dec->didDecodeArrayValue;
+                auto savedSublist      = dec->didDecodeSublist;
+
                 walk_json(dec, val, key.c_str(), 0, depth + 1);
 
                 if (dec->didDecodeSublist)
                 {
                     json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
                     void* result = dec->didDecodeSublist(dec, key.c_str(), subtype);
+
+                    // Restore parent handlers before calling didDecodeTableValue
+                    // so the parent (not the child's) handler receives this key.
+                    dec->didDecodeTableValue = savedTableValue;
+                    dec->didDecodeArrayValue = savedArrayValue;
+                    dec->didDecodeSublist    = savedSublist;
+
                     if (dec->didDecodeTableValue)
                     {
                         json_value sv;
-                        sv.type = val.is_array() ? kJSONArray : kJSONTable;
+                        sv.type = subtype;
                         sv.data.tableval = result;
                         if (!dec->shouldDecodeTableValueForKey ||
                             dec->shouldDecodeTableValueForKey(dec, key.c_str()))
                             dec->didDecodeTableValue(dec, key.c_str(), sv);
                     }
+                }
+                else
+                {
+                    dec->didDecodeTableValue = savedTableValue;
+                    dec->didDecodeArrayValue = savedArrayValue;
+                    dec->didDecodeSublist    = savedSublist;
                 }
             }
             else
