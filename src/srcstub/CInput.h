@@ -27,5 +27,6 @@ void CInput_HandleKeyboardEvent(CInput *cinput, int Key, bool Value);
 void CInput_HandleJoystickAxisEvent(CInput *cinput, int Axis, int Value);
 void CInput_Update(CInput* cinput);
 void CInput_ResetButtons(CInput *cinput);
+void CInput_GetPhysicalButtons(CInput* cinput, SButtons* out);
 
 #endif

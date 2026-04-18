@@ -102,40 +102,30 @@ void pd_menu_close(void)
 
     // Reset the main game input state after menu close.
     // Zero Buttons, but then restore any direction keys that are still
-    // physically held (via SDL_GetKeyboardState) so no spurious released
-    // event fires for them — matching real Playdate firmware behaviour.
+    // physically held so no spurious released event fires for them —
+    // matching real Playdate firmware behaviour.
     if (_pd_api_sys_input)
     {
         memset(&_pd_api_sys_input->Buttons, 0, sizeof(_pd_api_sys_input->Buttons));
 
-        // Re-apply physically-held direction/action keys so they don't
-        // appear as released on the first post-menu frame.
-        const Uint8* ks = SDL_GetKeyboardState(NULL);
-        if (ks[SDL_SCANCODE_LEFT])  _pd_api_sys_input->Buttons.ButLeft  = true;
-        if (ks[SDL_SCANCODE_RIGHT]) _pd_api_sys_input->Buttons.ButRight = true;
-        if (ks[SDL_SCANCODE_UP])    _pd_api_sys_input->Buttons.ButUp    = true;
-        if (ks[SDL_SCANCODE_DOWN])  _pd_api_sys_input->Buttons.ButDown  = true;
-        if (ks[SDL_SCANCODE_SPACE] || ks[SDL_SCANCODE_X] || ks[SDL_SCANCODE_A] || ks[SDL_SCANCODE_Q])
-            _pd_api_sys_input->Buttons.ButA = true;
-        if (ks[SDL_SCANCODE_LCTRL] || ks[SDL_SCANCODE_RCTRL] || ks[SDL_SCANCODE_C] || ks[SDL_SCANCODE_B] || ks[SDL_SCANCODE_S])
-            _pd_api_sys_input->Buttons.ButB = true;
+        // Re-apply physically-held buttons via CInput — all key/scancode/gamepad
+        // knowledge stays inside CInput, not here.
+        CInput_GetPhysicalButtons(_pd_api_sys_input, &_pd_api_sys_input->Buttons);
 
-        // Also check gamepad physical state
-        SDL_GameController* gc = _pd_api_sys_input->GameController;
-        if (gc)
-        {
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT))  _pd_api_sys_input->Buttons.ButDpadLeft  = true;
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) _pd_api_sys_input->Buttons.ButDpadRight = true;
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_UP))    _pd_api_sys_input->Buttons.ButDpadUp    = true;
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN))  _pd_api_sys_input->Buttons.ButDpadDown  = true;
-#if defined(TRIMUI_SMART_PRO)
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B)) _pd_api_sys_input->Buttons.ButA = true;
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A)) _pd_api_sys_input->Buttons.ButB = true;
-#else
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A)) _pd_api_sys_input->Buttons.ButA = true;
-            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B)) _pd_api_sys_input->Buttons.ButB = true;
-#endif
-        }
+        // Clear non-Playdate-hardware buttons — these should not carry over
+        // from the menu period into the game.
+        _pd_api_sys_input->Buttons.ButStart      = false; // menu key
+        _pd_api_sys_input->Buttons.ButBack       = false;
+        _pd_api_sys_input->Buttons.ButQuit       = false;
+        _pd_api_sys_input->Buttons.ButFullscreen = false;
+        _pd_api_sys_input->Buttons.RenderReset   = false;
+        _pd_api_sys_input->Buttons.NextSource    = false;
+        _pd_api_sys_input->Buttons.ButLB         = false; // crank
+        _pd_api_sys_input->Buttons.ButRB         = false;
+        _pd_api_sys_input->Buttons.ButLT         = false;
+        _pd_api_sys_input->Buttons.ButRT         = false;
+        _pd_api_sys_input->Buttons.ButX          = false;
+        _pd_api_sys_input->Buttons.ButY          = false;
 
         _pd_api_sys_skipPrevButtonUpdate = true;
     }

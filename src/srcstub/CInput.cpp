@@ -406,3 +406,83 @@ void CInput_HandleJoystickAxisEvent(CInput *cinput, int Axis, int Value)
 			break;
 	}
 }
+
+// ============================================================
+//  CInput_GetPhysicalButtons
+//  Queries the current physical state of keyboard and gamepad
+//  without relying on SDL events. Used to restore button state
+//  after menu close so held keys are not falsely released.
+// ============================================================
+void CInput_GetPhysicalButtons(CInput* cinput, SButtons* out)
+{
+    memset(out, 0, sizeof(SButtons));
+
+    const Uint8* ks = SDL_GetKeyboardState(NULL);
+
+#ifdef FUNKEY
+    out->ButQuit       = ks[SDL_GetScancodeFromKey(SDLK_q)];
+    out->NextSource    = ks[SDL_GetScancodeFromKey(SDLK_h)];
+    out->ButFullscreen = ks[SDL_GetScancodeFromKey(SDLK_f)];
+    out->ButRB         = ks[SDL_GetScancodeFromKey(SDLK_n)];
+    out->ButLB         = ks[SDL_GetScancodeFromKey(SDLK_m)];
+    out->ButUp         = ks[SDL_GetScancodeFromKey(SDLK_u)] || ks[SDL_SCANCODE_UP];
+    out->ButDown       = ks[SDL_GetScancodeFromKey(SDLK_d)];
+    out->ButLeft       = ks[SDL_GetScancodeFromKey(SDLK_l)];
+    out->ButRight      = ks[SDL_GetScancodeFromKey(SDLK_r)];
+    out->ButStart      = ks[SDL_GetScancodeFromKey(SDLK_s)];
+    out->ButBack       = ks[SDL_SCANCODE_ESCAPE];
+    out->ButA          = ks[SDL_SCANCODE_SPACE] || ks[SDL_GetScancodeFromKey(SDLK_a)];
+    out->ButB          = ks[SDL_GetScancodeFromKey(SDLK_b)];
+    out->ButX          = ks[SDL_GetScancodeFromKey(SDLK_x)];
+    out->ButY          = ks[SDL_GetScancodeFromKey(SDLK_y)];
+    out->ButLT         = ks[SDL_GetScancodeFromKey(SDLK_v)];
+    out->ButRT         = ks[SDL_GetScancodeFromKey(SDLK_o)];
+#else
+    out->ButQuit       = ks[SDL_SCANCODE_F4];
+    out->NextSource    = ks[SDL_SCANCODE_F3];
+    out->ButFullscreen = ks[SDL_GetScancodeFromKey(SDLK_f)];
+    out->ButRB         = ks[SDL_SCANCODE_F8];
+    out->ButLB         = ks[SDL_SCANCODE_F7];
+    out->ButUp         = ks[SDL_SCANCODE_UP];
+    out->ButDown       = ks[SDL_SCANCODE_DOWN];
+    out->ButLeft       = ks[SDL_SCANCODE_LEFT];
+    out->ButRight      = ks[SDL_SCANCODE_RIGHT];
+    out->ButStart      = ks[SDL_SCANCODE_RETURN];
+    out->ButBack       = ks[SDL_SCANCODE_ESCAPE];
+    out->ButA          = ks[SDL_SCANCODE_SPACE] || ks[SDL_GetScancodeFromKey(SDLK_x)]
+                      || ks[SDL_GetScancodeFromKey(SDLK_a)] || ks[SDL_GetScancodeFromKey(SDLK_q)];
+    out->ButB          = ks[SDL_SCANCODE_LCTRL] || ks[SDL_SCANCODE_RCTRL]
+                      || ks[SDL_GetScancodeFromKey(SDLK_c)] || ks[SDL_GetScancodeFromKey(SDLK_b)]
+                      || ks[SDL_GetScancodeFromKey(SDLK_s)];
+    out->ButX          = ks[SDL_SCANCODE_LALT]  || ks[SDL_SCANCODE_RALT]
+                      || ks[SDL_GetScancodeFromKey(SDLK_r)];
+    out->ButY          = ks[SDL_GetScancodeFromKey(SDLK_d)];
+#endif
+
+    // Gamepad state
+    SDL_GameController* gc = cinput->GameController;
+    if (gc)
+    {
+        out->ButDpadUp    |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        out->ButDpadDown  |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        out->ButDpadLeft  |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        out->ButDpadRight |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        out->ButUp        |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_UP);
+        out->ButDown      |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+        out->ButLeft      |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+        out->ButRight     |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+        out->ButStart     |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_START);
+        out->ButBack      |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_BACK);
+        out->ButY         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_Y);
+        out->ButX         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_X);
+#if defined(TRIMUI_SMART_PRO)
+        out->ButA         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B);
+        out->ButB         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A);
+#else
+        out->ButA         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A);
+        out->ButB         |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B);
+#endif
+        out->ButLB        |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+        out->ButRB        |= SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+    }
+}
