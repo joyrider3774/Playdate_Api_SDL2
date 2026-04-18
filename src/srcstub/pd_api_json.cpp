@@ -69,50 +69,47 @@ static json_value make_json_value(const json& j)
 static void walk_json(json_decoder* dec, const json& j,
                       const char* name, int arrayIndex, int depth)
 {
+    // Simulator uses "_root" for the outermost object/array name
+    const char* effName = (name && name[0]) ? name : "_root";
+
     if (j.is_object())
     {
-        if (depth > 0 && dec->willDecodeSublist)
-            dec->willDecodeSublist(dec, name, kJSONTable);
+        if (dec->willDecodeSublist)
+            dec->willDecodeSublist(dec, effName, kJSONTable);
 
         for (auto& [key, val] : j.items())
         {
             if (val.is_object() || val.is_array())
             {
-                // Save current callbacks — willDecodeSublist during the child walk
-                // may overwrite them, but the parent's handlers must be restored
-                // after the child is done so subsequent sibling keys decode correctly.
+                json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
+
+                // Save callbacks before child walk
                 auto savedTableValue   = dec->didDecodeTableValue;
                 auto savedArrayValue   = dec->didDecodeArrayValue;
                 auto savedSublist      = dec->didDecodeSublist;
 
                 walk_json(dec, val, key.c_str(), 0, depth + 1);
 
+                // didDecodeSublist fires after child walk, before didDecodeTableValue
                 if (dec->didDecodeSublist)
+                    dec->didDecodeSublist(dec, key.c_str(), subtype);
+
+                // Restore parent handlers
+                dec->didDecodeTableValue = savedTableValue;
+                dec->didDecodeArrayValue = savedArrayValue;
+                dec->didDecodeSublist    = savedSublist;
+
+                // didDecodeTableValue fires after didDecodeSublist
+                if (dec->didDecodeTableValue)
                 {
-                    json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
-                    void* result = dec->didDecodeSublist(dec, key.c_str(), subtype);
-
-                    // Restore parent handlers before calling didDecodeTableValue
-                    // so the parent (not the child's) handler receives this key.
-                    dec->didDecodeTableValue = savedTableValue;
-                    dec->didDecodeArrayValue = savedArrayValue;
-                    dec->didDecodeSublist    = savedSublist;
-
-                    if (dec->didDecodeTableValue)
+                    if (!dec->shouldDecodeTableValueForKey ||
+                        dec->shouldDecodeTableValueForKey(dec, key.c_str()))
                     {
                         json_value sv;
                         sv.type = subtype;
-                        sv.data.tableval = result;
-                        if (!dec->shouldDecodeTableValueForKey ||
-                            dec->shouldDecodeTableValueForKey(dec, key.c_str()))
-                            dec->didDecodeTableValue(dec, key.c_str(), sv);
+                        sv.data.tableval = nullptr;
+                        dec->didDecodeTableValue(dec, key.c_str(), sv);
                     }
-                }
-                else
-                {
-                    dec->didDecodeTableValue = savedTableValue;
-                    dec->didDecodeArrayValue = savedArrayValue;
-                    dec->didDecodeSublist    = savedSublist;
                 }
             }
             else
@@ -133,30 +130,36 @@ static void walk_json(json_decoder* dec, const json& j,
     }
     else if (j.is_array())
     {
-        if (depth > 0 && dec->willDecodeSublist)
-            dec->willDecodeSublist(dec, name, kJSONArray);
+        if (dec->willDecodeSublist)
+            dec->willDecodeSublist(dec, effName, kJSONArray);
 
-        int pos = 0;
+        int pos = 1; // Simulator uses 1-based positions
         for (auto& val : j)
         {
             if (val.is_object() || val.is_array())
             {
-                walk_json(dec, val, name, pos, depth + 1);
+                // Build element name like simulator: "parentName[N]"
+                char elemName[128];
+                snprintf(elemName, sizeof(elemName), "%s[%d]", effName, pos);
 
+                walk_json(dec, val, elemName, pos, depth + 1);
+
+                json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
+
+                // didDecodeSublist fires after child walk
                 if (dec->didDecodeSublist)
+                    dec->didDecodeSublist(dec, elemName, subtype);
+
+                // didDecodeArrayValue fires after didDecodeSublist
+                if (dec->didDecodeArrayValue)
                 {
-                    json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
-                    void* result = dec->didDecodeSublist(dec, name, subtype);
-                    if (dec->didDecodeArrayValue)
+                    if (!dec->shouldDecodeArrayValueAtIndex ||
+                        dec->shouldDecodeArrayValueAtIndex(dec, pos))
                     {
-                        if (!dec->shouldDecodeArrayValueAtIndex ||
-                            dec->shouldDecodeArrayValueAtIndex(dec, pos))
-                        {
-                            json_value sv;
-                            sv.type = subtype;
-                            sv.data.tableval = result;
-                            dec->didDecodeArrayValue(dec, pos, sv);
-                        }
+                        json_value sv;
+                        sv.type = subtype;
+                        sv.data.tableval = nullptr;
+                        dec->didDecodeArrayValue(dec, pos, sv);
                     }
                 }
             }
@@ -208,6 +211,13 @@ static int do_decode(json_decoder* functions, const std::string& input, json_val
     }
 
     walk_json(functions, j, nullptr, 0, 0);
+
+    // Fire didDecodeSublist for root, matching simulator behaviour
+    if (functions->didDecodeSublist)
+    {
+        json_value_type rootType = j.is_array() ? kJSONArray : kJSONTable;
+        functions->didDecodeSublist(functions, "_root", rootType);
+    }
 
     if (outval)
         *outval = make_json_value(j);
@@ -415,16 +425,18 @@ void pd_api_json_writeDouble(struct json_encoder* encoder, double num)
 void pd_api_json_writeString(struct json_encoder* encoder, const char* str, int len)
 {
     printfDebug(DebugTraceFunctions, "pd_api_json_writeString\n");
-    // Match simulator: null pointer writes null (not a quoted string)
+    // Match simulator: null pointer writes "" (empty string)
     if (!str)
     {
-        enc_write(encoder, "null");
+        enc_write(encoder, "\"\"");
         printfDebug(DebugTraceFunctions, "pd_api_json_writeString end\n");
         return;
     }
     enc_write(encoder, "\"");
     // escape the string content
-    int n = (len > 0) ? len : (int)strlen(str);
+    // len=0 means zero-length string (NOT use strlen — that's len<0 or len>0 explicitly)
+    int n = len;
+    if (n < 0) n = (int)strlen(str);
     for (int i = 0; i < n; i++)
     {
         char c = str[i];
