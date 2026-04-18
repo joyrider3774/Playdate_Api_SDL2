@@ -440,7 +440,10 @@ float pd_api_sys_getBatteryVoltage(void)
 // 1.13
 int32_t pd_api_sys_getTimezoneOffset(void)
 {
-	return 0;
+    time_t now = time(NULL);
+    struct tm* loc = localtime(&now);
+    // _timezone is seconds west of UTC (negative for east), DST adds 3600 when active
+    return (int32_t)(- _timezone + (loc->tm_isdst > 0 ? 3600 : 0));
 }
 
 int pd_api_sys_shouldDisplay24HourTime(void)
