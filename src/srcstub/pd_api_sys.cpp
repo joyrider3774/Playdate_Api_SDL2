@@ -20,17 +20,15 @@ float _CranckAngle = 0.0f;
 unsigned int _startTime = 0;
 uint32_t _pd_api_sys_pausedMs = 0;
 static uint32_t _pd_api_sys_pauseStartTick = 0;
-static bool _pd_api_sys_waitForMenuRelease = false;
 static PDButtonCallbackFunction* _pd_api_sys_buttonCallback = NULL;
 static void* _pd_api_sys_buttonUserdata = NULL;
+// When true, CInput_Update skips the PrevButtons=Buttons copy for one frame,
+// preserving the frozen pre-menu state so released events fire correctly.
+bool _pd_api_sys_skipPrevButtonUpdate = false;
 
 uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime);
 void pd_api_sys_fireButtonCallbacks(void);
 
-void _pd_api_sys_waitForMenuButtonRelease(void)
-{
-	_pd_api_sys_waitForMenuRelease = true;
-}
 
 void _pd_api_sys_pauseReset(void)
 {
@@ -54,33 +52,29 @@ void _pd_api_sys_UpdateInput()
 	{
 		_pd_api_sys_input = CInput_Create();
 	}
-	
-	CInput_Update(_pd_api_sys_input);
 
-    if (_pd_api_sys_waitForMenuRelease)
-    {
-        bool anyHeld = _pd_api_sys_input->Buttons.ButA     ||
-                       _pd_api_sys_input->Buttons.ButB     ||
-                       _pd_api_sys_input->Buttons.ButUp    ||
-                       _pd_api_sys_input->Buttons.ButDown  ||
-                       _pd_api_sys_input->Buttons.ButLeft  ||
-                       _pd_api_sys_input->Buttons.ButRight ||
-                       _pd_api_sys_input->Buttons.ButStart;
+	// Don't update the main input while the menu is open — the menu uses its
+	// own separate CInput instance. This freezes the main input state so that
+	// when the menu closes and we reset it, there are no stale events to replay.
+	if (!pd_menu_isOpen)
+	{
+		if (_pd_api_sys_skipPrevButtonUpdate)
+		{
+			// Preserve PrevButtons across CInput_Update for one frame so that
+			// released events fire correctly after menu close. CInput_Update
+			// overwrites PrevButtons = Buttons first, which would lose the
+			// frozen pre-menu held state we need for released detection.
+			auto savedPrev = _pd_api_sys_input->PrevButtons;
+			CInput_Update(_pd_api_sys_input);
+			_pd_api_sys_input->PrevButtons = savedPrev;
+			_pd_api_sys_skipPrevButtonUpdate = false;
+		}
+		else
+		{
+			CInput_Update(_pd_api_sys_input);
+		}
+	}
 
-        _pd_api_sys_input->PrevButtons = _pd_api_sys_input->Buttons;
-        _pd_api_sys_input->Buttons.ButA     = false;
-        _pd_api_sys_input->Buttons.ButB     = false;
-        _pd_api_sys_input->Buttons.ButUp    = false;
-        _pd_api_sys_input->Buttons.ButDown  = false;
-        _pd_api_sys_input->Buttons.ButLeft  = false;
-        _pd_api_sys_input->Buttons.ButRight = false;
-        _pd_api_sys_input->Buttons.ButStart = false;
-
-        if (!anyHeld)
-            _pd_api_sys_waitForMenuRelease = false;
-    }
-
-	pd_api_sys_fireButtonCallbacks();
 
 	_CranckChange = 0.0f;
 
@@ -124,11 +118,11 @@ void _pd_api_sys_UpdateInput()
 	if (_pd_api_sys_input->Buttons.ButStart &&
         !_pd_api_sys_input->PrevButtons.ButStart)
     {
-        if (pd_menu_isOpen)
-            pd_menu_close();
-        else
+        if (!pd_menu_isOpen)
             pd_menu_open();
     }
+
+	pd_api_sys_fireButtonCallbacks();
 }
 
 void pd_api_sys_setUpdateCallback(PDCallbackFunction* update, void* userdata)

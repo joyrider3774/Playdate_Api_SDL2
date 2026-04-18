@@ -89,5 +89,6 @@ extern playdate_lua* pd_api_lua_Create_playdate_lua();
 extern playdate_scoreboards* pd_api_scoreboards_Create_playdate_scoreboards();
 extern playdate_json* pd_api_json_Create_playdate_json();
 extern playdate_sound_source* pd_api_sound_Create_playdate_sound_source();
+extern bool _pd_api_sys_skipPrevButtonUpdate;
 
 #endif

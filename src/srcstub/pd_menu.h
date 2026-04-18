@@ -40,7 +40,6 @@ extern bool pd_menu_isOpen;
 extern void _pd_api_sys_pauseStart(void);
 extern void _pd_api_sys_pauseEnd(void);
 extern void _pd_api_sys_pauseReset(void);
-extern void _pd_api_sys_waitForMenuButtonRelease(void);
 
 // Lifecycle
 void pd_menu_init(void);

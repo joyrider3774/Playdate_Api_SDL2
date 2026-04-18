@@ -29,6 +29,14 @@ static bool         _prevMenuButton = false;
 // Forward-declared here; defined in pd_api_sys.cpp
 extern struct CInput* _pd_api_sys_input;
 
+// Separate CInput instance used exclusively by the menu.
+// Created on menu open, destroyed on menu close.
+// Keeps menu navigation input isolated from the game's input state so that
+// when the menu closes, the main _pd_api_sys_input can be fully reset —
+// matching the real Playdate firmware which presents clean input state to
+// the game after the system menu closes.
+static CInput* _pd_menu_input = NULL;
+
 // ============================================================
 //  Init
 // ============================================================
@@ -57,6 +65,16 @@ void pd_menu_open(void)
     Mix_Pause(-1);   // pause all SDL_mixer channels
     pd_menu_isOpen = true;
     _selectedIndex = 0;
+    // Create a fresh input instance for menu navigation, isolated from game input
+    if (_pd_menu_input)
+        CInput_Destroy(_pd_menu_input);
+    _pd_menu_input = CInput_Create();
+    // Prime with one update so PrevButtons reflects currently-held buttons.
+    // Without this, any button held at menu-open time would appear as a fresh
+    // press on the first pd_menu_update call and immediately fire/close the menu.
+    CInput_Update(_pd_menu_input);
+    // Sync PrevButtons = Buttons so no pushed events fire on the first update.
+    _pd_menu_input->PrevButtons = _pd_menu_input->Buttons;
     // Snapshot current screen so we can redraw it when the menu closes
     if (_screenSnapshot)
         Api->graphics->freeBitmap(_screenSnapshot);
@@ -71,7 +89,52 @@ void pd_menu_close(void)
     if (!pd_menu_isOpen)
         return;
 
-    _pd_api_sys_waitForMenuButtonRelease();
+    // Destroy menu input instance
+    if (_pd_menu_input)
+    {
+        CInput_Destroy(_pd_menu_input);
+        _pd_menu_input = NULL;
+    }
+
+    // Reset the main game input state after menu close.
+    // Zero Buttons, but then restore any direction keys that are still
+    // physically held (via SDL_GetKeyboardState) so no spurious released
+    // event fires for them — matching real Playdate firmware behaviour.
+    if (_pd_api_sys_input)
+    {
+        memset(&_pd_api_sys_input->Buttons, 0, sizeof(_pd_api_sys_input->Buttons));
+
+        // Re-apply physically-held direction/action keys so they don't
+        // appear as released on the first post-menu frame.
+        const Uint8* ks = SDL_GetKeyboardState(NULL);
+        if (ks[SDL_SCANCODE_LEFT])  _pd_api_sys_input->Buttons.ButLeft  = true;
+        if (ks[SDL_SCANCODE_RIGHT]) _pd_api_sys_input->Buttons.ButRight = true;
+        if (ks[SDL_SCANCODE_UP])    _pd_api_sys_input->Buttons.ButUp    = true;
+        if (ks[SDL_SCANCODE_DOWN])  _pd_api_sys_input->Buttons.ButDown  = true;
+        if (ks[SDL_SCANCODE_SPACE] || ks[SDL_SCANCODE_X] || ks[SDL_SCANCODE_A] || ks[SDL_SCANCODE_Q])
+            _pd_api_sys_input->Buttons.ButA = true;
+        if (ks[SDL_SCANCODE_LCTRL] || ks[SDL_SCANCODE_RCTRL] || ks[SDL_SCANCODE_C] || ks[SDL_SCANCODE_B] || ks[SDL_SCANCODE_S])
+            _pd_api_sys_input->Buttons.ButB = true;
+
+        // Also check gamepad physical state
+        SDL_GameController* gc = _pd_api_sys_input->GameController;
+        if (gc)
+        {
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_LEFT))  _pd_api_sys_input->Buttons.ButDpadLeft  = true;
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_RIGHT)) _pd_api_sys_input->Buttons.ButDpadRight = true;
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_UP))    _pd_api_sys_input->Buttons.ButDpadUp    = true;
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_DPAD_DOWN))  _pd_api_sys_input->Buttons.ButDpadDown  = true;
+#if defined(TRIMUI_SMART_PRO)
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B)) _pd_api_sys_input->Buttons.ButA = true;
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A)) _pd_api_sys_input->Buttons.ButB = true;
+#else
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_A)) _pd_api_sys_input->Buttons.ButA = true;
+            if (SDL_GameControllerGetButton(gc, SDL_CONTROLLER_BUTTON_B)) _pd_api_sys_input->Buttons.ButB = true;
+#endif
+        }
+
+        _pd_api_sys_skipPrevButtonUpdate = true;
+    }
     // Need to redraw here before firing the callbacks as the callbacks could draw something as well
     if (_screenSnapshot)
     {
@@ -135,15 +198,18 @@ static PDMenuItem* nthActiveItem(int n)
 
 void pd_menu_update(void)
 {
-    if (!pd_menu_isOpen || !_pd_api_sys_input)
+    if (!pd_menu_isOpen || !_pd_menu_input)
         return;
 
-    bool up   = _pd_api_sys_input->Buttons.ButUp   && !_pd_api_sys_input->PrevButtons.ButUp;
-    bool down = _pd_api_sys_input->Buttons.ButDown  && !_pd_api_sys_input->PrevButtons.ButDown;
-    bool a    = _pd_api_sys_input->Buttons.ButA     && !_pd_api_sys_input->PrevButtons.ButA;
-    bool back = _pd_api_sys_input->Buttons.ButB && !_pd_api_sys_input->PrevButtons.ButB; 
-    bool left  = _pd_api_sys_input->Buttons.ButLeft  && !_pd_api_sys_input->PrevButtons.ButLeft;
-    bool right = _pd_api_sys_input->Buttons.ButRight && !_pd_api_sys_input->PrevButtons.ButRight;
+    CInput_Update(_pd_menu_input);
+
+    bool up   = _pd_menu_input->Buttons.ButUp   && !_pd_menu_input->PrevButtons.ButUp;
+    bool down = _pd_menu_input->Buttons.ButDown  && !_pd_menu_input->PrevButtons.ButDown;
+    bool a    = _pd_menu_input->Buttons.ButA     && !_pd_menu_input->PrevButtons.ButA;
+    bool back = _pd_menu_input->Buttons.ButB     && !_pd_menu_input->PrevButtons.ButB;
+    bool start = _pd_menu_input->Buttons.ButStart && !_pd_menu_input->PrevButtons.ButStart;
+    bool left  = _pd_menu_input->Buttons.ButLeft  && !_pd_menu_input->PrevButtons.ButLeft;
+    bool right = _pd_menu_input->Buttons.ButRight && !_pd_menu_input->PrevButtons.ButRight;
     
     int count = activeItemCount();
 
@@ -209,8 +275,25 @@ void pd_menu_update(void)
     }
 
     // B or menu key closes without firing callbacks
-    if (back)
+    if (back || start)
+    {
         pd_menu_close();
+        return; // _pd_menu_input is now NULL — don't access it further
+    }
+
+    // System keys work even during menu
+    if (_pd_menu_input->Buttons.ButQuit)
+        _pd_api_sys_quitCallBack();
+
+    if (_pd_menu_input->Buttons.ButFullscreen && !_pd_menu_input->PrevButtons.ButFullscreen)
+        _pd_api_sys_fullScreenCallBack();
+
+    if (_pd_menu_input->Buttons.RenderReset)
+        _pd_api_sys_renderResetCallBack();
+
+    if ((_pd_menu_input->Buttons.ButX || _pd_menu_input->Buttons.NextSource) &&
+        !(_pd_menu_input->PrevButtons.ButX || _pd_menu_input->PrevButtons.NextSource))
+        _pd_api_sys_nextSourceDirCallback();
 }
 
 // ============================================================
