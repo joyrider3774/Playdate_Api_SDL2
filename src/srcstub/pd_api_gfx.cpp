@@ -3180,17 +3180,29 @@ static std::vector<std::pair<uint32_t,int>> fnt_parse_file(const char* path, int
             continue;
         }
 
-        // Find last tab - everything after is the advance value
+        // Find separator: tab-separated (standard) or space-separated (some fonts)
         char* lastTab = strrchr(line, '\t');
-        if (!lastTab) continue;
-        int advance = atoi(lastTab + 1);
-        *lastTab = '\0';
-
-        // Strip trailing tabs only (not spaces - space is a valid glyph character)
-        int chLen = (int)strlen(line);
-        while (chLen > 0 && line[chLen-1] == '\t')
-            line[--chLen] = '\0';
-        if (!chLen) continue;
+        int advance;
+        if (lastTab)
+        {
+            advance = atoi(lastTab + 1);
+            *lastTab = '\0';
+            int chLen = (int)strlen(line);
+            while (chLen > 0 && line[chLen-1] == '\t')
+                line[--chLen] = '\0';
+            if (!chLen) continue;
+        }
+        else
+        {
+            // Space-separated: advance is last whitespace-delimited token
+            int len2 = (int)strlen(line);
+            while (len2 > 0 && isspace((unsigned char)line[len2-1])) line[--len2] = '\0';
+            while (len2 > 0 && !isspace((unsigned char)line[len2-1])) len2--;
+            if (len2 == 0) continue;
+            advance = atoi(line + len2);
+            while (len2 > 0 && isspace((unsigned char)line[len2-1])) line[--len2] = '\0';
+            if (!len2) continue;
+        }
 
         const char* ch = line;
         uint32_t cp;
@@ -3310,8 +3322,8 @@ static bool fnt_is_embedded(const char* fntPath)
     {
         if (strncmp(line, "datalen=", 8) == 0) { foundDataLen = true; continue; }
         if (strncmp(line, "data=",    5) == 0) { foundData    = true; break; }
-        // Stop if we hit glyph entries without finding data=
-        if (strchr(line, '\t') && strncmp(line, "tracking=", 9) != 0) break;
+        // Stop if we hit glyph entries without finding data= (tab or space-separated)
+        if ((strchr(line, '\t') || (strchr(line, ' ') && !strchr(line, '='))) && strncmp(line, "tracking=", 9) != 0) break;
     }
     fclose(f);
     return foundDataLen && foundData;
@@ -3456,19 +3468,32 @@ static LCDFont* fnt_load_embedded_font(const char* fntPath)
         {
             fntTracking = atoi(line + 9);
         }
-        else if (strchr(line, '\t') != nullptr)
+        else if (strchr(line, '\t') != nullptr || strchr(line, ' ') != nullptr)
         {
-            // Glyph entry — any unrecognised line with a tab
-            // Make a mutable copy to strip trailing tabs
+            // Glyph entry: tab-separated (standard) or space-separated format
             std::string lineCopy(line);
             char* lineM = &lineCopy[0];
             char* lastTab = strrchr(lineM, '\t');
-            if (!lastTab) continue;
-            int advance = atoi(lastTab + 1);
-            *lastTab = '\0';
-            int chLen = (int)strlen(lineM);
-            while (chLen > 0 && lineM[chLen-1] == '\t') lineM[--chLen] = '\0';
-            if (!chLen) continue;
+            int advance;
+            if (lastTab)
+            {
+                advance = atoi(lastTab + 1);
+                *lastTab = '\0';
+                int chLen = (int)strlen(lineM);
+                while (chLen > 0 && lineM[chLen-1] == '\t') lineM[--chLen] = '\0';
+                if (!chLen) continue;
+            }
+            else
+            {
+                // Space-separated: last whitespace-delimited token is advance
+                int len2 = (int)strlen(lineM);
+                while (len2 > 0 && isspace((unsigned char)lineM[len2-1])) lineM[--len2] = '\0';
+                while (len2 > 0 && !isspace((unsigned char)lineM[len2-1])) len2--;
+                if (len2 == 0) continue;
+                advance = atoi(lineM + len2);
+                while (len2 > 0 && isspace((unsigned char)lineM[len2-1])) lineM[--len2] = '\0';
+                if (!len2) continue;
+            }
 
             const char* ch = lineM;
             uint32_t cp;
