@@ -1,6 +1,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <math.h>
 #include <string>
 #include <sstream>
 #include <vector>
@@ -377,15 +378,30 @@ void pd_api_json_writeInt(struct json_encoder* encoder, int num)
 void pd_api_json_writeDouble(struct json_encoder* encoder, double num)
 {
     printfDebug(DebugTraceFunctions, "pd_api_json_writeDouble\n");
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%g", num);
-    enc_write(encoder, buf);
+    // Match Playdate simulator behaviour: NaN and Inf are written as null
+    if (isnan(num) || isinf(num))
+    {
+        enc_write(encoder, "null");
+    }
+    else
+    {
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%g", num);
+        enc_write(encoder, buf);
+    }
     printfDebug(DebugTraceFunctions, "pd_api_json_writeDouble end\n");
 }
 
 void pd_api_json_writeString(struct json_encoder* encoder, const char* str, int len)
 {
     printfDebug(DebugTraceFunctions, "pd_api_json_writeString\n");
+    // Match simulator: null pointer writes null (not a quoted string)
+    if (!str)
+    {
+        enc_write(encoder, "null");
+        printfDebug(DebugTraceFunctions, "pd_api_json_writeString end\n");
+        return;
+    }
     enc_write(encoder, "\"");
     // escape the string content
     int n = (len > 0) ? len : (int)strlen(str);
