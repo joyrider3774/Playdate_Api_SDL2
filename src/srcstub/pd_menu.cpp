@@ -126,6 +126,8 @@ void pd_menu_close(void)
         _pd_api_sys_input->Buttons.ButRT         = false;
         _pd_api_sys_input->Buttons.ButX          = false;
         _pd_api_sys_input->Buttons.ButY          = false;
+        _pd_api_sys_input->Buttons.ButA          = false; // to prevent misfires if games (blips)
+        _pd_api_sys_input->Buttons.ButB          = false; // handle it directly after the menu
 
         _pd_api_sys_skipPrevButtonUpdate = true;
     }
