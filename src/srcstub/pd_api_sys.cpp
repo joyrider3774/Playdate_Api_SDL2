@@ -305,27 +305,26 @@ unsigned int pd_api_sys_getCurrentTimeMilliseconds(void)
 
 unsigned int pd_api_sys_getSecondsSinceEpoch(unsigned int *milliseconds)
 {
-    // Get current time
-    time_t now = time(NULL);
+    // Use a single gettimeofday call so seconds and milliseconds are consistent —
+    // two separate calls (time() + gettimeofday()) can straddle a second boundary
+    // causing the milliseconds to belong to a different second than reported.
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+
+    if (milliseconds != NULL)
+        *milliseconds = tv.tv_usec / 1000;
+
+    time_t now = tv.tv_sec;
     struct tm *tm_now = gmtime(&now);
-    
-    // Create PDDateTime from current time
+
     struct PDDateTime datetime;
-    datetime.year = tm_now->tm_year + 1900;
-    datetime.month = tm_now->tm_mon + 1;
-    datetime.day = tm_now->tm_mday;
-    datetime.hour = tm_now->tm_hour;
+    datetime.year   = tm_now->tm_year + 1900;
+    datetime.month  = tm_now->tm_mon + 1;
+    datetime.day    = tm_now->tm_mday;
+    datetime.hour   = tm_now->tm_hour;
     datetime.minute = tm_now->tm_min;
     datetime.second = tm_now->tm_sec;
-    
-    // Get milliseconds if requested
-    if (milliseconds != NULL) 
-	{
-		struct timeval tv;
-		gettimeofday(&tv, NULL);
-		*milliseconds = tv.tv_usec / 1000;
-    }
-    
+
     // Convert to epoch (seconds since Jan 1, 2000)
     return pd_api_sys_convertDateTimeToEpoch(&datetime);
 }
