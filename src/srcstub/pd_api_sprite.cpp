@@ -225,7 +225,21 @@ void pd_api_sprite_drawSprites(void)
 			c++;	
 			LCDBitmapDrawMode tmpDrawMode = _pd_api_gfx_getCurrentDrawMode();
 	 		Api->graphics->setDrawMode(sprite->DrawMode);
-			sprite->DrawFunction(sprite, sprite->BoundsRect, sprite->BoundsRect);
+			if (sprite->IgnoresDrawOffset)
+			{
+				// Sprite position is in screen coords — compensate for draw offset
+				// so that drawBitmap(pos - offset) + offset = pos (screen coords)
+				int offX = 0, offY = 0;
+				_pd_api_gfx_getDrawOffset(&offX, &offY);
+				PDRect adjRect = sprite->BoundsRect;
+				adjRect.x -= offX;
+				adjRect.y -= offY;
+				sprite->DrawFunction(sprite, adjRect, adjRect);
+			}
+			else
+			{
+				sprite->DrawFunction(sprite, sprite->BoundsRect, sprite->BoundsRect);
+			}
 			Api->graphics->setDrawMode(tmpDrawMode);
 			//Api->graphics->drawRect(sprite->BoundsRect.x, sprite->BoundsRect.y, sprite->BoundsRect.width, sprite->BoundsRect.height, kColorBlack);
 			//Api->graphics->drawRect(sprite->BoundsRect.x + sprite->CollideRect.x, sprite->BoundsRect.y + sprite->CollideRect.y, sprite->CollideRect.width, sprite->CollideRect.height, kColorBlack);		
@@ -348,6 +362,7 @@ LCDSprite* pd_api_sprite_copy(LCDSprite *sprite)
 	newSprite->Loaded = sprite->Loaded;
 	newSprite->CenterPointX = sprite->CenterPointX;
 	newSprite->CenterPointY = sprite->CenterPointY;
+	newSprite->IgnoresDrawOffset = sprite->IgnoresDrawOffset;
 	//newSprite->setBumpItem(sprite->BumpItem());
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_copy end\n");
 	return newSprite;
@@ -913,7 +928,9 @@ uint8_t pd_api_sprite_getTag(LCDSprite *sprite)
 void pd_api_sprite_setIgnoresDrawOffset(LCDSprite *sprite, int flag)
 {
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setIgnoresDrawOffset\n");
-	printfDebug(DebugNotImplementedFunctions,"pd_api_sprite_setIgnoresDrawOffset not implemented!\n");
+	if(sprite == NULL)
+		return;
+	sprite->IgnoresDrawOffset = (flag != 0);
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_setIgnoresDrawOffset end\n");
 }
 

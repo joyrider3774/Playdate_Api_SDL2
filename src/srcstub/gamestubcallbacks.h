@@ -36,6 +36,9 @@ extern void _pd_api_sys_renderResetCallBack();
 extern void _pd_api_sys_quitCallBack();
 extern void _pd_api_sys_nextSourceDirCallback();
 
+//gfx
+extern void _pd_api_gfx_getDrawOffset(int* dx, int* dy);
+
 //sys
 extern PDCallbackFunction* _pd_api_sys_DoUpdate;
 extern void* _pd_api_sys_DoUpdateuserdata;

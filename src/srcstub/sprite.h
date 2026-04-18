@@ -41,4 +41,5 @@ class LCDSprite
 		bool Loaded;
 		float CenterPointX;
 		float CenterPointY;
+		bool IgnoresDrawOffset;
 };

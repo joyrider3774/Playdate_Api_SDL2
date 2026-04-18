@@ -472,6 +472,12 @@ void pd_api_gfx_setDrawOffset(int dx, int dy)
     _pd_api_gfx_CurrentGfxContext->drawoffsety = dy;
 }
 
+void _pd_api_gfx_getDrawOffset(int* dx, int* dy)
+{
+    if (dx) *dx = _pd_api_gfx_CurrentGfxContext->drawoffsetx;
+    if (dy) *dy = _pd_api_gfx_CurrentGfxContext->drawoffsety;
+}
+
 void pd_api_gfx_setClipRect(int x, int y, int width, int height)
 {
 	SDL_Rect cliprect;
