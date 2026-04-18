@@ -142,19 +142,26 @@ static void walk_json(json_decoder* dec, const json& j,
                 char elemName[128];
                 snprintf(elemName, sizeof(elemName), "%s[%d]", effName, pos);
 
-                walk_json(dec, val, elemName, pos, depth + 1);
+                // shouldDecodeArrayValueAtIndex fires BEFORE the element walk —
+                // including before willDecodeSublist — so games can use it to
+                // track the current index (e.g. set indexLast) before willDecodeSublist
+                // uses that index to set frameIndex etc.
+                bool shouldDecode = true;
+                if (dec->shouldDecodeArrayValueAtIndex)
+                    shouldDecode = dec->shouldDecodeArrayValueAtIndex(dec, pos) != 0;
 
-                json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
-
-                // didDecodeSublist fires after child walk
-                if (dec->didDecodeSublist)
-                    dec->didDecodeSublist(dec, elemName, subtype);
-
-                // didDecodeArrayValue fires after didDecodeSublist
-                if (dec->didDecodeArrayValue)
+                if (shouldDecode)
                 {
-                    if (!dec->shouldDecodeArrayValueAtIndex ||
-                        dec->shouldDecodeArrayValueAtIndex(dec, pos))
+                    walk_json(dec, val, elemName, pos, depth + 1);
+
+                    json_value_type subtype = val.is_array() ? kJSONArray : kJSONTable;
+
+                    // didDecodeSublist fires after child walk
+                    if (dec->didDecodeSublist)
+                        dec->didDecodeSublist(dec, elemName, subtype);
+
+                    // didDecodeArrayValue fires after didDecodeSublist
+                    if (dec->didDecodeArrayValue)
                     {
                         json_value sv;
                         sv.type = subtype;
