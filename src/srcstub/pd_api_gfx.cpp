@@ -4378,8 +4378,6 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
 
             auto it = f->glyphs.find(cp);
             if(it == f->glyphs.end()) {
-                if (cp == 0x24B6 || cp == 0x24DE)
-                    printf("DEBUG drawText: U+%04X NOT FOUND in glyph map (map size=%zu)\n", cp, f->glyphs.size());
                 // Apply kerning for missing glyphs too
                 if (prevCp != 0 && !f->kerning.empty())
                 {
@@ -4401,9 +4399,6 @@ int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding,
                 if (kit != f->kerning.end())
                     curX += kit->second;
             }
-
-            if (cp == 0x24B6 || cp == 0x24DE)
-                printf("DEBUG drawText: U+%04X found, drawing at curX=%d curY=%d, surface=%p\n", cp, curX, curY, (void*)it->second.surface);
 
             const LCDFontGlyphData& gd = it->second;
 
