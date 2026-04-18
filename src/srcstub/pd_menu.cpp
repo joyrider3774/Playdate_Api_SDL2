@@ -228,20 +228,21 @@ void pd_menu_update(void)
     {
         PDMenuItem* item = nthActiveItem(_selectedIndex);
         if (item)
-        {
-            item->interactedWith = true;
+        {            
             switch (item->type)
             {
                 case PD_MENUITEM_BUTTON:
                 //     // left/right on a button item closes and fires, same as A
                 //     pd_menu_close();
-                    break;
+                    return;
 
                 case PD_MENUITEM_CHECKMARK:
+                    item->interactedWith = true;
                     item->value = !item->value;
                     break;
 
                 case PD_MENUITEM_OPTIONS:
+                    item->interactedWith = true;
                     if (item->optionCount > 0)
                     {
                         if (right)
