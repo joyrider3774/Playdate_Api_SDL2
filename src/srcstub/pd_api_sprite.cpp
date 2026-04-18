@@ -413,13 +413,20 @@ void pd_api_sprite_removeSprite(LCDSprite *sprite)
 		return;
 	}
 
-	if(sprite->BumpItem)
-	{
-		world->Remove(sprite->BumpItem);
-		sprite->BumpItem = nullptr;
-	}
-
-	sprite->LoadedInList = false;		
+	// Don't remove the bump item from the world on removeSprite.
+	// On real Playdate, collision geometry persists independently of the display
+	// list. Removing it here causes stale-position bugs on zoom switch: the
+	// inactive zoom sprite's bump item gets removed, then re-added at a stale
+	// position when addSprite is next called, teleporting the player through walls.
+	// The collision filter checks LoadedInList so inactive sprites don't block others.
+	// Bump items are only truly removed in freeSprite or setCollideRect(0,0,0,0).
+	// if(sprite->BumpItem)
+	// {
+	// 	world->Remove(sprite->BumpItem);
+	// 	sprite->BumpItem = nullptr;
+	// }
+	
+	sprite->LoadedInList = false;
 	
 	printfDebug(DebugTraceFunctions,"pd_api_sprite_removeSprite end\n");
 }
