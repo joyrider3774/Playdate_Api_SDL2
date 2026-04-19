@@ -1600,7 +1600,22 @@ void _pd_api_gfx_flushFramebuffer(void)
     // API calls — that would overwrite the correctly drawn content on Tex.
     if (pd_gfx_framebuffer_valid && !pd_gfx_rows_pushed &&
         (pd_gfx_framebuffer_written || pd_gfx_framebuffer_got_frame))
+    {
         _pd_api_gfx_pushRowsToSurface(0, LCD_ROWS - 1);
+        // Composite the API layer on top — same as markUpdatedRows does.
+        // Games that skip markUpdatedRows (e.g. voxel-terrain-pd) still need
+        // API draws (drawText, drawFPS) to appear over the framebuffer content.
+        if (pd_gfx_layer_has_content && pd_gfx_api_layer && pd_gfx_api_layer->Tex)
+        {
+            SDL_Surface* layTex = pd_gfx_api_layer->Tex;
+            Uint32 clearPix = SDL_MapRGBA(layTex->format,
+                pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+                pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            SDL_SetColorKey(layTex, SDL_TRUE, clearPix);
+            SDL_BlitSurface(layTex, NULL, _pd_api_gfx_Playdate_Screen->Tex, NULL);
+            SDL_SetColorKey(layTex, SDL_FALSE, 0);
+        }
+    }
 
     pd_gfx_rows_pushed = false;
     pd_gfx_framebuffer_written = false;
