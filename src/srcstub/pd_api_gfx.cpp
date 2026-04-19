@@ -1235,14 +1235,114 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
     return result;
 }
 
+// Load a multi-frame GIF into an LCDBitmapTable using IMG_LoadAnimation.
+// Each frame becomes one entry in the table. Returns NULL if the file doesn't
+// exist or isn't a multi-frame GIF (single-frame GIFs are handled by the
+// normal sprite-sheet path).
+static LCDBitmapTable* _pd_api_gfx_loadGifTable(const char* gifpath, const char** outerr)
+{
+    IMG_Animation* anim = IMG_LoadAnimation(gifpath);
+    if (!anim)
+        return NULL;
+    if (anim->count < 1)
+    {
+        IMG_FreeAnimation(anim);
+        return NULL;
+    }
+
+    LCDBitmapTable* result = pd_api_gfx_Create_LCDBitmapTable();
+    if (!result)
+    {
+        IMG_FreeAnimation(anim);
+        if (outerr) *outerr = loaderror;
+        return NULL;
+    }
+
+    result->w      = anim->w;
+    result->h      = anim->h;
+    result->across = 1;
+    result->count  = 0;
+    result->bitmaps = (LCDBitmap**)malloc(anim->count * sizeof(LCDBitmap*));
+    if (!result->bitmaps)
+    {
+        free(result);
+        IMG_FreeAnimation(anim);
+        if (outerr) *outerr = loaderror;
+        return NULL;
+    }
+
+    if (outerr) *outerr = NULL;
+
+    for (int i = 0; i < anim->count; i++)
+    {
+        SDL_Surface* src = anim->frames[i];
+        SDL_Surface* converted = SDL_ConvertSurfaceFormat(src, pd_api_gfx_PIXELFORMAT, 0);
+        if (!converted)
+        {
+            // free what we have so far and bail
+            for (int j = 0; j < result->count; j++)
+                pd_api_gfx_freeBitmap(result->bitmaps[j]);
+            free(result->bitmaps);
+            free(result);
+            IMG_FreeAnimation(anim);
+            if (outerr) *outerr = loaderror;
+            return NULL;
+        }
+
+        bool opaque = false;
+        if (_pd_current_source_dir == 0)
+            opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(converted);
+        else
+            opaque = pd_api_gfx_MakeSurfaceOpaque(converted);
+
+        SDL_SetSurfaceBlendMode(converted, SDL_BLENDMODE_BLEND);
+
+        LCDBitmap* bmp = pd_api_gfx_newBitmap(anim->w, anim->h, kColorClear);
+        if (!bmp)
+        {
+            SDL_FreeSurface(converted);
+            for (int j = 0; j < result->count; j++)
+                pd_api_gfx_freeBitmap(result->bitmaps[j]);
+            free(result->bitmaps);
+            free(result);
+            IMG_FreeAnimation(anim);
+            if (outerr) *outerr = loaderror;
+            return NULL;
+        }
+
+        SDL_BlitSurface(converted, NULL, bmp->Tex, NULL);
+        SDL_SetSurfaceBlendMode(bmp->Tex, SDL_BLENDMODE_NONE);
+        SDL_FreeSurface(converted);
+
+        bmp->TableBitmap = true;
+        bmp->Opaque      = opaque;
+        result->bitmaps[result->count++] = bmp;
+    }
+
+    IMG_FreeAnimation(anim);
+    printfDebug(DebugLoadPaths, "INFO: GIF BitmapTable loaded: %s (%d frames, %dx%d)\n",
+                gifpath, result->count, result->w, result->h);
+    return result;
+}
+
 LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
 {
     // Strip .pdt extension — Playdate compiled image table format
     char stripped[MAXPATH];
+	char ext[5];
+	memset(ext, 0, 5);
     strncpy(stripped, path, MAXPATH-1);
     stripped[MAXPATH-1] = '\0';
-    if (strlen(stripped) > 4 && strcasecmp(stripped + strlen(stripped) - 4, ".pdt") == 0)
-        stripped[strlen(stripped) - 4] = '\0';
+	// need to strip the ext as well as loading bitmap tables using "player.png" while "player-table-....png" exists is valid
+    if (strlen(stripped) > 4 && ((strcasecmp(stripped + strlen(stripped) - 4, ".pdt") == 0) ||
+		(strcasecmp(stripped + strlen(stripped) - 4, ".png") == 0) || 
+		(strcasecmp(stripped + strlen(stripped) - 4, ".bmp") == 0) ||
+		(strcasecmp(stripped + strlen(stripped) - 4, ".tga") == 0) ||
+		(strcasecmp(stripped + strlen(stripped) - 4, ".jpg") == 0)))
+	{
+        strncpy(ext, stripped + (strlen(stripped) - 4), 4);
+		stripped[strlen(stripped) - 4] = '\0';
+	}
     path = stripped;
 
 	char* fullpath = (char*)malloc(MAXPATH);
@@ -1255,10 +1355,40 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
 	{
         snprintf(fullpath, MAXPATH, "./%s/%s", srcDir, path);
 	}
-	LCDBitmapTable *result = _pd_api_gfx_do_loadBitmapTable(fullpath, outerr);
-	free(fullpath);
+	// Try multi-frame GIF: if path already ends in .gif try it directly,
+	// otherwise append .gif. Covers both explicit "anim.gif" and extensionless "anim".
+	LCDBitmapTable* result = NULL;
+	{
+		auto tryGif = [&](const char* base) -> LCDBitmapTable* {
+			size_t blen = strlen(base);
+			bool hasGif = blen > 4 && strcasecmp(base + blen - 4, ".gif") == 0;
+			if (hasGif)
+				return _pd_api_gfx_loadGifTable(base, outerr);
+			char gifpath[MAXPATH];
+			snprintf(gifpath, MAXPATH, "%s.gif", base);
+			return _pd_api_gfx_loadGifTable(gifpath, outerr);
+		};
+		result = tryGif(fullpath);
+		if (!result)
+			result = tryGif(path);
+	}
+	if (!result)
+		result = _pd_api_gfx_do_loadBitmapTable(fullpath, outerr);
 	if(!result)
+	{
 		result = _pd_api_gfx_do_loadBitmapTable(path, outerr);
+		if(result)
+		{
+			printfDebug(DebugLoadPaths, "INFO: BitmapTable Loaded: %s%s\n", path, ext);
+		}	
+		else
+		{
+			printfDebug(DebugLoadPaths, "INFO: BitmapTable Failed Loading: %s%s\n", path, ext);
+		}
+	}
+	else
+		printfDebug(DebugLoadPaths, "INFO: BitmapTable Loaded: %s%s\n", fullpath, ext);
+	free(fullpath);
 	return result;
 }
 
@@ -3750,6 +3880,7 @@ static LCDFont* fnt_load_font(const char* fntPath, const char* pngPath)
 LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
 {
     LCDFont* result = NULL;
+    if (outErr) *outErr = "font not found"; // safe default — overwritten on success or specific failure
     // Build paths with enough room for sourceDir prefix + .ttf extension
     // Use MAXPATH to avoid any overflow issues
     char* tmpfullpath = (char*)malloc(MAXPATH);
@@ -3888,10 +4019,16 @@ LCDFont* pd_api_gfx_loadFont(const char* path, const char** outErr)
             fontlist.push_back(Tmp);
         }
 		else
+		{
+            if(outErr) *outErr = "failed to create LCDFont";
 			printfDebug(DebugLoadPaths, "INFO: FAILED LOADING TTF font (pd_api_gfx_Create_LCDFont failed): %s\n", fullpath);
+		}
     }
 	else
+	{
+		if(outErr) *outErr = "font file not found";
 		printfDebug(DebugLoadPaths, "INFO: FAILED LOADING TTF font (TTF_OpenFont failed): %s\n", fullpath);
+	}
 
     free(fullpath);
 	free(tmpfullpath);
