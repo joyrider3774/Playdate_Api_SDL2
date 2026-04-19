@@ -397,7 +397,9 @@ void runMainLoop()
     else
     {
         //run the update function
+		pd_gfx_in_update_callback = true;
 		_pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
+		pd_gfx_in_update_callback = false;
     }
 	
 

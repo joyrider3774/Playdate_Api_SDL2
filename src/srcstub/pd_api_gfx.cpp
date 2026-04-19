@@ -27,6 +27,12 @@ const char loaderror[] = "Failed loading!";
 static uint8_t pd_gfx_framebuffer[LCD_ROWSIZE * LCD_ROWS];
 static uint8_t pd_gfx_display_framebuffer[LCD_ROWSIZE * LCD_ROWS]; // last completed frame
 static bool pd_gfx_framebuffer_valid = false;
+static bool pd_gfx_framebuffer_written = false; // set by markUpdatedRows, cleared each frame
+static bool pd_gfx_framebuffer_got_frame = false; // set by getFrame() this frame, cleared each frame
+static LCDBitmap*   pd_gfx_api_layer = NULL;      // persistent layer for normal API draws over framebuffer
+static bool pd_gfx_layer_has_content = false;     // true when layer has something to composite
+bool pd_gfx_in_update_callback = false; // set by gamestub around the update callback call
+static bool pd_gfx_layer_active = false; // set when getFrame() called during update, not reset by clear()
 static bool pd_gfx_rows_pushed = false; // true if markUpdatedRows was called this frame
 
 struct LCDBitmap;
@@ -447,6 +453,29 @@ void pd_api_gfx_clear(LCDColor color)
          SDL_FillRect(drawTarget->Mask->Tex, &rect, SDL_MapRGBA(drawTarget->Mask->Tex->format,  maskColor.r, maskColor.g, maskColor.b, maskColor.a));
 	SDL_SetClipRect(drawTarget->Tex, &rect);
 	drawTarget->BitmapDirty = true;
+
+    // If clearing the main screen and the 1-bit framebuffer is in use,
+    // keep pd_gfx_framebuffer in sync so games that mix clear() with
+    // direct framebuffer writes (via getFrame) see a consistent state.
+    if (pd_gfx_framebuffer_valid && drawTarget == _pd_api_gfx_Playdate_Screen)
+    {
+        uint8_t fill = 0x00; // black = all bits 0
+        if (color == kColorWhite) fill = 0xFF; // white = all bits 1
+        memset(pd_gfx_framebuffer, fill, sizeof(pd_gfx_framebuffer));
+        // Also clear the API layer — the screen is being reset
+        if (pd_gfx_api_layer && pd_gfx_api_layer->Tex)
+            SDL_FillRect(pd_gfx_api_layer->Tex, NULL,
+                SDL_MapRGBA(pd_gfx_api_layer->Tex->format,
+                    pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+                    pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a));
+        // Reset got_frame only if getFrame() was NOT called in the current update
+        // frame (e.g. it was called at kEventInit and is now stale). If getFrame()
+        // was called this update, this clear() is a legitimate mid-frame clear and
+        // we must keep got_frame=true so the layer keeps working.
+        // Always reset got_frame on clear — game is starting a new render pass.
+        // If it needs framebuffer push it will call markUpdatedRows.
+        pd_gfx_framebuffer_got_frame = false;
+    }
 }
 
 void pd_api_gfx_setBackgroundColor(LCDSolidColor color)
@@ -1419,24 +1448,34 @@ LCDBitmap* pd_api_gfx_getTableBitmap(LCDBitmapTable* table, int idx)
 
 // raw framebuffer access
 
+static void _pd_api_gfx_ensureApiLayer(void); // forward declaration
 uint8_t* pd_api_gfx_getFrame(void)
 {
-    // Always re-read from Tex into pd_gfx_framebuffer.
-    // On real hardware getFrame() returns a pointer into the hardware framebuffer
-    // which is always up to date. In the stub, Tex is kept up to date by clear()
-    // and markUpdatedRows(), so reading from it here gives the correct starting
-    // state for the game to render into this frame.
-    uint8_t* data = NULL;
-    int w, h, rb;
-    pd_api_gfx_getBitmapData(_pd_api_gfx_Playdate_Screen, &w, &h, &rb, NULL, &data);
-    if (!data)
-        return NULL;
-    memset(pd_gfx_framebuffer, 0, sizeof(pd_gfx_framebuffer));
-    for (int y = 0; y < h; y++)
-        memcpy(pd_gfx_framebuffer + y * LCD_ROWSIZE, data + y * rb, rb);
+    // Return the raw 1-bit framebuffer directly — no readback from Tex needed.
+    // On real Playdate, getFrame() returns a pointer to the hardware framebuffer
+    // which games write into directly and then signal via markUpdatedRows().
+    // All known games that use getFrame() write the entire frame themselves each
+    // time, so there is no need to pre-populate the buffer from Tex.
+    // Doing a full Tex→1-bit readback here was correct but very slow (96k pixel
+    // reads per call) and caused significant frame rate drops.
     pd_gfx_framebuffer_valid = true;
-    // Do NOT clear BitmapDirty here — the display pipeline needs it to know
-    // the screen has been modified. markUpdatedRows will set it after pushing.
+    // Only set got_frame/layer_active when inside the update callback.
+    // getFrame() called at kEventInit is stale — should not enable layer/auto-push.
+    if (pd_gfx_in_update_callback)
+    {
+        pd_gfx_framebuffer_got_frame = true;
+        pd_gfx_layer_active = true;
+    }
+    pd_gfx_layer_has_content = false;
+    // Clear the layer at the start of each frame so stale API draws don't persist.
+    // On real Playdate the framebuffer is shared so old draws get overwritten naturally.
+    _pd_api_gfx_ensureApiLayer();
+    if (pd_gfx_api_layer && pd_gfx_api_layer->Tex)
+        SDL_FillRect(pd_gfx_api_layer->Tex, NULL,
+            SDL_MapRGBA(pd_gfx_api_layer->Tex->format,
+                pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+                pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a));
+
     return pd_gfx_framebuffer;
 }
 
@@ -1495,9 +1534,58 @@ void _pd_api_gfx_snapshotFramebuffer(void)
     if (data)
     {
         memset(pd_gfx_display_framebuffer, 0, sizeof(pd_gfx_display_framebuffer));
-        for (int y = 0; y < h; y++)
-            memcpy(pd_gfx_display_framebuffer + y * LCD_ROWSIZE, data + y * rb, rb);
+        {
+            SDL_Surface* surf = _pd_api_gfx_Playdate_Screen->Tex;
+            Uint32 white = SDL_MapRGBA(surf->format,
+                pd_api_gfx_color_white.r, pd_api_gfx_color_white.g,
+                pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+            for (int y = 0; y < LCD_ROWS; y++)
+            {
+                uint8_t* dst = pd_gfx_display_framebuffer + y * LCD_ROWSIZE;
+                for (int x = 0; x < LCD_COLUMNS; x++)
+                {
+                    Uint32* p = (Uint32*)((Uint8*)surf->pixels + y * surf->pitch + x * surf->format->BytesPerPixel);
+                    if (*p == white)
+                        dst[x / 8] |= (1 << (7 - (x % 8)));
+                }
+            }
+        }
     }
+}
+
+// Ensure the API layer bitmap exists. The layer is an LCDBitmap so it can
+// be used directly as a draw target — all draw calls go into it with correct
+// clipping, offsets and draw modes. Clear color (cyan) is used as transparent key.
+// The layer persists across frames and is only cleared when clear() is called.
+static void _pd_api_gfx_ensureApiLayer(void)
+{
+    if (pd_gfx_api_layer) return;
+    pd_gfx_api_layer = pd_api_gfx_newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
+}
+
+// Switch draw target to the API layer. Returns true if switched.
+// Call at start of a public draw function; if returns true, call
+// _pd_api_gfx_endLayerDraw() after to restore and repeat on screen.
+// XOR and NXOR modes read the destination pixels — they cannot work correctly
+// on the layer (which has clear/transparent pixels, not the framebuffer content).
+// Skip layer draw for those modes so only the screen draw happens.
+static bool _pd_api_gfx_beginLayerDraw(void)
+{
+    if (!pd_gfx_layer_active) return false;
+    if (_pd_api_gfx_getDrawTarget() != _pd_api_gfx_Playdate_Screen) return false;
+    LCDBitmapDrawMode mode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
+    if (mode == kDrawModeXOR || mode == kDrawModeNXOR) return false;
+    _pd_api_gfx_ensureApiLayer();
+    if (!pd_gfx_api_layer) return false;
+    _pd_api_gfx_CurrentGfxContext->DrawTarget = pd_gfx_api_layer;
+    pd_gfx_layer_has_content = true;
+    return true;
+}
+
+// Restore draw target to screen after a layer draw.
+static void _pd_api_gfx_endLayerDraw(void)
+{
+    _pd_api_gfx_CurrentGfxContext->DrawTarget = _pd_api_gfx_Playdate_Screen;
 }
 
 // Called by _pd_api_display() to ensure any getFrame() writes are visible
@@ -1505,11 +1593,20 @@ void _pd_api_gfx_snapshotFramebuffer(void)
 // Also snapshots the completed frame into pd_gfx_display_framebuffer for getDisplayFrame().
 void _pd_api_gfx_flushFramebuffer(void)
 {
-    // Only auto-push if getFrame() was used AND markUpdatedRows wasn't already called
-    if (pd_gfx_framebuffer_valid && !pd_gfx_rows_pushed)
+    // Auto-push if:
+    //   a) the game called markUpdatedRows this frame (explicit push), OR
+    //   b) the game called getFrame() this frame and wrote to it but skipped markUpdatedRows.
+    // Do NOT push if getFrame() was only called at init (stale) and game uses normal draw
+    // API calls — that would overwrite the correctly drawn content on Tex.
+    if (pd_gfx_framebuffer_valid && !pd_gfx_rows_pushed &&
+        (pd_gfx_framebuffer_written || pd_gfx_framebuffer_got_frame))
         _pd_api_gfx_pushRowsToSurface(0, LCD_ROWS - 1);
 
     pd_gfx_rows_pushed = false;
+    pd_gfx_framebuffer_written = false;
+    pd_gfx_framebuffer_got_frame = false;
+    pd_gfx_layer_has_content = false;
+    pd_gfx_layer_active = false;
 
     _pd_api_gfx_snapshotFramebuffer();
 }
@@ -1537,9 +1634,24 @@ void pd_api_gfx_markUpdatedRows(int start, int end)
     if (!pd_menu_isOpen)
     {
         _pd_api_gfx_pushRowsToSurface(start, end);
+        // Composite persistent API layer on top of the framebuffer push.
+        // The layer contains drawBitmap/fillRect/drawText draws that happened
+        // while getFrame() was active. Clear pixels in the layer are transparent.
+        if (pd_gfx_layer_has_content && pd_gfx_api_layer && pd_gfx_api_layer->Tex)
+        {
+            SDL_Surface* layTex = pd_gfx_api_layer->Tex;
+            Uint32 clearPix = SDL_MapRGBA(layTex->format,
+                pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g,
+                pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+            SDL_SetColorKey(layTex, SDL_TRUE, clearPix);
+            SDL_Rect rows = { 0, start, LCD_COLUMNS, end - start + 1 };
+            SDL_BlitSurface(layTex, &rows, _pd_api_gfx_Playdate_Screen->Tex, &rows);
+            SDL_SetColorKey(layTex, SDL_FALSE, 0);
+        }
         _pd_api_gfx_Playdate_Screen->BitmapDirty = true;
     }
     pd_gfx_rows_pushed = true;
+    pd_gfx_framebuffer_written = true;
 }
 
 void pd_api_gfx_display(void)
@@ -2482,6 +2594,12 @@ void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
 {
     if (bitmap == NULL)
         return;
+    // Draw to API layer first so it accumulates persistently over the framebuffer
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false, false);
+        _pd_api_gfx_endLayerDraw();
+    }
    
     _pd_api_gfx_drawBitmapAll(bitmap, x, y, 1.0f, 1.0f, false, 0, 0, 0, flip, false, false);
 }
@@ -2930,6 +3048,12 @@ void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 
 void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 {
+    // Draw to API layer first
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_fillRect(x, y, width, height, color); // recurse with layer as target
+        _pd_api_gfx_endLayerDraw();
+    }
 	LCDBitmap *pattern = NULL;
     SDL_Color maskColor = pd_api_gfx_color_white;
 	Uint32 RealColor;
@@ -3027,6 +3151,25 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
         Api->graphics->freeBitmap(bitmap);
     }
 	_pd_api_gfx_getDrawTarget()->BitmapDirty = true;
+    // If this is a full-screen fill on the main screen, sync to pd_gfx_framebuffer
+    // so getFrame() returns a buffer that reflects the clear. Games that clear using
+    // fillRect instead of clear() (e.g. PastaWipeout) need this.
+    if (pd_gfx_framebuffer_valid &&
+        _pd_api_gfx_getDrawTarget() == _pd_api_gfx_Playdate_Screen &&
+        x <= 0 && y <= 0 &&
+        width  >= LCD_COLUMNS &&
+        height >= LCD_ROWS)
+    {
+        // Determine fill value: kColorBlack=0x00, kColorWhite=0xFF, others skip
+        if (color == (LCDColor)kColorBlack)
+            memset(pd_gfx_framebuffer, 0x00, sizeof(pd_gfx_framebuffer));
+        else if (color == (LCDColor)kColorWhite)
+            memset(pd_gfx_framebuffer, 0xFF, sizeof(pd_gfx_framebuffer));
+        // Full-screen fill resets the frame — same logic as clear()
+        // Always reset got_frame on clear — game is starting a new render pass.
+        // If it needs framebuffer push it will call markUpdatedRows.
+        pd_gfx_framebuffer_got_frame = false;
+    }
 }
 
 void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, float startAngle, float endAngle, LCDColor color) // stroked inside the rect
@@ -4508,6 +4651,12 @@ int pd_api_gfx_getTextWidth(LCDFont* font, const void* text, size_t len, PDStrin
 //based on functionality from SDL_TTF
 int pd_api_gfx_drawText(const void* text, size_t len, PDStringEncoding encoding, int x, int y)
 {
+    // Draw to API layer first
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawText(text, len, encoding, x, y); // recurse with layer as target
+        _pd_api_gfx_endLayerDraw();
+    }
     if(len == 0)
         return 0;
 
