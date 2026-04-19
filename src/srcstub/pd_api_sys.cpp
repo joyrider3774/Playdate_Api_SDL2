@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #include "pd_api/pd_api_sys.h"
 #include "CInput.h"
+#include <math.h>
 #include "gamestubcallbacks.h"
 #include "defines.h"
 #include "gamestub.h"
@@ -78,22 +79,51 @@ void _pd_api_sys_UpdateInput()
 
 	_CranckChange = 0.0f;
 
-	if (_pd_api_sys_input->Buttons.ButLB)
+	// Right joystick: use atan2 of X/Y to set crank angle directly.
+	// Stick position maps to the full 360° of the crank.
+	// Only active when stick is outside the deadzone; LB/RB still work when stick is centred.
+	const int crankDeadZone = 4000; // ~12% of 32767, avoids drift without snapping
+	int crankStickX = _pd_api_sys_input->CrankUseRightStick
+	                ? _pd_api_sys_input->RightStickX
+	                : _pd_api_sys_input->LeftStickX;
+	int crankStickY = _pd_api_sys_input->CrankUseRightStick
+	                ? _pd_api_sys_input->RightStickY
+	                : _pd_api_sys_input->LeftStickY;
+	if (abs(crankStickX) > crankDeadZone ||
+	    abs(crankStickY) > crankDeadZone)
 	{
+		// atan2 returns -π..π; convert to 0..360 matching Playdate crank convention
+		// (0° = up, clockwise positive — stick right = 90°, down = 180°, left = 270°)
+		float angle = atan2f((float)crankStickX,
+		                     -(float)crankStickY) * (180.0f / (float)M_PI);
+		if (angle < 0.0f) angle += 360.0f;
+		_CranckChange = angle - _CranckAngle;
+		// Wrap change to -180..180 so getCrankChange() returns correct direction
+		if (_CranckChange > 180.0f)  _CranckChange -= 360.0f;
+		if (_CranckChange < -180.0f) _CranckChange += 360.0f;
+		_CranckAngle = angle;
 		_CranckDocked = false;
-		_CranckChange = -5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
-		_CranckAngle = _CranckAngle + _CranckChange;
-		if (_CranckAngle < 0.0f)
-			_CranckAngle = 360.0f + _CranckAngle;
 	}
-
-	if (_pd_api_sys_input->Buttons.ButRB)
+	else
 	{
-		_CranckDocked = false;
-		_CranckChange = 5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
-		_CranckAngle = _CranckAngle + _CranckChange;
-		if (_CranckAngle > 359.0f)
-			_CranckAngle =  _CranckAngle - 360.0f;
+		// Stick centred — fall back to LB/RB incremental control
+		if (_pd_api_sys_input->Buttons.ButLB)
+		{
+			_CranckDocked = false;
+			_CranckChange = -5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
+			_CranckAngle = _CranckAngle + _CranckChange;
+			if (_CranckAngle < 0.0f)
+				_CranckAngle = 360.0f + _CranckAngle;
+		}
+
+		if (_pd_api_sys_input->Buttons.ButRB)
+		{
+			_CranckDocked = false;
+			_CranckChange = 5.0f * (30.0f / (((float) _pd_api_display_AvgFps) == 0.0f ? 30.0f : (float) _pd_api_display_AvgFps));
+			_CranckAngle = _CranckAngle + _CranckChange;
+			if (_CranckAngle > 359.0f)
+				_CranckAngle =  _CranckAngle - 360.0f;
+		}
 	}
 
 	if (_pd_api_sys_input->Buttons.ButLT)

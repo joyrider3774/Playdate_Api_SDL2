@@ -12,6 +12,11 @@ CInput *CInput_Create()
     tmp->JoystickDeadZone = 10000;
     tmp->TriggerDeadZone = 10000;
     tmp->GameController = NULL;
+    tmp->LeftStickX = 0;
+    tmp->LeftStickY = 0;
+    tmp->RightStickX = 0;
+    tmp->RightStickY = 0;
+    tmp->CrankUseRightStick = false;
     CInput_ResetButtons(tmp);
     for (int i=0; i < SDL_NumJoysticks(); i++)
     {
@@ -108,10 +113,6 @@ void CInput_ResetButtons(CInput* cinput)
 	cinput->Buttons.ButDpadRight = false;
 	cinput->Buttons.ButDpadUp = false;
 	cinput->Buttons.ButDpadDown = false;
-	cinput->Buttons.ButLeft2 = false;
-	cinput->Buttons.ButRight2 = false;
-	cinput->Buttons.ButUp2 = false;
-	cinput->Buttons.ButDown2 = false;
 	cinput->Buttons.NextSource = false;
 	cinput->PrevButtons = cinput->Buttons;
 }
@@ -143,6 +144,8 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 		#endif
 		case SDL_CONTROLLER_BUTTON_Y:
 			cinput->Buttons.ButY = Value;
+			if (!Value) // on release — toggle crank stick
+				cinput->CrankUseRightStick = !cinput->CrankUseRightStick;
 			break;
 		case SDL_CONTROLLER_BUTTON_X:
 			cinput->Buttons.ButX = Value;
@@ -336,55 +339,21 @@ void CInput_HandleJoystickAxisEvent(CInput *cinput, int Axis, int Value)
 	switch(Axis)
 	{
 		case SDL_CONTROLLER_AXIS_LEFTX:
-			if (abs(Value) < cinput->JoystickDeadZone)
-			{
-				cinput->Buttons.ButRight = false;
-				cinput->Buttons.ButLeft = false;
-				return;
-			}
-			if(Value > 0)
-				cinput->Buttons.ButRight = true;
-			else
-				cinput->Buttons.ButLeft = true;
+			// Left stick used for crank — store raw unfiltered value (no deadzone)
+			cinput->LeftStickX = Value;
 			break;
 
 		case SDL_CONTROLLER_AXIS_LEFTY:
-			if (abs(Value) < cinput->JoystickDeadZone)
-			{
-				cinput->Buttons.ButUp = false;
-				cinput->Buttons.ButDown = false;
-				return;
-			}
-			if(Value < 0)
-				cinput->Buttons.ButUp = true;
-			else
-				cinput->Buttons.ButDown = true;
+			// Left stick used for crank — store raw unfiltered value (no deadzone)
+			cinput->LeftStickY = Value;
 			break;
 
 		case SDL_CONTROLLER_AXIS_RIGHTX:
-			if (abs(Value) < cinput->JoystickDeadZone)
-			{
-				cinput->Buttons.ButRight2 = false;
-				cinput->Buttons.ButLeft2 = false;
-				return;
-			}
-			if(Value > 0)
-				cinput->Buttons.ButRight2 = true;
-			else
-				cinput->Buttons.ButLeft2 = true;
+			cinput->RightStickX = Value;
 			break;
 
 		case SDL_CONTROLLER_AXIS_RIGHTY:
-			if (abs(Value) < cinput->JoystickDeadZone)
-			{
-				cinput->Buttons.ButUp2 = false;
-				cinput->Buttons.ButDown2 = false;
-				return;
-			}
-			if(Value < 0)
-				cinput->Buttons.ButUp2 = true;
-			else
-				cinput->Buttons.ButDown2 = true;
+			cinput->RightStickY = Value;
 			break;
 
 		case SDL_CONTROLLER_AXIS_TRIGGERLEFT:

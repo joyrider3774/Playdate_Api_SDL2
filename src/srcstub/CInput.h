@@ -8,7 +8,6 @@
 typedef struct SButtons {
 	bool ButLeft, ButRight, ButUp, ButDown,
 		 ButDpadLeft, ButDpadRight, ButDpadUp, ButDpadDown,
-		 ButLeft2, ButRight2, ButUp2, ButDown2,
 		 ButBack, ButStart, ButA, ButB,
 		 ButX, ButY, ButLB, ButRB, ButFullscreen, ButQuit, ButRT, ButLT,
 		 RenderReset, NextSource;
@@ -18,6 +17,9 @@ typedef struct CInput {
     SDL_GameController* GameController;
 	SButtons Buttons, PrevButtons;
 	int JoystickDeadZone, TriggerDeadZone;
+	int LeftStickX, LeftStickY;   // raw axis values for left stick (-32768..32767)
+	int RightStickX, RightStickY; // raw axis values for right stick (-32768..32767)
+	bool CrankUseRightStick;      // true = right stick drives crank, false = left stick
 } CInput;
 
 CInput *CInput_Create();
