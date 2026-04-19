@@ -10,7 +10,10 @@ It's probably done in a very bad way but it does seem to work for my games and o
 - Bitmap operations — load (no gif), new, free, copy, clear, getBitmapData (converts to 1bpp), rotate, scale, tile, drawBitmap, drawScaledBitmap, drawRotatedBitmap, tileBitmap
 - Primitives — drawLine, fillRect, drawRect, fillTriangle, fillPolygon, drawEllipse, fillEllipse, drawRoundRect, fillRoundRect (all via drawBitmapAll)
 - Stencil — applied in drawBitmapAll (covers all primitives and bitmap drawing, but not fnt drawText)
-- getFrame / getDisplayFrame — (raw 1bpp frame buffer access implemented)
+- getFrame / getDisplayFrame — (raw 1bpp frame buffer access implemented) 
+  Fully Works for Standalone getFrame games 
+  Works for games using both playdate api draw functions and buffer drawing but don't edit the buffer after drawing using api (like they use the api drawing as a layer on top)
+  Does not work for games using GetFrame then draw using API Function on top then use GetFrame again to edit the frame buffer (including things drawn using api) but this is very uncommon
 - Context — push/pop, draw mode, clip rect, draw offset, background color, tracking, leading
 - Fonts — native .fnt + TTF, drawText, getTextWidth, getFontHeight, drawTextInRect, getTextHeightForMaxWidth
 - Bitmap tables — new, free, load, getTableBitmap, getBitmapTableInfo
