@@ -398,14 +398,18 @@ void _pd_api_display()
 			SDL_Surface* menuSurf = _pd_api_gfx_GetSDLTextureFromBitmap(menuBmp);
 			if (menuSurf)
 			{
+				// Set colorkey before creating texture so clear pixels are transparent
+				Uint32 clearCol = SDL_MapRGB(menuSurf->format,
+				    pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b);
+				SDL_SetColorKey(menuSurf, SDL_TRUE, clearCol);
 				SDL_Texture* menuTex = SDL_CreateTextureFromSurface(Renderer, menuSurf);
+				SDL_SetColorKey(menuSurf, SDL_FALSE, 0);
 				if (menuTex)
 				{
-					// Query current logical size so dst is correct for all SCALINGMODE values
 					int logW, logH;
 					SDL_RenderGetLogicalSize(Renderer, &logW, &logH);
 					if (logW == 0 || logH == 0) { logW = LCD_COLUMNS; logH = LCD_ROWS; }
-					SDL_Rect dst = { logW/2, 0, logW/2, logH };
+					SDL_Rect dst = { 0, 0, logW, logH };
 					SDL_RenderCopy(Renderer, menuTex, NULL, &dst);
 					SDL_DestroyTexture(menuTex);
 				}

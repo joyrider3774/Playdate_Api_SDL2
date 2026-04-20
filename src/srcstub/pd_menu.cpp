@@ -87,7 +87,7 @@ void pd_menu_open(void)
     _settingsSelected = 0;
     // Allocate menu bitmap (half screen wide, full height)
     if (_menuBitmap) { Api->graphics->freeBitmap(_menuBitmap); }
-    _menuBitmap = Api->graphics->newBitmap(LCD_COLUMNS/2, LCD_ROWS, kColorWhite);
+    _menuBitmap = Api->graphics->newBitmap(LCD_COLUMNS, LCD_ROWS, kColorClear);
     // Create a fresh input instance for menu navigation, isolated from game input
     if (_pd_menu_input)
         CInput_Destroy(_pd_menu_input);
@@ -399,7 +399,7 @@ void pd_menu_render(void)
 
     // Draw into the dedicated menu bitmap (LCD_COLUMNS/2 x LCD_ROWS).
     // All coordinates are 0-based within this bitmap.
-    const int panelX = 0;
+    const int panelX = LCD_COLUMNS / 2;
     const int panelW = LCD_COLUMNS / 2;
     const int panelH = LCD_ROWS;
     const int panelY = 0;
@@ -408,6 +408,10 @@ void pd_menu_render(void)
     Api->graphics->pushContext(_menuBitmap);
     Api->graphics->setFont(NULL);
     Api->graphics->setDrawMode(kDrawModeCopy);
+
+    // Draw game-provided menu image on the left half if set
+    if (_menuImage)
+        Api->graphics->drawBitmap(_menuImage, _menuImageXOff, 0, kBitmapUnflipped);
 
     // Fill background white
     Api->graphics->fillRect(panelX, panelY, panelW, panelH, kColorWhite);
@@ -418,7 +422,7 @@ void pd_menu_render(void)
     Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + 8, panelY + 4);
 
     // Separator line under title
-    Api->graphics->drawLine(panelX + 2, panelY + 22, panelW - 2, panelY + 22, 1, kColorBlack);
+    Api->graphics->drawLine(panelX + 2, panelY + 22, LCD_COLUMNS - 2, panelY + 22, 1, kColorBlack);
 
     // --- items ---
     const int itemH    = 40;
@@ -511,7 +515,7 @@ void pd_menu_render(void)
     int statusY = panelY + panelH - 42;
     Api->graphics->drawLine(panelX + 2, panelY + panelH - 45, LCD_COLUMNS - 2, panelY + panelH - 45, 1, kColorBlack);
     Api->graphics->drawText(status, strlen(status), kASCIIEncoding, panelX + 4, statusY);
-    Api->graphics->drawLine(panelX + 2, panelY + panelH - 22, panelW - 2, panelY + panelH - 22, 1, kColorBlack);
+    Api->graphics->drawLine(panelX + 2, panelY + panelH - 22, LCD_COLUMNS - 2, panelY + panelH - 22, 1, kColorBlack);
 
     // --- hint at bottom ---
     const char* hint = _settingsOpen ? "A:toggle  B:back" : "A:select  B:close";
