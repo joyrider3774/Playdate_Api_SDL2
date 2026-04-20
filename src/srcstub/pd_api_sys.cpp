@@ -14,6 +14,7 @@
 // Tilt stick axis inversion modes
 // "Normal" means report the raw stick value as-is.
 TiltInvertMode _pd_tilt_invert = kTiltInvert_XNormal_YNormal;
+CrankInvertMode _pd_crank_invert = kCrankInvert_XNormal_YNormal;
 
 CInput *_pd_api_sys_input = NULL;
 void _pd_api_sys_updateAccelerometer(void); // defined below
@@ -113,10 +114,14 @@ void _pd_api_sys_UpdateInput()
 	if (abs(crankStickX) > crankDeadZone ||
 	    abs(crankStickY) > crankDeadZone)
 	{
+		// Apply crank axis inversion before computing angle
+		int cx = crankStickX, cy = crankStickY;
+		if (_pd_crank_invert == kCrankInvert_XInvert_YNormal || _pd_crank_invert == kCrankInvert_XInvert_YInvert) cx = -cx;
+		if (_pd_crank_invert == kCrankInvert_XNormal_YInvert || _pd_crank_invert == kCrankInvert_XInvert_YInvert) cy = -cy;
 		// atan2 returns -π..π; convert to 0..360 matching Playdate crank convention
 		// (0° = up, clockwise positive — stick right = 90°, down = 180°, left = 270°)
-		float angle = atan2f((float)crankStickX,
-		                     -(float)crankStickY) * (180.0f / (float)M_PI);
+		float angle = atan2f((float)cx,
+		                     -(float)cy) * (180.0f / (float)M_PI);
 		if (angle < 0.0f) angle += 360.0f;
 		_CranckChange = angle - _CranckAngle;
 		// Wrap change to -180..180 so getCrankChange() returns correct direction

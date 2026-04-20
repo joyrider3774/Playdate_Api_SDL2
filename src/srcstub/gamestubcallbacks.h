@@ -81,7 +81,6 @@ extern double _pd_api_display_LastFPS;
 extern int _CranckSoundDisabled;
 extern int _CranckDocked;
 extern const char * _pd_api_get_current_source_dir();
-extern int _pd_current_source_dir;
 extern playdate_sys* pd_api_sys_Create_playdate_sys();
 extern playdate_display* pd_api_display_Create_playdate_display();
 extern playdate_graphics* pd_api_gfx_Create_playdate_graphics();
@@ -97,10 +96,15 @@ extern playdate_sound_source* pd_api_sound_Create_playdate_sound_source();
 extern bool _pd_api_sys_skipPrevButtonUpdate;
 
 // Tilt/crank settings (pd_api_sys.cpp) — TiltInvertMode defined in gamestub.h
-extern TiltInvertMode _pd_tilt_invert;
+extern TiltInvertMode  _pd_tilt_invert;
+extern CrankInvertMode _pd_crank_invert;
 extern struct CInput* _pd_api_sys_input;
 extern void _pd_api_sys_setPendingCrankStick(int useRight);
 extern void _pd_save_source_dir();
+extern int  _pd_count_valid_source_dirs(void);
+extern void _pd_apply_source_dir(int idx);
+extern int  _pd_current_source_dir;
+extern const char* _pd_alternate_source_dirs[];
 extern LCDBitmap* pd_menu_get_bitmap(void);
 
 #endif

@@ -125,6 +125,8 @@ void _pd_save_source_dir()
 		Api->file->write(File, &tiltInvert, sizeof(tiltInvert));
 		int crankRight = (_pd_api_sys_input && _pd_api_sys_input->CrankUseRightStick) ? 1 : 0;
 		Api->file->write(File, &crankRight, sizeof(crankRight));
+		int crankInvert = (int)_pd_crank_invert;
+		Api->file->write(File, &crankInvert, sizeof(crankInvert));
 		Api->file->close(File);
 	}
 }
@@ -153,6 +155,10 @@ void _pd_load_source_dir()
 		int crankRight = 0;
 		if (Api->file->read(File, &crankRight, sizeof(crankRight)) == sizeof(crankRight))
 			_pd_api_sys_setPendingCrankStick(crankRight);
+		int crankInvert = 0;
+		if (Api->file->read(File, &crankInvert, sizeof(crankInvert)) == sizeof(crankInvert))
+			if (crankInvert >= 0 && crankInvert < kCrankInvert_COUNT)
+				_pd_crank_invert = (CrankInvertMode)crankInvert;
 		Api->file->close(File);
 	}
 	else
@@ -177,6 +183,33 @@ void _pd_load_next_source_dir()
 	_pd_reset();
 }
 
+
+// Count how many source dirs actually exist on disk
+int _pd_count_valid_source_dirs(void)
+{
+    int count = 0;
+    for (int i = 0; i < MAXSOURCEDIRS; i++)
+    {
+        char filename[MAXPATH];
+        sprintf(filename, "./%s", _pd_alternate_source_dirs[i]);
+        struct stat lstats;
+        if (stat(filename, &lstats) == 0)
+            count++;
+        else
+            break; // dirs are sequential, stop at first missing
+    }
+    return count < 1 ? 1 : count;
+}
+
+// Apply a specific source dir index and reset the game
+void _pd_apply_source_dir(int idx)
+{
+    if (idx < 0 || idx >= MAXSOURCEDIRS) return;
+    _pd_current_source_dir = idx;
+    _pd_validate_source_dir();
+    _pd_save_source_dir();
+    _pd_reset();
+}
 const char * _pd_api_get_current_source_dir()
 {
 	return _pd_alternate_source_dirs[_pd_current_source_dir];
