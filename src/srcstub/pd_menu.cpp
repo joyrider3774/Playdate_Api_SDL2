@@ -200,13 +200,14 @@ void pd_menu_update(void)
 
     CInput_Update(_pd_menu_input);
 
-    bool up   = _pd_menu_input->Buttons.ButUp   && !_pd_menu_input->PrevButtons.ButUp;
-    bool down = _pd_menu_input->Buttons.ButDown  && !_pd_menu_input->PrevButtons.ButDown;
+    // Check both digital buttons and D-pad (gamepad D-pad sets ButDpad* not But*)
+    bool up   = (_pd_menu_input->Buttons.ButUp    || _pd_menu_input->Buttons.ButDpadUp)    && !(_pd_menu_input->PrevButtons.ButUp    || _pd_menu_input->PrevButtons.ButDpadUp);
+    bool down = (_pd_menu_input->Buttons.ButDown  || _pd_menu_input->Buttons.ButDpadDown)  && !(_pd_menu_input->PrevButtons.ButDown  || _pd_menu_input->PrevButtons.ButDpadDown);
     bool a    = _pd_menu_input->Buttons.ButA     && !_pd_menu_input->PrevButtons.ButA;
     bool back = _pd_menu_input->Buttons.ButB     && !_pd_menu_input->PrevButtons.ButB;
     bool start = _pd_menu_input->Buttons.ButStart && !_pd_menu_input->PrevButtons.ButStart;
-    bool left  = _pd_menu_input->Buttons.ButLeft  && !_pd_menu_input->PrevButtons.ButLeft;
-    bool right = _pd_menu_input->Buttons.ButRight && !_pd_menu_input->PrevButtons.ButRight;
+    bool left  = (_pd_menu_input->Buttons.ButLeft  || _pd_menu_input->Buttons.ButDpadLeft)  && !(_pd_menu_input->PrevButtons.ButLeft  || _pd_menu_input->PrevButtons.ButDpadLeft);
+    bool right = (_pd_menu_input->Buttons.ButRight || _pd_menu_input->Buttons.ButDpadRight) && !(_pd_menu_input->PrevButtons.ButRight || _pd_menu_input->PrevButtons.ButDpadRight);
     
     int count = activeItemCount();
 
