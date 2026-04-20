@@ -98,10 +98,11 @@ void pd_menu_open(void)
     CInput_Update(_pd_menu_input);
     // Sync PrevButtons = Buttons so no pushed events fire on the first update.
     _pd_menu_input->PrevButtons = _pd_menu_input->Buttons;
-    // Snapshot current screen so we can redraw it when the menu closes
+    // Snapshot current screen (Tex) and framebuffer before menu opens
     if (_screenSnapshot)
         Api->graphics->freeBitmap(_screenSnapshot);
     _screenSnapshot = Api->graphics->copyBitmap(_pd_api_gfx_Playdate_Screen);
+    _pd_api_gfx_saveFramebufferForMenu();
     // Fire Pause system event so the game knows (same as real Playdate)
     eventHandler(Api, kEventPause, 0);
     printfDebug(DebugInfo, "pd_menu: opened\n");    
@@ -152,16 +153,20 @@ void pd_menu_close(void)
 
         _pd_api_sys_skipPrevButtonUpdate = true;
     }
-    // Need to redraw here before firing the callbacks as the callbacks could draw something as well
+    // Restore Tex snapshot by direct SDL surface blit — bypasses colorkey/transparency
+    // so that black pixels (which may be stored as clear/cyan in Tex) are restored correctly.
     if (_screenSnapshot)
     {
-        Api->graphics->pushContext(NULL);
-        Api->graphics->setDrawOffset(0,0);
-        Api->graphics->drawBitmap(_screenSnapshot,0,0,kBitmapUnflipped);
+        SDL_Surface* dst = _pd_api_gfx_GetSDLTextureFromBitmap(_pd_api_gfx_Playdate_Screen);
+        SDL_Surface* src = _pd_api_gfx_GetSDLTextureFromBitmap(_screenSnapshot);
+        if (dst && src)
+            SDL_BlitSurface(src, NULL, dst, NULL);
         Api->graphics->freeBitmap(_screenSnapshot);
         _screenSnapshot = NULL;
-        Api->graphics->popContext();
-    }   
+    }
+    // Restore framebuffer (for getFrame games) — marks dirty so
+    // flushFramebuffer pushes it to Tex next frame if needed
+    _pd_api_gfx_restoreFramebufferAfterMenu();
     // Fire callbacks for any items that were interacted with
     for (int i = 0; i < PD_MENU_MAX_ITEMS; i++)
     {

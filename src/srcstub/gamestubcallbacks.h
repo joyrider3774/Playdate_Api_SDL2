@@ -41,6 +41,8 @@ extern void _pd_api_sys_nextSourceDirCallback();
 //gfx
 extern void _pd_api_gfx_getDrawOffset(int* dx, int* dy);
 extern bool pd_gfx_in_update_callback; // defined in pd_api_gfx.cpp
+extern void _pd_api_gfx_restoreFramebufferAfterMenu();
+extern void _pd_api_gfx_saveFramebufferForMenu();
 
 //sys
 extern PDCallbackFunction* _pd_api_sys_DoUpdate;

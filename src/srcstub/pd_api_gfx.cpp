@@ -35,6 +35,10 @@ bool pd_gfx_in_update_callback = false; // set by gamestub around the update cal
 static bool pd_gfx_layer_active = false; // set when getFrame() called during update, not reset by clear()
 static bool pd_gfx_rows_pushed = false; // true if markUpdatedRows was called this frame
 
+// Saved copy of pd_gfx_framebuffer taken just before menu opens.
+static uint8_t pd_gfx_framebuffer_menu_save[LCD_ROWSIZE * LCD_ROWS];
+static bool    pd_gfx_framebuffer_menu_save_valid = false;
+
 struct LCDBitmap;
 
 struct LCDBitmap {
@@ -1586,6 +1590,27 @@ static bool _pd_api_gfx_beginLayerDraw(void)
 static void _pd_api_gfx_endLayerDraw(void)
 {
     _pd_api_gfx_CurrentGfxContext->DrawTarget = _pd_api_gfx_Playdate_Screen;
+}
+
+
+// Called just before menu opens — saves framebuffer so we can restore it on close.
+void _pd_api_gfx_saveFramebufferForMenu(void)
+{
+    memcpy(pd_gfx_framebuffer_menu_save, pd_gfx_framebuffer, sizeof(pd_gfx_framebuffer));
+    pd_gfx_framebuffer_menu_save_valid = pd_gfx_framebuffer_valid;
+}
+
+// Called just after menu closes — restores framebuffer data so the game
+// has correct content if it calls getFrame() again. Does NOT mark dirty
+// so flushFramebuffer won't overwrite the Tex snapshot this frame.
+void _pd_api_gfx_restoreFramebufferAfterMenu(void)
+{
+    if (!pd_gfx_framebuffer_menu_save_valid) return;
+    memcpy(pd_gfx_framebuffer, pd_gfx_framebuffer_menu_save, sizeof(pd_gfx_framebuffer));
+    pd_gfx_framebuffer_valid    = pd_gfx_framebuffer_menu_save_valid;
+    pd_gfx_framebuffer_written  = false;
+    pd_gfx_framebuffer_got_frame = false;
+    pd_gfx_rows_pushed           = false;
 }
 
 // Called by _pd_api_display() to ensure any getFrame() writes are visible
