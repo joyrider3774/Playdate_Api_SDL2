@@ -6,10 +6,23 @@
 #include <math.h>
 #include "gamestubcallbacks.h"
 #include "defines.h"
+#include "debug.h"
 #include "gamestub.h"
 #include "pd_menu.h"
 
+// Tilt stick axis inversion modes
+// "Normal" means report the raw stick value as-is.
+typedef enum {
+    kTiltInvert_XNormal_YNormal = 0, // raw values
+    kTiltInvert_XInvert_YNormal,     // X flipped
+    kTiltInvert_XNormal_YInvert,     // Y flipped
+    kTiltInvert_XInvert_YInvert,     // both flipped
+    kTiltInvert_COUNT
+} TiltInvertMode;
+static TiltInvertMode _pd_tilt_invert = kTiltInvert_XNormal_YNormal;
+
 CInput *_pd_api_sys_input = NULL;
+void _pd_api_sys_updateAccelerometer(void); // defined below
 PDCallbackFunction* _pd_api_sys_DoUpdate;
 void* _pd_api_sys_DoUpdateuserdata;
 
@@ -129,6 +142,9 @@ void _pd_api_sys_UpdateInput()
 	if (_pd_api_sys_input->Buttons.ButLT)
 		_CranckDocked = true;
 
+	// Update simulated accelerometer from the non-crank stick
+	_pd_api_sys_updateAccelerometer();
+
 	if (_pd_api_sys_input->Buttons.ButRT)
 		_CranckDocked = false;
 
@@ -144,6 +160,37 @@ void _pd_api_sys_UpdateInput()
 	if ((_pd_api_sys_input->Buttons.ButX || _pd_api_sys_input->Buttons.NextSource) && 
 		!(_pd_api_sys_input->PrevButtons.ButX || _pd_api_sys_input->PrevButtons.NextSource))
 		_pd_api_sys_nextSourceDirCallback();
+
+	// Y button acts as a modifier — actions fire on Y release while dpad was held.
+	// Y + Dpad Up:    swap crank/tilt joystick
+	// Y + Dpad Down:  cycle tilt axis inversion mode
+	// Y + Dpad Left:  (reserved)
+	// Y + Dpad Right: (reserved)
+	if (_pd_api_sys_input->Buttons.ButY)
+	{
+		if (_pd_api_sys_input->Buttons.ButDpadUp && !_pd_api_sys_input->PrevButtons.ButDpadUp)
+		{
+			// Swap which stick drives crank vs tilt
+			_pd_api_sys_input->CrankUseRightStick = !_pd_api_sys_input->CrankUseRightStick;
+			printfDebug(DebugInfo, "Crank stick: %s\n",
+				_pd_api_sys_input->CrankUseRightStick ? "RIGHT (tilt=LEFT)" : "LEFT (tilt=RIGHT)");
+		}
+		if (_pd_api_sys_input->Buttons.ButDpadDown && !_pd_api_sys_input->PrevButtons.ButDpadDown)
+		{
+			// Cycle tilt axis inversion mode
+			_pd_tilt_invert = (TiltInvertMode)(((int)_pd_tilt_invert + 1) % kTiltInvert_COUNT);
+			const char* names[] = {
+				"Tilt invert: X Normal  Y Normal",
+				"Tilt invert: X Invert  Y Normal",
+				"Tilt invert: X Normal  Y Invert",
+				"Tilt invert: X Invert  Y Invert"
+			};
+			printfDebug(DebugInfo, "%s\n", names[_pd_tilt_invert]);
+		}
+		// Y + Dpad Left:  reserved for future use
+		// Y + Dpad Right: reserved for future use
+	}
+
 	
 	if (_pd_api_sys_input->Buttons.ButStart &&
         !_pd_api_sys_input->PrevButtons.ButStart)
@@ -358,14 +405,132 @@ unsigned int pd_api_sys_getSecondsSinceEpoch(unsigned int *milliseconds)
     // Convert to epoch (seconds since Jan 1, 2000)
     return pd_api_sys_convertDateTimeToEpoch(&datetime);
 }
+// Simulated accelerometer state driven by the non-crank joystick.
+// Playdate coordinate system (held in portrait, USB at top):
+//   X: tilt left/right  — stick right → +X (right side of Playdate tilts down)
+//   Y: tilt forward/back — stick up (away from player) → +Y (top tilts down/away)
+//   Z: gravity component — 1.0 when flat face-up, decreases as device tilts
+//
+// Stick axes map as follows (matching physical intuition):
+//   Stick pushed RIGHT  → right side of Playdate tilts down  → accel X positive
+//   Stick pushed LEFT   → left side of Playdate tilts down   → accel X negative
+//   Stick pushed UP     → top of Playdate tilts away/down    → accel Y positive
+//   Stick pushed DOWN   → bottom of Playdate tilts down      → accel Y negative
+//
+// The stick range -32768..32767 maps to approx ±1g tilt on X and Y.
+// Z is computed as sqrt(1 - x² - y²) clamped to 0, giving the gravity
+// component perpendicular to the screen (1 = flat, 0 = fully on its side).
+static bool  _pd_accel_enabled      = false;
+static bool  _pd_accel_ready        = false; // true from the update cycle AFTER enable
+static float _pd_accel_x = 0.0f;
+static float _pd_accel_y = 0.0f;
+static float _pd_accel_z = 1.0f;
+
+
 void pd_api_sys_setPeripheralsEnabled(PDPeripherals mask)
 {
-
+    bool wasEnabled = _pd_accel_enabled;
+    _pd_accel_enabled = (mask & kAccelerometer) != 0;
+    // If just enabled, data not ready until next update cycle
+    if (_pd_accel_enabled && !wasEnabled)
+        _pd_accel_ready = false;
+    // If disabled, reset ready flag
+    if (!_pd_accel_enabled)
+        _pd_accel_ready = false;
 }
 
 void pd_api_sys_getAccelerometer(float* outx, float* outy, float* outz)
 {
+    // Data not available until the update cycle after setPeripheralsEnabled
+    if (!_pd_accel_ready)
+    {
+        if (outx) *outx = 0.0f;
+        if (outy) *outy = 0.0f;
+        if (outz) *outz = 0.0f;
+        return;
+    }
+    if (outx) *outx = _pd_accel_x;
+    if (outy) *outy = _pd_accel_y;
+    if (outz) *outz = _pd_accel_z;
+}
 
+// Called from the input update path each frame to refresh accelerometer
+// values from whichever stick is NOT currently driving the crank.
+void _pd_api_sys_updateAccelerometer(void)
+{
+    if (!_pd_accel_enabled) return;
+
+    // Pick the stick that is NOT used for crank
+    int sx = _pd_api_sys_input->CrankUseRightStick
+           ? _pd_api_sys_input->LeftStickX
+           : _pd_api_sys_input->RightStickX;
+    int sy = _pd_api_sys_input->CrankUseRightStick
+           ? _pd_api_sys_input->LeftStickY
+           : _pd_api_sys_input->RightStickY;
+
+    // Tilt deadzone — prevents drift when stick rests near centre.
+    // Smaller than crank deadzone since we snap near zero anyway.
+    const int kTiltDeadZone = 3000;
+
+    float fx, fy;
+
+    if (abs(sx) <= kTiltDeadZone && abs(sy) <= kTiltDeadZone)
+    {
+        // Stick centred — return flat (0, 0, 1)
+        fx = 0.0f;
+        fy = 0.0f;
+    }
+    else
+    {
+        // Map raw axis -32768..32767 → -1.0..1.0.
+        // Stick up → Y=+1, stick down → Y=-1:
+        //   stick right (90°):  X=+1, Y= 0, Z=0
+        //   stick up:           X= 0, Y=+1, Z=0
+        //   stick left:         X=-1, Y= 0, Z=0
+        //   stick down:         X= 0, Y=-1, Z=0
+        fx = (float)sx / 32767.0f;
+        // SDL stick Y: push up = positive raw value on this platform.
+        fy = (float)sy / 32767.0f;
+
+        // Apply inversion mode (cycled with X button)
+        if (_pd_tilt_invert == kTiltInvert_XInvert_YNormal || _pd_tilt_invert == kTiltInvert_XInvert_YInvert)
+            fx = -fx;
+        if (_pd_tilt_invert == kTiltInvert_XNormal_YInvert || _pd_tilt_invert == kTiltInvert_XInvert_YInvert)
+            fy = -fy;
+
+        // Clamp to ±1
+        if (fx >  1.0f) fx =  1.0f;
+        if (fx < -1.0f) fx = -1.0f;
+        if (fy >  1.0f) fy =  1.0f;
+        if (fy < -1.0f) fy = -1.0f;
+
+        // Snap near-zero values to exactly 0 and near-unity to exactly ±1.
+        // This ensures cardinal angles give clean values matching spec:
+        //   stick fully right → X=+1.0 Y=0.0 Z=0.0 (not X=0.9997 Y=0.0023)
+        const float kSnapZero  = 0.08f;
+        const float kSnapUnity = 0.97f;
+        if (fabsf(fx) < kSnapZero)  fx = 0.0f;
+        if (fabsf(fy) < kSnapZero)  fy = 0.0f;
+        if (fx >  kSnapUnity)       fx = 1.0f;
+        if (fx < -kSnapUnity)       fx = -1.0f;
+        if (fy >  kSnapUnity)       fy = 1.0f;
+        if (fy < -kSnapUnity)       fy = -1.0f;
+    }
+
+    _pd_accel_x = fx;
+    _pd_accel_y = fy;
+
+    // Z is the remaining gravity component: 1g when flat, 0 when fully on side.
+    // Total vector magnitude is always ~1: sqrt(x²+y²+z²) = 1.
+    float z2 = 1.0f - fx*fx - fy*fy;
+    _pd_accel_z = z2 > 0.0f ? sqrtf(z2) : 0.0f;
+
+    // Snap Z near zero and near unity as well
+    if (_pd_accel_z < 0.08f)  _pd_accel_z = 0.0f;
+    if (_pd_accel_z > 0.97f)  _pd_accel_z = 1.0f;
+
+    // Mark data as ready — available from this update cycle onward
+    _pd_accel_ready = true;
 }
 
 

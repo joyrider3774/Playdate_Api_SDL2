@@ -144,8 +144,6 @@ void CInput_HandleJoystickButtonEvent(CInput *cinput, int Button, bool Value)
 		#endif
 		case SDL_CONTROLLER_BUTTON_Y:
 			cinput->Buttons.ButY = Value;
-			if (!Value) // on release — toggle crank stick
-				cinput->CrankUseRightStick = !cinput->CrankUseRightStick;
 			break;
 		case SDL_CONTROLLER_BUTTON_X:
 			cinput->Buttons.ButX = Value;
