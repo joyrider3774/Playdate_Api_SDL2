@@ -16,7 +16,7 @@ CInput *CInput_Create()
     tmp->LeftStickY = 0;
     tmp->RightStickX = 0;
     tmp->RightStickY = 0;
-    tmp->CrankUseRightStick = false;
+    tmp->CrankUseRightStick = true;
     CInput_ResetButtons(tmp);
     for (int i=0; i < SDL_NumJoysticks(); i++)
     {

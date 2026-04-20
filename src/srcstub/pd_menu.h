@@ -10,7 +10,7 @@ extern "C" {
 #endif
 
 // Maximum menu items (matches real Playdate hardware limit)
-#define PD_MENU_MAX_ITEMS 3
+#define PD_MENU_MAX_ITEMS 4
 #define PD_MENU_MAX_TITLE 64
 #define PD_MENU_MAX_OPTIONS 16
 #define PD_MENU_MAX_OPTION_LEN 32
@@ -67,5 +67,8 @@ void        pd_menu_setImage(LCDBitmap* bitmap, int xOffset);
 #ifdef __cplusplus
 }
 #endif
+
+// C++ linkage — called only from C++ translation units
+LCDBitmap* pd_menu_get_bitmap(void);
 
 #endif // PD_MENU_H

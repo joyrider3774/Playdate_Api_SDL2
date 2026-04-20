@@ -9,17 +9,11 @@
 #include "debug.h"
 #include "gamestub.h"
 #include "pd_menu.h"
+#include "tilt_settings.h"
 
 // Tilt stick axis inversion modes
 // "Normal" means report the raw stick value as-is.
-typedef enum {
-    kTiltInvert_XNormal_YNormal = 0, // raw values
-    kTiltInvert_XInvert_YNormal,     // X flipped
-    kTiltInvert_XNormal_YInvert,     // Y flipped
-    kTiltInvert_XInvert_YInvert,     // both flipped
-    kTiltInvert_COUNT
-} TiltInvertMode;
-static TiltInvertMode _pd_tilt_invert = kTiltInvert_XNormal_YNormal;
+TiltInvertMode _pd_tilt_invert = kTiltInvert_XNormal_YNormal;
 
 CInput *_pd_api_sys_input = NULL;
 void _pd_api_sys_updateAccelerometer(void); // defined below
@@ -43,6 +37,15 @@ bool _pd_api_sys_skipPrevButtonUpdate = false;
 uint32_t pd_api_sys_convertDateTimeToEpoch(struct PDDateTime* datetime);
 void pd_api_sys_fireButtonCallbacks(void);
 
+static int _pd_pending_crankRight = -1; // -1 = not set, 0/1 applied on first input create
+
+void _pd_api_sys_setPendingCrankStick(int useRight)
+{
+    if (_pd_api_sys_input)
+        _pd_api_sys_input->CrankUseRightStick = (useRight != 0);
+    else
+        _pd_pending_crankRight = useRight;
+}
 
 void _pd_api_sys_pauseReset(void)
 {
@@ -65,6 +68,11 @@ void _pd_api_sys_UpdateInput()
 	if(_pd_api_sys_input == NULL)
 	{
 		_pd_api_sys_input = CInput_Create();
+		if (_pd_pending_crankRight >= 0)
+		{
+			_pd_api_sys_input->CrankUseRightStick = (_pd_pending_crankRight != 0);
+			_pd_pending_crankRight = -1;
+		}
 	}
 
 	// Don't update the main input while the menu is open — the menu uses its

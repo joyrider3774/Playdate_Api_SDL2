@@ -2,6 +2,8 @@
 #define gamestubcallbacks_h
 #include <SDL.h>
 #include "pd_api.h"
+#include "tilt_settings.h"
+#include "CInput.h"
 
 typedef struct LCDBitmap LCDBitmap;
 typedef struct CWItemInfo CWItemInfo;
@@ -91,5 +93,12 @@ extern playdate_scoreboards* pd_api_scoreboards_Create_playdate_scoreboards();
 extern playdate_json* pd_api_json_Create_playdate_json();
 extern playdate_sound_source* pd_api_sound_Create_playdate_sound_source();
 extern bool _pd_api_sys_skipPrevButtonUpdate;
+
+// Tilt/crank settings (pd_api_sys.cpp) — TiltInvertMode defined in gamestub.h
+extern TiltInvertMode _pd_tilt_invert;
+extern struct CInput* _pd_api_sys_input;
+extern void _pd_api_sys_setPendingCrankStick(int useRight);
+extern void _pd_save_source_dir();
+extern LCDBitmap* pd_menu_get_bitmap(void);
 
 #endif

@@ -15,6 +15,7 @@
 #include <chrono>
 #include <string.h>
 #include "pd_menu.h"
+#include "tilt_settings.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -118,6 +119,11 @@ void _pd_save_source_dir()
 	if (File)
 	{
 		Api->file->write(File, &_pd_current_source_dir, sizeof(_pd_current_source_dir));
+		// Save tilt/crank settings
+		int tiltInvert = (int)_pd_tilt_invert;
+		Api->file->write(File, &tiltInvert, sizeof(tiltInvert));
+		int crankRight = (_pd_api_sys_input && _pd_api_sys_input->CrankUseRightStick) ? 1 : 0;
+		Api->file->write(File, &crankRight, sizeof(crankRight));
 		Api->file->close(File);
 	}
 }
@@ -138,6 +144,14 @@ void _pd_load_source_dir()
 	if (File)
 	{
 		Api->file->read(File, &_pd_current_source_dir, sizeof(_pd_current_source_dir));
+		// Load tilt/crank settings (may not be present in older files — ignore read errors)
+		int tiltInvert = 0;
+		if (Api->file->read(File, &tiltInvert, sizeof(tiltInvert)) == sizeof(tiltInvert))
+			if (tiltInvert >= 0 && tiltInvert < kTiltInvert_COUNT)
+				_pd_tilt_invert = (TiltInvertMode)tiltInvert;
+		int crankRight = 0;
+		if (Api->file->read(File, &crankRight, sizeof(crankRight)) == sizeof(crankRight))
+			_pd_api_sys_setPendingCrankStick(crankRight);
 		Api->file->close(File);
 	}
 	else
@@ -371,6 +385,33 @@ void _pd_api_display()
 	}
 	//end res hack
 	SDL_RenderCopy(Renderer, _pd_api_TexScreen, NULL, &Dest);
+
+	// Blit menu bitmap into logical coordinate space.
+	// dst is expressed in the same logical units as SDL_RenderSetLogicalSize,
+	// so it automatically handles all scaling modes, letterboxing and window resize.
+	if (pd_menu_isOpen)
+	{
+		LCDBitmap* menuBmp = pd_menu_get_bitmap();
+		if (menuBmp)
+		{
+			SDL_Surface* menuSurf = _pd_api_gfx_GetSDLTextureFromBitmap(menuBmp);
+			if (menuSurf)
+			{
+				SDL_Texture* menuTex = SDL_CreateTextureFromSurface(Renderer, menuSurf);
+				if (menuTex)
+				{
+					// Query current logical size so dst is correct for all SCALINGMODE values
+					int logW, logH;
+					SDL_RenderGetLogicalSize(Renderer, &logW, &logH);
+					if (logW == 0 || logH == 0) { logW = LCD_COLUMNS; logH = LCD_ROWS; }
+					SDL_Rect dst = { logW/2, 0, logW/2, logH };
+					SDL_RenderCopy(Renderer, menuTex, NULL, &dst);
+					SDL_DestroyTexture(menuTex);
+				}
+			}
+		}
+	}
+
 	SDL_RenderPresent(Renderer);
    	//reset res hack
 	SDL_RenderSetLogicalSize(Renderer, LCD_COLUMNS, LCD_ROWS);

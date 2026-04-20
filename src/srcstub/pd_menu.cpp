@@ -10,6 +10,7 @@
 #include "debug.h"
 #include <SDL_mixer.h>
 #include "CInput.h"
+#include "tilt_settings.h"
 
 extern void pd_api_sound_resumeAllFilePlayers(void);
 extern void pd_api_sound_pauseAllFilePlayers(void);
@@ -28,6 +29,19 @@ static int          _menuImageXOff = 0;
 
 // Tracks whether the menu button was held last frame (for edge detection)
 static bool         _prevMenuButton = false;
+
+// Dedicated bitmap for menu rendering — decoupled from game Tex
+static LCDBitmap*   _menuBitmap    = NULL;
+
+// Settings submenu state
+static bool _settingsOpen     = false;
+static int  _settingsSelected = 0;
+#define SETTINGS_ITEM_COUNT 3
+static const char* _settingsLabels[SETTINGS_ITEM_COUNT] = {
+    "Crank Stick",
+    "Tilt X Axis",
+    "Tilt Y Axis"
+};
 
 // Forward-declared here; defined in pd_api_sys.cpp
 extern struct CInput* _pd_api_sys_input;
@@ -69,6 +83,11 @@ void pd_menu_open(void)
     pd_api_sound_pauseAllFilePlayers(); // freeze FilePlayer wall-clock timers
     pd_menu_isOpen = true;
     _selectedIndex = 0;
+    _settingsOpen = false;
+    _settingsSelected = 0;
+    // Allocate menu bitmap (half screen wide, full height)
+    if (_menuBitmap) { Api->graphics->freeBitmap(_menuBitmap); }
+    _menuBitmap = Api->graphics->newBitmap(LCD_COLUMNS/2, LCD_ROWS, kColorWhite);
     // Create a fresh input instance for menu navigation, isolated from game input
     if (_pd_menu_input)
         CInput_Destroy(_pd_menu_input);
@@ -99,6 +118,8 @@ void pd_menu_close(void)
         CInput_Destroy(_pd_menu_input);
         _pd_menu_input = NULL;
     }
+    // Free menu bitmap
+    if (_menuBitmap) { Api->graphics->freeBitmap(_menuBitmap); _menuBitmap = NULL; }
 
     // Reset the main game input state after menu close.
     // Zero Buttons, but then restore any direction keys that are still
@@ -208,17 +229,73 @@ void pd_menu_update(void)
     bool start = _pd_menu_input->Buttons.ButStart && !_pd_menu_input->PrevButtons.ButStart;
     bool left  = (_pd_menu_input->Buttons.ButLeft  || _pd_menu_input->Buttons.ButDpadLeft)  && !(_pd_menu_input->PrevButtons.ButLeft  || _pd_menu_input->PrevButtons.ButDpadLeft);
     bool right = (_pd_menu_input->Buttons.ButRight || _pd_menu_input->Buttons.ButDpadRight) && !(_pd_menu_input->PrevButtons.ButRight || _pd_menu_input->PrevButtons.ButDpadRight);
-    
+
+    // --- Settings submenu ---
+    if (_settingsOpen)
+    {
+        if (up   && _settingsSelected > 0)               _settingsSelected--;
+        if (down && _settingsSelected < SETTINGS_ITEM_COUNT-1) _settingsSelected++;
+
+        if (left || right || a)
+        {
+            if (_settingsSelected == 0 && _pd_api_sys_input)
+            {
+                // Toggle crank stick
+                _pd_api_sys_input->CrankUseRightStick = !_pd_api_sys_input->CrankUseRightStick;
+                _pd_save_source_dir();
+            }
+            else if (_settingsSelected == 1)
+            {
+                // Cycle tilt X: Normal/Invert
+                bool xInv = (_pd_tilt_invert == kTiltInvert_XInvert_YNormal ||
+                             _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+                xInv = !xInv;
+                bool yInv = (_pd_tilt_invert == kTiltInvert_XNormal_YInvert ||
+                             _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+                _pd_tilt_invert = (TiltInvertMode)((xInv ? 1 : 0) | (yInv ? 2 : 0));
+                _pd_save_source_dir();
+            }
+            else if (_settingsSelected == 2)
+            {
+                // Cycle tilt Y: Normal/Invert
+                bool xInv = (_pd_tilt_invert == kTiltInvert_XInvert_YNormal ||
+                             _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+                bool yInv = (_pd_tilt_invert == kTiltInvert_XNormal_YInvert ||
+                             _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+                yInv = !yInv;
+                _pd_tilt_invert = (TiltInvertMode)((xInv ? 1 : 0) | (yInv ? 2 : 0));
+                _pd_save_source_dir();
+            }
+        }
+
+        if (back)
+        {
+            _settingsOpen = false;
+            return;
+        }
+
+        // System keys
+        if (_pd_menu_input->Buttons.ButQuit) _pd_api_sys_quitCallBack();
+        if (_pd_menu_input->Buttons.ButFullscreen && !_pd_menu_input->PrevButtons.ButFullscreen)
+            _pd_api_sys_fullScreenCallBack();
+        if (_pd_menu_input->Buttons.RenderReset) _pd_api_sys_renderResetCallBack();
+        return;
+    }
+
     int count = activeItemCount();
+    // +1 for the always-present Settings item
+    int totalCount = count + 1;
+    int settingsIdx = count; // Settings is always last
 
     if (up && _selectedIndex > 0)
         _selectedIndex--;
 
-    if (down && _selectedIndex < count - 1)
+    if (down && _selectedIndex < totalCount - 1)
         _selectedIndex++;
     
-    if ((left || right) && count > 0)
+    if ((left || right) && totalCount > 0)
     {
+        if (_selectedIndex == settingsIdx) return; // left/right does nothing on Settings
         PDMenuItem* item = nthActiveItem(_selectedIndex);
         if (item)
         {            
@@ -248,8 +325,15 @@ void pd_menu_update(void)
         }
     }
     
-    if (a && count > 0)
+    if (a && totalCount > 0)
     {
+        if (_selectedIndex == settingsIdx)
+        {
+            // Open settings submenu
+            _settingsOpen = true;
+            _settingsSelected = 0;
+            return;
+        }
         PDMenuItem* item = nthActiveItem(_selectedIndex);
         if (item)
         {
@@ -306,27 +390,21 @@ void pd_menu_render(void)
     if (!pd_menu_isOpen)
         return;
 
-    // Push a clean graphics context; popContext at the end restores everything
-    Api->graphics->pushContext(NULL);
+    if (!_menuBitmap) return;
+
+    // Draw into the dedicated menu bitmap (LCD_COLUMNS/2 x LCD_ROWS).
+    // All coordinates are 0-based within this bitmap.
+    const int panelX = 0;
+    const int panelW = LCD_COLUMNS / 2;
+    const int panelH = LCD_ROWS;
+    const int panelY = 0;
+
+
+    Api->graphics->pushContext(_menuBitmap);
     Api->graphics->setFont(NULL);
     Api->graphics->setDrawMode(kDrawModeCopy);
 
-    // Right-half white panel
-    
-    const int panelX = LCD_COLUMNS / 2;
-    const int panelW = LCD_COLUMNS / 2;
-    #if SCALINGMODE == 0
-    const int panelH = LCD_ROWS <= SCREENRESY ? LCD_ROWS: LCD_ROWS - (LCD_ROWS - SCREENRESY);
-    const int panelY = LCD_ROWS <= SCREENRESY ? 0 : (LCD_ROWS - SCREENRESY) / 2;
-    #else
-    const int panelH = LCD_ROWS;
-    const int panelY = 0;
-    #endif 
-
-    // --- background: draw game image on left half if set, white panel on right ---
-    if (_menuImage)
-        Api->graphics->drawBitmap(_menuImage, _menuImageXOff, 0, kBitmapUnflipped);
-
+    // Fill background white
     Api->graphics->fillRect(panelX, panelY, panelW, panelH, kColorWhite);
     Api->graphics->drawRect(panelX, panelY, panelW, panelH, kColorBlack);
 
@@ -335,89 +413,104 @@ void pd_menu_render(void)
     Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + 8, panelY + 4);
 
     // Separator line under title
-    Api->graphics->drawLine(panelX + 2, panelY + 22, LCD_COLUMNS - 2, panelY + 22, 1, kColorBlack);
+    Api->graphics->drawLine(panelX + 2, panelY + 22, panelW - 2, panelY + 22, 1, kColorBlack);
 
     // --- items ---
     const int itemH    = 40;
     const int startY   = 26;
     const int paddingX = 8;
 
-    int activeIdx = 0;
-    for (int i = 0; i < PD_MENU_MAX_ITEMS; i++)
-    {
-        if (!_items[i].active)
-            continue;
-
-        PDMenuItem* item = &_items[i];
-        bool selected = (activeIdx == _selectedIndex);
-        int itemY = startY + activeIdx * itemH;
-
-        // Build display title
-        char displayTitle[PD_MENU_MAX_TITLE + 4];
-        snprintf(displayTitle, sizeof(displayTitle), "%s", item->title);
-
-        // For checkmark: append [X] or [ ]
-        if (item->type == PD_MENUITEM_CHECKMARK)
-        {
-            char combined[PD_MENU_MAX_TITLE + 8];
-            snprintf(combined, sizeof(combined), "%s [%c]", item->title, item->value ? 'X' : ' ');
-            strncpy(displayTitle, combined, sizeof(displayTitle) - 1);
-        }
-
-        if (selected)
-        {
-            // Fill selection bar black
+    // --- helper lambda for drawing one item row ---
+    auto drawItem = [&](int rowIdx, bool selected, const char* title, const char* sub) {
+        int itemY = startY + rowIdx * itemH;
+        if (selected) {
             Api->graphics->fillRect(panelX + 2, panelY + itemY, panelW - 4, itemH - 2, kColorBlack);
-
-            // Temporarily swap black->white so TTF renders font glyphs in white
             SDL_Color savedBlack = pd_api_gfx_color_black;
             pd_api_gfx_color_black = pd_api_gfx_color_white;
-
-            if (item->type == PD_MENUITEM_OPTIONS && item->optionCount > 0)
-            {
-                Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 2);
-                const char* optStr = item->options[item->value];
-                char optDisplay[PD_MENU_MAX_OPTION_LEN + 4];
-                snprintf(optDisplay, sizeof(optDisplay), "  > %s", optStr);
-                Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 18);
+            if (sub) {
+                Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + paddingX, panelY + itemY + 2);
+                char optDisplay[64]; snprintf(optDisplay, sizeof(optDisplay), "  > %s", sub);
+                Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding, panelX + paddingX, panelY + itemY + 18);
+            } else {
+                Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + paddingX, panelY + itemY + 10);
             }
-            else
-            {
-                Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 10);
-            }
-
-            // Restore
             pd_api_gfx_color_black = savedBlack;
+        } else {
+            if (sub) {
+                Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + paddingX, panelY + itemY + 2);
+                char optDisplay[64]; snprintf(optDisplay, sizeof(optDisplay), "  > %s", sub);
+                Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding, panelX + paddingX, panelY + itemY + 18);
+            } else {
+                Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + paddingX, panelY + itemY + 10);
+            }
         }
-        else
+    };
+
+    if (_settingsOpen)
+    {
+        // --- Settings submenu ---
+        bool xInv = (_pd_tilt_invert == kTiltInvert_XInvert_YNormal || _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+        bool yInv = (_pd_tilt_invert == kTiltInvert_XNormal_YInvert || _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+        const char* crankStr = (_pd_api_sys_input && _pd_api_sys_input->CrankUseRightStick) ? "Right" : "Left";
+        const char* xStr = xInv ? "Invert" : "Normal";
+        const char* yStr = yInv ? "Invert" : "Normal";
+        const char* vals[3] = { crankStr, xStr, yStr };
+
+        for (int i = 0; i < SETTINGS_ITEM_COUNT; i++)
+            drawItem(i, i == _settingsSelected, _settingsLabels[i], vals[i]);
+    }
+    else
+    {
+        // --- Normal items ---
+        int activeIdx = 0;
+        for (int i = 0; i < PD_MENU_MAX_ITEMS; i++)
         {
-            // Unselected: plain black text on white background
-            if (item->type == PD_MENUITEM_OPTIONS && item->optionCount > 0)
-            {
-                Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 2);
-                const char* optStr = item->options[item->value];
-                char optDisplay[PD_MENU_MAX_OPTION_LEN + 4];
-                snprintf(optDisplay, sizeof(optDisplay), "  > %s", optStr);
-                Api->graphics->drawText(optDisplay, strlen(optDisplay), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 18);
+            if (!_items[i].active) continue;
+            PDMenuItem* item = &_items[i];
+            bool selected = (activeIdx == _selectedIndex);
+
+            char displayTitle[PD_MENU_MAX_TITLE + 4];
+            snprintf(displayTitle, sizeof(displayTitle), "%s", item->title);
+            if (item->type == PD_MENUITEM_CHECKMARK) {
+                char combined[PD_MENU_MAX_TITLE + 8];
+                snprintf(combined, sizeof(combined), "%s [%c]", item->title, item->value ? 'X' : ' ');
+                strncpy(displayTitle, combined, sizeof(displayTitle) - 1);
             }
-            else
-            {
-                Api->graphics->drawText(displayTitle, strlen(displayTitle), kASCIIEncoding,
-                                        panelX + paddingX, panelY + itemY + 10);
+
+            const char* sub = NULL;
+            char subBuf[PD_MENU_MAX_OPTION_LEN + 4];
+            if (item->type == PD_MENUITEM_OPTIONS && item->optionCount > 0) {
+                snprintf(subBuf, sizeof(subBuf), "%s", item->options[item->value]);
+                sub = subBuf;
             }
+
+            drawItem(activeIdx, selected, displayTitle, sub);
+            activeIdx++;
         }
 
-        activeIdx++;
+        // --- Settings item (always last) ---
+        int settingsRow = activeItemCount();
+        bool settingsSelected = (_selectedIndex == settingsRow);
+        drawItem(settingsRow, settingsSelected, "Settings", NULL);
     }
 
+    // --- status line + separator above hint ---
+    bool xInv = (_pd_tilt_invert == kTiltInvert_XInvert_YNormal || _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+    bool yInv = (_pd_tilt_invert == kTiltInvert_XNormal_YInvert || _pd_tilt_invert == kTiltInvert_XInvert_YInvert);
+    const char* crankStr = (_pd_api_sys_input && _pd_api_sys_input->CrankUseRightStick) ? "R" : "L";
+    char status[48];
+    snprintf(status, sizeof(status), "Crank:%s X:%s Y:%s",
+        crankStr,
+        xInv ? "Inv" : "Nrm",
+        yInv ? "Inv" : "Nrm");
+    int statusY = panelY + panelH - 42;
+    Api->graphics->drawLine(panelX + 2, panelY + panelH - 45, LCD_COLUMNS - 2, panelY + panelH - 45, 1, kColorBlack);
+    Api->graphics->drawText(status, strlen(status), kASCIIEncoding, panelX + 4, statusY);
+    Api->graphics->drawLine(panelX + 2, panelY + panelH - 22, panelW - 2, panelY + panelH - 22, 1, kColorBlack);
+
     // --- hint at bottom ---
-    Api->graphics->drawText("A:select  B:close", strlen("A:select  B:close"),
-                            kASCIIEncoding, panelX + 4, panelY + panelH - 18);
+    const char* hint = _settingsOpen ? "A:toggle  B:back" : "A:select  B:close";
+    Api->graphics->drawText(hint, strlen(hint), kASCIIEncoding, panelX + 4, panelY + panelH - 18);
 
     // Restore full graphics context (font, draw mode, clip rect, etc.)
     Api->graphics->popContext();
@@ -539,4 +632,9 @@ void pd_menu_setImage(LCDBitmap* bitmap, int xOffset)
 {
     _menuImage     = bitmap;
     _menuImageXOff = xOffset;
+}
+
+LCDBitmap* pd_menu_get_bitmap(void)
+{
+    return _menuBitmap;
 }
