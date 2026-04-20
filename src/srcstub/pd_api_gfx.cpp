@@ -1767,6 +1767,11 @@ void pd_api_gfx_setScreenClipRect(int x, int y, int width, int height)
 // 1.1.1
 void pd_api_gfx_fillPolygon(int nPoints, int* coords, LCDColor color, LCDPolygonFillRule fillrule)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_fillPolygon(nPoints, coords, color, fillrule);
+        _pd_api_gfx_endLayerDraw();
+    }
     LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     LCDBitmap *bitmap = NULL;
 	LCDBitmap *pattern = NULL;
@@ -2624,6 +2629,11 @@ void _pd_api_gfx_drawBitmapAll(LCDBitmap* bitmap, int x, int y, float xscale, fl
 
 void pd_api_gfx_drawRotatedBitmap(LCDBitmap* bitmap, int x, int y, float rotation, float centerx, float centery, float xscale, float yscale)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawRotatedBitmap(bitmap, x, y, rotation, centerx, centery, xscale, yscale);
+        _pd_api_gfx_endLayerDraw();
+    }
     if (bitmap == NULL)
         return;
     
@@ -2646,6 +2656,11 @@ void pd_api_gfx_drawBitmap(LCDBitmap* bitmap, int x, int y, LCDBitmapFlip flip)
 
 void pd_api_gfx_tileBitmap(LCDBitmap* bitmap, int x, int y, int width, int height, LCDBitmapFlip flip)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_tileBitmap(bitmap, x, y, width, height, flip);
+        _pd_api_gfx_endLayerDraw();
+    }
     const LCDBitmapDrawMode oldDrawMode = _pd_api_gfx_CurrentGfxContext->BitmapDrawMode;
     _pd_api_gfx_CurrentGfxContext->BitmapDrawMode = kDrawModeCopy;
 
@@ -2666,6 +2681,11 @@ void pd_api_gfx_tileBitmap(LCDBitmap* bitmap, int x, int y, int width, int heigh
 
 void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, float yscale)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawScaledBitmap(bitmap, x, y, xscale, yscale);
+        _pd_api_gfx_endLayerDraw();
+    }
     if (bitmap == NULL)
         return;
 
@@ -2676,6 +2696,11 @@ void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, 
 
 void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor color)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawLine(x1, y1, x2, y2, linewidth, color);
+        _pd_api_gfx_endLayerDraw();
+    }
 	if(linewidth < 1)
 		linewidth = 1;
 
@@ -2818,6 +2843,11 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 
 void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCDColor color)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_fillTriangle(x1, y1, x2, y2, x3, y3, color);
+        _pd_api_gfx_endLayerDraw();
+    }
     SDL_Point points[4];
    
     points[0].x = x1;
@@ -2974,6 +3004,12 @@ void pd_api_gfx_fillTriangle(int x1, int y1, int x2, int y2, int x3, int y3, LCD
 
 void pd_api_gfx_drawRect(int x, int y, int width, int height, LCDColor color)
 {
+    // Draw to API layer first (same pattern as fillRect)
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawRect(x, y, width, height, color);
+        _pd_api_gfx_endLayerDraw();
+    }
     LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
     //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
     LCDBitmap *bitmap = NULL;
@@ -3214,6 +3250,11 @@ void pd_api_gfx_fillRect(int x, int y, int width, int height, LCDColor color)
 
 void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, float startAngle, float endAngle, LCDColor color) // stroked inside the rect
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawEllipse(x, y, width, height, lineWidth, startAngle, endAngle, color);
+        _pd_api_gfx_endLayerDraw();
+    }
 	if(width <= 0 || height <= 0)
 		return;
     LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
@@ -3327,6 +3368,11 @@ void pd_api_gfx_drawEllipse(int x, int y, int width, int height, int lineWidth, 
 
 void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngle, float endAngle, LCDColor color)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_fillEllipse(x, y, width, height, startAngle, endAngle, color);
+        _pd_api_gfx_endLayerDraw();
+    }
 	if(width <= 0 || height <= 0)
 		return;
     LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
@@ -5144,6 +5190,11 @@ void pd_api_gfx_getBitmapTableInfo(LCDBitmapTable* table, int* count, int* width
 // 2.6
 void pd_api_gfx_drawTextInRect(const void* text, size_t len, PDStringEncoding encoding, int x, int y, int width, int height, PDTextWrappingMode wrap, PDTextAlignment align)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawTextInRect(text, len, encoding, x, y, width, height, wrap, align);
+        _pd_api_gfx_endLayerDraw();
+    }
     if (!text || len == 0 || width <= 0 || height <= 0)
         return;
 
@@ -5468,6 +5519,11 @@ int pd_api_gfx_getTextHeightForMaxWidth(LCDFont* font, const void* text, size_t 
 
 void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, int lineWidth, LCDColor color)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_drawRoundRect(x, y, width, height, radius, lineWidth, color);
+        _pd_api_gfx_endLayerDraw();
+    }
 	if (lineWidth <= 0)
 		lineWidth = 1;	
     LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
@@ -5587,6 +5643,11 @@ void pd_api_gfx_drawRoundRect(int x, int y, int width, int height, int radius, i
 
 void pd_api_gfx_fillRoundRect(int x, int y, int width, int height, int radius, LCDColor color)
 {
+    if (_pd_api_gfx_beginLayerDraw())
+    {
+        pd_api_gfx_fillRoundRect(x, y, width, height, radius, color);
+        _pd_api_gfx_endLayerDraw();
+    }
 	if (radius < 1)
 		radius = 1;
 	LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
