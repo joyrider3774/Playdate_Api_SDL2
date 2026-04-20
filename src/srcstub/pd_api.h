@@ -20,7 +20,7 @@
 #include "pd_api/pd_api_sprite.h"
 #include "pd_api/pd_api_sound.h"
 #include "pd_api/pd_api_display.h"
-//#include "pd_api/pd_api_scoreboards.h"
+#include "pd_api/pd_api_scoreboards.h"
 //#include "pd_api/pd_api_network.h"
 
 typedef struct PlaydateAPI PlaydateAPI;
