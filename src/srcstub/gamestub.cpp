@@ -91,6 +91,7 @@ void _pd_load_source_colors()
 
 void _pd_reset()
 {
+	pd_menu_close();
 	eventHandler(Api, kEventTerminate, 0);
 	//erase remaining sprites in memory
     _pd_api_sprite_cleanup_sprites(false);
