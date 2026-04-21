@@ -648,9 +648,22 @@ float pd_api_sys_getBatteryVoltage(void)
 int32_t pd_api_sys_getTimezoneOffset(void)
 {
     time_t now = time(NULL);
-    struct tm* loc = localtime(&now);
-    // _timezone is seconds west of UTC (negative for east), DST adds 3600 when active
-    return (int32_t)(- _timezone + (loc->tm_isdst > 0 ? 3600 : 0));
+
+    // Get local and UTC broken-down time
+    struct tm local_tm = *localtime(&now);
+    struct tm gmt_tm   = *gmtime(&now);
+
+    // Compute difference in seconds
+    int32_t offset = 
+        (local_tm.tm_hour - gmt_tm.tm_hour) * 3600 +
+        (local_tm.tm_min  - gmt_tm.tm_min)  * 60 +
+        (local_tm.tm_sec  - gmt_tm.tm_sec);
+
+    // Correct for day wrap (crossing midnight)
+    if (offset > 12*3600)   offset -= 24*3600;
+    if (offset < -12*3600)  offset += 24*3600;
+
+    return offset;  
 }
 
 int pd_api_sys_shouldDisplay24HourTime(void)
