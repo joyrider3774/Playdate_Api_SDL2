@@ -33,6 +33,15 @@ typedef struct playdate_sound_lfo playdate_sound_lfo;
 typedef struct playdate_sound_envelope playdate_sound_envelope;
 typedef struct playdate_sound_synth playdate_sound_synth;
 
+typedef enum {
+    kFPSOff = 0, kFPSTopLeft, kFPSTopMiddle, kFPSTopRight,
+    kFPSBottomLeft, kFPSBottomMiddle, kFPSBottomRight, kFPS_COUNT
+} FPSPosition;
+extern FPSPosition _pd_menu_fps_position;
+extern bool  _pd_menu_fps_unlocked;
+extern float _pd_menu_fps_saved;
+extern bool  _pd_display_internal_call;
+
 extern void _pd_api_sys_fullScreenCallBack();
 extern void _pd_api_sys_renderResetCallBack();
 extern void _pd_api_sys_quitCallBack();

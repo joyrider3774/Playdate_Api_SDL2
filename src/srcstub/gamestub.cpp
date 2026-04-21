@@ -127,6 +127,10 @@ void _pd_save_source_dir()
 		Api->file->write(File, &crankRight, sizeof(crankRight));
 		int crankInvert = (int)_pd_crank_invert;
 		Api->file->write(File, &crankInvert, sizeof(crankInvert));
+		int fpsPos = (int)_pd_menu_fps_position;
+		Api->file->write(File, &fpsPos, sizeof(fpsPos));
+		int fpsUnlocked = _pd_menu_fps_unlocked ? 1 : 0;
+		Api->file->write(File, &fpsUnlocked, sizeof(fpsUnlocked));
 		Api->file->close(File);
 	}
 }
@@ -159,6 +163,19 @@ void _pd_load_source_dir()
 		if (Api->file->read(File, &crankInvert, sizeof(crankInvert)) == sizeof(crankInvert))
 			if (crankInvert >= 0 && crankInvert < kCrankInvert_COUNT)
 				_pd_crank_invert = (CrankInvertMode)crankInvert;
+		int fpsPos = 0;
+		if (Api->file->read(File, &fpsPos, sizeof(fpsPos)) == sizeof(fpsPos))
+			if (fpsPos >= 0 && fpsPos < kFPS_COUNT)
+				_pd_menu_fps_position = (FPSPosition)fpsPos;
+		int fpsUnlocked = 0;
+		if (Api->file->read(File, &fpsUnlocked, sizeof(fpsUnlocked)) == sizeof(fpsUnlocked))
+		{
+			_pd_menu_fps_unlocked = (fpsUnlocked != 0);
+			// Set DesiredDelta to 0 now — the intercept in setRefreshRate will keep it 0
+			// even when the game calls setRefreshRate in kEventInit
+			if (_pd_menu_fps_unlocked)
+				_pd_api_display_DesiredDelta = 0.0;
+		}
 		Api->file->close(File);
 	}
 	else
@@ -479,6 +496,45 @@ void runMainLoop()
 		pd_gfx_in_update_callback = true;
 		_pd_api_sys_DoUpdate(_pd_api_sys_DoUpdateuserdata);
 		pd_gfx_in_update_callback = false;
+		// Draw FPS overlay at selected position
+		if (_pd_menu_fps_position != kFPSOff)
+		{
+			// Positions in visible LCD space (account for display scale)
+			const int scale = (int)_pd_api_display_Scale;
+			const int visW = LCD_COLUMNS / scale;
+			const int visH = LCD_ROWS    / scale;
+			const int fpsW2 = 24, fpsW4 = _pd_menu_fps_unlocked ? 36 : 18, fpsH = 14;
+			int fx = 0, fy = 0;
+			switch (_pd_menu_fps_position)
+			{
+				case kFPSTopLeft:
+					fx = 0;
+					fy = 0;
+					break;
+				case kFPSTopMiddle:
+					fx = (visW - fpsW2) / 2;
+					fy = 0;
+					break;
+				case kFPSTopRight:
+					fx = visW - fpsW4;
+					fy = 0;
+					break;
+				case kFPSBottomLeft:
+					fx = 0;
+					fy = visH - fpsH;
+					break;
+				case kFPSBottomMiddle:
+					fx = (visW - fpsW2) / 2;
+					fy = visH - fpsH;
+					break;
+				case kFPSBottomRight:
+					fx = visW - fpsW4;
+					fy = visH - fpsH;
+					break;
+				default: break;
+			}
+			_pd_api_gfx_drawFPS(fx, fy);
+		}
     }
 	
 

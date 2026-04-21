@@ -38,13 +38,13 @@ static LCDBitmap*   _menuBitmap    = NULL;
 // menuId: 0=main,1=settings,2=input,3=accel,4=crank,5=source
 #define MENU_STACK_SIZE 8
 static int  _menuStack[MENU_STACK_SIZE] = {0}; // menuId stack
-static int  _menuSel[6]  = {0}; // selection indexed by menu ID (0..5)
+static int  _menuSel[7]  = {0}; // selection indexed by menu ID (0..6)
 static int  _menuDepth = 0;     // current stack depth
 #define CURRENT_MENU (_menuStack[_menuDepth])
 
-// Settings depth 1: Input, Source
-#define SETTINGS_ITEM_COUNT 2
-static const char* _settingsLabels[SETTINGS_ITEM_COUNT] = { "Input", "Assets Source" };
+// Settings depth 1: Input, Source, FPS
+#define SETTINGS_ITEM_COUNT 3
+static const char* _settingsLabels[SETTINGS_ITEM_COUNT] = { "Input", "Assets Source", "FPS" };
 
 // Input depth 2: Accelerometer, Crank
 #define INPUT_ITEM_COUNT 2
@@ -62,6 +62,17 @@ static const char* _crankLabels[CRANK_ITEM_COUNT] = { "X Axis", "Y Axis", "Joyst
 #define SOURCE_ITEM_COUNT 2
 static const char* _sourceLabels[SOURCE_ITEM_COUNT] = { "Source", "Apply" };
 static int _pendingSourceDir = 0; // preview selection before Apply
+
+// FPS display position (depth 6)
+FPSPosition _pd_menu_fps_position = kFPSOff;
+bool  _pd_menu_fps_unlocked = false;
+float _pd_menu_fps_saved    = 30.0f; // saved rate before unlocking (default 30fps)
+#define FPS_ITEM_COUNT 2
+static const char* _fpsLabels[FPS_ITEM_COUNT] = { "FPS Display", "Unlocked FPS" };
+static const char* _fpsValueLabels[kFPS_COUNT] = {
+    "Off", "Top Left", "Top Middle", "Top Right",
+    "Bot Left", "Bot Middle", "Bot Right"
+};
 
 // Forward-declared here; defined in pd_api_sys.cpp
 extern struct CInput* _pd_api_sys_input;
@@ -105,7 +116,7 @@ void pd_menu_open(void)
     _selectedIndex = 0;
     _menuDepth = 0;
     for (int i=0;i<MENU_STACK_SIZE;i++) _menuStack[i]=0;
-    for (int i=0;i<6;i++) _menuSel[i]=0;
+    for (int i=0;i<7;i++) _menuSel[i]=0;
     _pendingSourceDir = _pd_current_source_dir;
     // Allocate menu bitmap (half screen wide, full height)
     if (_menuBitmap) { Api->graphics->freeBitmap(_menuBitmap); }
@@ -272,31 +283,24 @@ void pd_menu_update(void)
         else if (curMenu == 3) maxSel = ACCEL_ITEM_COUNT - 1;
         else if (curMenu == 4) maxSel = CRANK_ITEM_COUNT - 1;
         else if (curMenu == 5) maxSel = SOURCE_ITEM_COUNT - 1;
+        else if (curMenu == 6) maxSel = FPS_ITEM_COUNT - 1;
 
         if (up   && _menuSel[CURRENT_MENU] > 0)       _menuSel[CURRENT_MENU]--;
         if (down && _menuSel[CURRENT_MENU] < maxSel)  _menuSel[CURRENT_MENU]++;
-
-        // push helper
-        auto push = [&](int menuId) {
-            if (_menuDepth + 1 < MENU_STACK_SIZE) {
-                _menuDepth++;
-                _menuStack[_menuDepth] = menuId;
-                _menuSel[CURRENT_MENU] = 0;
-            }
-        };
 
         if (a || left || right)
         {
             int sel = _menuSel[CURRENT_MENU];
             if (curMenu == 1) // Settings: Input or Source
             {
-                if (sel == 0)      push(2); // Input
-                else if (sel == 1) { push(5); _pendingSourceDir = _pd_current_source_dir; }
+                if (sel == 0)      do { _menuSel[2] = 0; if (_menuDepth + 1 < MENU_STACK_SIZE) { _menuDepth++; _menuStack[_menuDepth] = 2; } } while(0); // Input
+                else if (sel == 1) { do { _menuSel[5] = 0; if (_menuDepth + 1 < MENU_STACK_SIZE) { _menuDepth++; _menuStack[_menuDepth] = 5; } } while(0); _pendingSourceDir = _pd_current_source_dir; }
+                else if (sel == 2) { do { _menuSel[6] = 0; if (_menuDepth + 1 < MENU_STACK_SIZE) { _menuDepth++; _menuStack[_menuDepth] = 6; } } while(0); } // FPS
             }
             else if (curMenu == 2) // Input: Accelerometer or Crank
             {
-                if (sel == 0)      push(3); // Accelerometer
-                else if (sel == 1) push(4); // Crank
+                if (sel == 0)      do { _menuSel[3] = 0; if (_menuDepth + 1 < MENU_STACK_SIZE) { _menuDepth++; _menuStack[_menuDepth] = 3; } } while(0); // Accelerometer
+                else if (sel == 1) do { _menuSel[4] = 0; if (_menuDepth + 1 < MENU_STACK_SIZE) { _menuDepth++; _menuStack[_menuDepth] = 4; } } while(0); // Crank
             }
             else if (curMenu == 3) // Accelerometer: X Axis, Y Axis, Joystick
             {
@@ -313,6 +317,29 @@ void pd_menu_update(void)
                 else if (sel == 2 && _pd_api_sys_input)
                     _pd_api_sys_input->CrankUseRightStick = !_pd_api_sys_input->CrankUseRightStick;
                 _pd_save_source_dir();
+            }
+            else if (curMenu == 6) // FPS: display position or unlocked toggle
+            {
+                int sel = _menuSel[6];
+                if (sel == 0)
+                {
+                    if (right || a)
+                        _pd_menu_fps_position = (FPSPosition)(((int)_pd_menu_fps_position + 1) % kFPS_COUNT);
+                    else if (left)
+                        _pd_menu_fps_position = (FPSPosition)(((int)_pd_menu_fps_position - 1 + kFPS_COUNT) % kFPS_COUNT);
+                    _pd_save_source_dir();
+                }
+                else if (sel == 1)
+                {
+                    _pd_menu_fps_unlocked = !_pd_menu_fps_unlocked;
+                    _pd_display_internal_call = true;
+                    if (_pd_menu_fps_unlocked)
+                        Api->display->setRefreshRate(0);
+                    else
+                        Api->display->setRefreshRate(_pd_menu_fps_saved);
+                    _pd_display_internal_call = false;
+                    _pd_save_source_dir();
+                }
             }
             else if (curMenu == 5) // Source: cycle or apply
             {
@@ -392,9 +419,9 @@ void pd_menu_update(void)
         if (_selectedIndex == settingsIdx)
         {
             // Open settings submenu
+            _menuSel[1] = 0;
             _menuDepth++;
             _menuStack[_menuDepth] = 1; // Settings
-            _menuSel[CURRENT_MENU] = 0;
             return;
         }
         PDMenuItem* item = nthActiveItem(_selectedIndex);
@@ -481,7 +508,8 @@ void pd_menu_render(void)
         CURRENT_MENU == 1 ? "SETTINGS" :
         CURRENT_MENU == 2 ? "INPUT" :
         CURRENT_MENU == 3 ? "ACCELEROMETER" :
-        CURRENT_MENU == 4 ? "CRANK" : "ASSETS SOURCE";
+        CURRENT_MENU == 4 ? "CRANK" :
+        CURRENT_MENU == 5 ? "ASSETS SOURCE" : "FPS";
     Api->graphics->drawText(title, strlen(title), kASCIIEncoding, panelX + 8, panelY + 4);
 
     // Separator line under title
@@ -579,6 +607,11 @@ void pd_menu_render(void)
             drawItem(i, i == _menuSel[4], _crankLabels[i], vals[i]);
     }
 
+    else if (CURRENT_MENU == 6)
+    {
+        drawItem(0, _menuSel[6] == 0, _fpsLabels[0], _fpsValueLabels[_pd_menu_fps_position]);
+        drawItem(1, _menuSel[6] == 1, _fpsLabels[1], _pd_menu_fps_unlocked ? "Yes" : "No");
+    }
     else if (CURRENT_MENU == 5)
     {
         // Source: show pending source as N/Total, Apply button

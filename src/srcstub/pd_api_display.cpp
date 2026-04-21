@@ -14,6 +14,7 @@ int _pd_api_display_Inverted = 0;
 double _pd_api_display_CurrentFps = 0.0;
 double _pd_api_display_AvgFps = 0.0;
 double _pd_api_display_LastFPS = 0.0;
+bool _pd_display_internal_call = false;
 
 int pd_api_display_getWidth(void)
 {
@@ -30,6 +31,16 @@ void pd_api_display_setRefreshRate(float rate)
     float tmp = rate;
     if(tmp > 50.0f)
         tmp = 50.0f;
+    // Save rate only when called by game code, not our own toggle calls
+    if (!_pd_display_internal_call)
+        _pd_menu_fps_saved = tmp;
+    // If FPS is unlocked, ignore the game's rate and keep running uncapped
+    if (_pd_menu_fps_unlocked)
+    {
+        _pd_api_display_Fps = 0.0f;
+        _pd_api_display_DesiredDelta = 0.0;
+        return;
+    }
     _pd_api_display_Fps = tmp;
     if (tmp > 0)
         _pd_api_display_DesiredDelta = 1000.0 / (double)_pd_api_display_Fps;
