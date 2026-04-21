@@ -1268,6 +1268,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
     return result;
 }
 
+#if SDL_IMAGE_VERSION_ATLEAST(2,6,0)
 // Load a multi-frame GIF into an LCDBitmapTable using IMG_LoadAnimation.
 // Each frame becomes one entry in the table. Returns NULL if the file doesn't
 // exist or isn't a multi-frame GIF (single-frame GIFs are handled by the
@@ -1358,6 +1359,8 @@ static LCDBitmapTable* _pd_api_gfx_loadGifTable(const char* gifpath, const char*
     return result;
 }
 
+#endif
+
 LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr)
 {
     // Strip .pdt extension — Playdate compiled image table format
@@ -1388,9 +1391,10 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
 	{
         snprintf(fullpath, MAXPATH, "./%s/%s", srcDir, path);
 	}
-	// Try multi-frame GIF: if path already ends in .gif try it directly,
-	// otherwise append .gif. Covers both explicit "anim.gif" and extensionless "anim".
 	LCDBitmapTable* result = NULL;
+#if SDL_IMAGE_VERSION_ATLEAST(2,6,0)
+	// Try multi-frame GIF: if path already ends in .gif try it directly,
+	// otherwise append .gif. Covers both explicit "anim.gif" and extensionless "anim".	
 	{
 		auto tryGif = [&](const char* base) -> LCDBitmapTable* {
 			size_t blen = strlen(base);
@@ -1405,6 +1409,7 @@ LCDBitmapTable* pd_api_gfx_loadBitmapTable(const char* path, const char** outerr
 		if (!result)
 			result = tryGif(path);
 	}
+#endif
 	if (!result)
 		result = _pd_api_gfx_do_loadBitmapTable(fullpath, outerr);
 	if(!result)
