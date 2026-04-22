@@ -15,6 +15,11 @@
 #include <emscripten.h>
 #endif
 
+typedef struct {
+    char *name;
+    bool is_dir;
+} FileEntry;
+
 char _pd_api_file_save_path_cache[MAXPATH] = {0};
 
 char * _pd_api_file_save_path()
@@ -170,7 +175,46 @@ int	pd_api_file_stat(const char* path, FileStat* stats)
 }
 
 
-int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, void* userdata), void* userdata, int showhidden)
+// Comparison function for qsort (directories first, then files, case-insensitive)
+int compare_fat_entries(const void *a, const void *b)
+{
+    const FileEntry *fa = (const FileEntry *)a;
+    const FileEntry *fb = (const FileEntry *)b;
+
+    // directories first
+    if (fa->is_dir != fb->is_dir)
+    {
+        return fb->is_dir - fa->is_dir;
+    }
+
+    // case-insensitive comparison
+    return strcasecmp(fa->name, fb->name);
+}
+
+// Helper: add entry if not duplicate
+void add_entry(FileEntry **entries, int *listcount, int *listsize, const char *fname, bool is_dir)
+{
+    int i;
+    for (i = 0; i < *listcount; i++)
+    {
+        if (strcasecmp(fname, (*entries)[i].name) == 0)
+        {
+            return;
+        }
+    }
+
+    if (*listcount >= *listsize)
+    {
+        *listsize += ARRAY_LIST_INCSIZES;
+        *entries = (FileEntry *) realloc(*entries, (*listsize) * sizeof(FileEntry));
+    }
+
+    (*entries)[*listcount].name = strdup(fname);
+    (*entries)[*listcount].is_dir = is_dir;
+    (*listcount)++;
+}
+
+int pd_api_file_listfiles(const char* path, void (*callback)(const char* path, void* userdata), void* userdata, int showhidden)
 {
     char filename[MAXPATH];
     char filename2[(2*MAXPATH)+1];
@@ -179,87 +223,93 @@ int	pd_api_file_listfiles(const char* path, void (*callback)(const char* path, v
     struct dirent *entry;
     struct stat lstats;
 
-    char **filenamelist = (char **) malloc(listsize * sizeof (*filenamelist));
+    FileEntry *entries = (FileEntry *) malloc(listsize * sizeof(FileEntry));
 
-    //saved data folder
-	sprintf(filename, "%s/%s",_pd_api_file_save_path(), path);
+    // === Read Saved Data Folder ===
+    sprintf(filename, "%s/%s", _pd_api_file_save_path(), path);
     DIR *dir = opendir(filename);
-    if (dir != NULL) 
+    if (dir != NULL)
     {
-        while ((entry = readdir(dir)) != NULL) 
+        while ((entry = readdir(dir)) != NULL)
         {
-            if((strcmp(entry->d_name, ".") == 0) ||
-               (strcmp(entry->d_name, "..") == 0))
-                continue;
+            const char* name = entry->d_name;
 
-            sprintf(filename2, "%s/%s", filename, entry->d_name);           
-            if(stat(filename2, &lstats) == 0)
+            // Skip '.' and '..'
+            if ((strcmp(name, ".") == 0) || (strcmp(name, "..") == 0))
             {
-                if(S_ISDIR(lstats.st_mode))
-                    sprintf(filename2, "%s/", entry->d_name);
-                else
-                    sprintf(filename2, "%s", entry->d_name);
-                callback(filename2, userdata);
-                //keep found values in in a list so we won't send duplicate names
-                if (listcount >= listsize)
-                {
-                    listsize += ARRAY_LIST_INCSIZES;
-                    filenamelist = (char **) realloc(filenamelist, listsize * sizeof(*filenamelist));
-                }
+                continue;
+            }
 
-                filenamelist[listcount] = (char *) malloc(261 * sizeof(char));
-                strcpy(filenamelist[listcount++], filename2);
+            // Hidden file check
+            if (!showhidden && name[0] == '.')
+            {
+                continue;
+            }
+
+            sprintf(filename2, "%s/%s", filename, name);
+            if (stat(filename2, &lstats) == 0)
+            {
+                bool is_dir = S_ISDIR(lstats.st_mode);
+                char tempname[MAXPATH];
+                sprintf(tempname, "%s%s", name, is_dir ? "/" : "");
+                add_entry(&entries, &listcount, &listsize, tempname, is_dir);
             }
         }
         closedir(dir);
     }
 
-	//current folder
-	sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
-	dir = opendir(filename);
-	if (dir == NULL) 
-	{
-    	//current folder
-    	sprintf(filename, "./%s", path);
-		dir = opendir(filename);
-	}
-    if (dir != NULL) 
+    // === Read Current Folder ===
+    sprintf(filename, "./%s/%s", _pd_api_get_current_source_dir(), path);
+    dir = opendir(filename);
+    if (!dir)
     {
-        while ((entry = readdir(dir)) != NULL) 
-        {
-            if((strcmp(entry->d_name, ".") == 0) ||
-               (strcmp(entry->d_name, "..") == 0))
-                continue;
-            sprintf(filename2, "%s/%s", filename, entry->d_name);           
-            if(stat(filename2, &lstats) == 0)
-            {
-                if(S_ISDIR(lstats.st_mode))
-                    sprintf(filename2, "%s/", entry->d_name);
-                else
-                    sprintf(filename2, "%s", entry->d_name);
-                bool bfound = false;
-                for (int i = 0; i < listcount; i++)
-                {
-                    bfound = strcmp(filename2, filenamelist[i]) == 0;
-                    if(bfound)
-                    {
-                        break;
-                    }
-                }
+        sprintf(filename, "./%s", path);
+        dir = opendir(filename);
+    }
 
-                if(!bfound)
-                {
-                    callback(filename2, userdata);
-                }
+    if (dir != NULL)
+    {
+        while ((entry = readdir(dir)) != NULL)
+        {
+            const char* name = entry->d_name;
+
+            // Skip '.' and '..'
+            if ((strcmp(name, ".") == 0) || (strcmp(name, "..") == 0))
+            {
+                continue;
+            }
+
+            // Hidden file check
+            if (!showhidden && name[0] == '.')
+            {
+                continue;
+            }
+
+            sprintf(filename2, "%s/%s", filename, name);
+            if (stat(filename2, &lstats) == 0)
+            {
+                bool is_dir = S_ISDIR(lstats.st_mode);
+                char tempname[MAXPATH];
+                sprintf(tempname, "%s%s", name, is_dir ? "/" : "");
+                add_entry(&entries, &listcount, &listsize, tempname, is_dir);
             }
         }
         closedir(dir);
     }
-    for (int i = 0; i < listcount; i++)
+
+    // === Sort FAT-like: directories first, then files, case-insensitive ===
+    qsort(entries, listcount, sizeof(FileEntry), compare_fat_entries);
+
+    // === Callback in order ===
+    int i;
+    for (i = 0; i < listcount; i++)
     {
-        free(filenamelist[i]);
+        callback(entries[i].name, userdata);
+        free(entries[i].name);
     }
-    free(filenamelist);
+
+    free(entries);
+
     return 0;
 }
 
