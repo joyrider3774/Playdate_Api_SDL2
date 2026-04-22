@@ -24,6 +24,7 @@
 
 
 const char loaderror[] = "Failed loading!";
+const char loaderrorConvertFailed[] = "Failed loading (convertSurface Failed)";
 static uint8_t pd_gfx_framebuffer[LCD_ROWSIZE * LCD_ROWS];
 static uint8_t pd_gfx_display_framebuffer[LCD_ROWSIZE * LCD_ROWS]; // last completed frame
 static bool pd_gfx_framebuffer_valid = false;
@@ -1044,8 +1045,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 	if(outerr)
     	*outerr = loaderror;
     LCDBitmapTable* result = NULL;
-    char dir_name[255];
-    char prefix[255];
+    char dir_name[255] = {0};
+    char prefix[255] = {0};
     const char *partialPath = strrchr(path, '/');
 
     if(partialPath)
@@ -1064,7 +1065,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
     strcat(prefix, "-table-");
 
     
-    DIR *dir = opendir(dir_name);
+    DIR *dir = opendir(dir_name[0] ? dir_name : ".");
     if (dir == NULL) {
         printfDebug(DebugInfo, "error opening dir \"%s\"!", dir_name);
         return NULL;
@@ -1083,6 +1084,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
         }
     }
     closedir(dir);
+
     if (fullpath)
     {
         char *tmpPath =  (char *) malloc((strlen(fullpath)+1) * sizeof(char));
@@ -1132,9 +1134,9 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
                     h = num;
                 }
             }
-			
+
 			//format name-table-X (seems we need to load next few files then that exists with incrementing x)
-			if ((w == 1) && (h == 0))
+			if ((w >= 1) && (h == 0))
 			{
 				
 				char* ext2 = strrchr(fullpath, '.');
@@ -1148,7 +1150,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 					int counter = 1;
 					sprintf(fullpath2, "%s%d%s", rootfilename, counter, ext2);
 					SDL_Surface* Img = NULL;
-					SDL_Surface* Tmp = IMG_Load(fullpath2);
+					SDL_Surface* Tmp = NULL;
+					Tmp = IMG_Load(fullpath2);
 					if(Tmp)
 					{
 						result = pd_api_gfx_Create_LCDBitmapTable();
@@ -1160,11 +1163,18 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 							result->across = (int)Tmp->w / w;
 							if(outerr)
 								*outerr = NULL;
-								
+
 							while(Tmp)
 							{
 								Img = SDL_ConvertSurfaceFormat(Tmp, pd_api_gfx_PIXELFORMAT, 0);
 								SDL_FreeSurface(Tmp);
+								if (!Img)
+								{ 
+									pd_api_gfx_freeBitmapTable(result);
+									if(outerr)
+										*outerr = loaderrorConvertFailed;
+									return NULL;
+								}
 								bool opaque = false;
 								if (_pd_current_source_dir == 0)
 									opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
@@ -1193,8 +1203,8 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 
 								counter++;
 								sprintf(fullpath2, "%s%d%s", rootfilename, counter, ext2);
-								Tmp = IMG_Load(fullpath2);							
-							}	
+								Tmp = IMG_Load(fullpath2);
+							}
 						}
 					}
 					free(rootfilename);
@@ -1258,6 +1268,12 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 						}
 					}
 					SDL_FreeSurface(Img);
+				}
+				else
+				{
+					if(outerr)
+						*outerr = loaderrorConvertFailed;
+					return NULL;	
 				}
 		
 			}
