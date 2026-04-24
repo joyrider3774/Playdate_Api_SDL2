@@ -2715,6 +2715,54 @@ void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, 
 
 
 
+// Draws line end caps on an SDL_Surface according to the current line cap style.
+// x1,y1,x2,y2 must already have draw offsets applied (or be in bitmap-local space).
+static void _pd_api_gfx_drawLineCaps(SDL_Surface *dst, int x1, int y1, int x2, int y2,
+                                      int linewidth, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
+{
+    LCDLineCapStyle capStyle = _pd_api_gfx_CurrentGfxContext->linecapstyle;
+    if (capStyle == kLineCapStyleButt)
+        return;
+
+    // half matches draw_wide_line's perpendicular half-width (half_b):
+    //   half_b = linewidth - floor(linewidth/2) = linewidth - linewidth/2 (integer)
+    // For even linewidths: lw/2. For odd: (lw+1)/2.
+    int half = linewidth - (linewidth / 2);
+
+    if (capStyle == kLineCapStyleRound)
+    {
+        filledCircleRGBASurface(dst, (Sint16)x1, (Sint16)y1, (Sint16)half, r, g, b, a);
+        filledCircleRGBASurface(dst, (Sint16)x2, (Sint16)y2, (Sint16)half, r, g, b, a);
+    }
+    else if (capStyle == kLineCapStyleSquare)
+    {
+        // Redraw the whole line extended by `half` pixels past each endpoint
+        // along the line direction. A single call to drawLineRGBASurfacePlaydate
+        // with the extended endpoints works correctly for all angles (horizontal,
+        // vertical, diagonal, skewed) without any stub-length or truncation issues.
+        // The body pixels are simply overdrawn with the same colour.
+        float dx = (float)(x2 - x1);
+        float dy = (float)(y2 - y1);
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len > 0.0f)
+        {
+            float ux = dx / len;
+            float uy = dy / len;
+            int ex1 = x1 - (int)roundf(ux * (float)half);
+            int ey1 = y1 - (int)roundf(uy * (float)half);
+            int ex2 = x2 + (int)roundf(ux * (float)half);
+            int ey2 = y2 + (int)roundf(uy * (float)half);
+            drawLineRGBASurfacePlaydate(dst, ex1, ey1, ex2, ey2, linewidth, r, g, b, a);
+        }
+        // else
+        // {
+        //     // zero-length line: fill a square of linewidth centred on the point
+        //     SDL_Rect cap = { x1 - half, y1 - half, linewidth, linewidth };
+        //     SDL_FillRect(dst, &cap, SDL_MapRGBA(dst->format, r, g, b, a));
+        // }
+    }
+}
+
 void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor color)
 {
     if (_pd_api_gfx_beginLayerDraw())
@@ -2814,7 +2862,8 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 #ifdef MASKPRIMITIVES			
 		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
 #endif		
-		drawLineRGBASurfacePlaydate(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);		
+		drawLineRGBASurfacePlaydate(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+		_pd_api_gfx_drawLineCaps(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
 		Api->graphics->drawBitmap(bitmap,minx -halfdrawLineWidth,  miny -halfdrawLineWidth, kBitmapUnflipped);
@@ -2830,22 +2879,29 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 		{
 			case kColorBlack:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
+				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
 				break;
 			case kColorWhite:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 				break;
 			case kColorXOR:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
+				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 				break;
 			case kColorClear:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
+				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 				maskColor = pd_api_gfx_color_black;
 				break;
 			default:
 				break;
 		}
 		if (mask && color != kColorXOR)
+		{
 			drawLineRGBASurfacePlaydate(mask->Tex, x1, y1, x2, y2, linewidth, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
+			_pd_api_gfx_drawLineCaps(mask->Tex, x1, y1, x2, y2, linewidth, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
+		}
 	}
 
     if (color == kColorXOR)
