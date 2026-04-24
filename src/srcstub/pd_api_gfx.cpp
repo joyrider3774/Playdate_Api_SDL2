@@ -2713,55 +2713,7 @@ void pd_api_gfx_drawScaledBitmap(LCDBitmap* bitmap, int x, int y, float xscale, 
     _pd_api_gfx_drawBitmapAll(bitmap, x, y, xscale, yscale, false, 0, 0, 0, kBitmapUnflipped, false, false);
 }
 
-
-
-// Draws line end caps on an SDL_Surface according to the current line cap style.
-// x1,y1,x2,y2 must already have draw offsets applied (or be in bitmap-local space).
-static void _pd_api_gfx_drawLineCaps(SDL_Surface *dst, int x1, int y1, int x2, int y2,
-                                      int linewidth, Uint8 r, Uint8 g, Uint8 b, Uint8 a)
-{
-    LCDLineCapStyle capStyle = _pd_api_gfx_CurrentGfxContext->linecapstyle;
-    if (capStyle == kLineCapStyleButt)
-        return;
-
-    // half matches draw_wide_line's perpendicular half-width (half_b):
-    //   half_b = linewidth - floor(linewidth/2) = linewidth - linewidth/2 (integer)
-    // For even linewidths: lw/2. For odd: (lw+1)/2.
-    int half = linewidth - (linewidth / 2);
-
-    if (capStyle == kLineCapStyleRound)
-    {
-        filledCircleRGBASurface(dst, (Sint16)x1, (Sint16)y1, (Sint16)half, r, g, b, a);
-        filledCircleRGBASurface(dst, (Sint16)x2, (Sint16)y2, (Sint16)half, r, g, b, a);
-    }
-    else if (capStyle == kLineCapStyleSquare)
-    {
-        // Redraw the whole line extended by `half` pixels past each endpoint
-        // along the line direction. A single call to drawLineRGBASurfacePlaydate
-        // with the extended endpoints works correctly for all angles (horizontal,
-        // vertical, diagonal, skewed) without any stub-length or truncation issues.
-        // The body pixels are simply overdrawn with the same colour.
-        float dx = (float)(x2 - x1);
-        float dy = (float)(y2 - y1);
-        float len = sqrtf(dx * dx + dy * dy);
-        if (len > 0.0f)
-        {
-            float ux = dx / len;
-            float uy = dy / len;
-            int ex1 = x1 - (int)roundf(ux * (float)half);
-            int ey1 = y1 - (int)roundf(uy * (float)half);
-            int ex2 = x2 + (int)roundf(ux * (float)half);
-            int ey2 = y2 + (int)roundf(uy * (float)half);
-            drawLineRGBASurfacePlaydate(dst, ex1, ey1, ex2, ey2, linewidth, r, g, b, a);
-        }
-        // else
-        // {
-        //     // zero-length line: fill a square of linewidth centred on the point
-        //     SDL_Rect cap = { x1 - half, y1 - half, linewidth, linewidth };
-        //     SDL_FillRect(dst, &cap, SDL_MapRGBA(dst->format, r, g, b, a));
-        // }
-    }
-}
+void pd_api_gfx_fillEllipse(int x, int y, int width, int height, float startAngle, float endAngle, LCDColor color);
 
 void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor color)
 {
@@ -2770,58 +2722,85 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
         pd_api_gfx_drawLine(x1, y1, x2, y2, linewidth, color);
         _pd_api_gfx_endLayerDraw();
     }
+	// Save original screen coordinates for drawcaps for circles - x1/y1/x2/y2 get modified below
+	const int ox1 = x1, oy1 = y1, ox2 = x2, oy2 = y2, olinewidth = linewidth;
+
 	if(linewidth < 1)
 		linewidth = 1;
+	
+	// half matches draw_wide_line's perpendicular half-width (half_b):
+    // half_b = linewidth - floor(linewidth/2) = linewidth - linewidth/2 (integer)
+    // For even linewidths: lw/2. For odd: (lw+1)/2.
+    int half = linewidth - floor(linewidth/2.0);
+	
 
-
+	LCDLineCapStyle capStyle = _pd_api_gfx_CurrentGfxContext->linecapstyle;
+	// kLineCapStyleSquare will just draw a longer line when calculated and called from _pd_api_gfx_drawLineCaps
+	if(capStyle == kLineCapStyleSquare)
+	{
+	    // extended by `half` pixels past each endpoint along the line direction. 
+        float dx = (float)(x2 - x1);
+        float dy = (float)(y2 - y1);
+        float len = sqrtf(dx * dx + dy * dy);
+        if (len > 0.0f)
+        {
+            float ux = dx / len;
+            float uy = dy / len;
+            x1 = x1 - (int)roundf(ux * (float)half);
+            y1 = y1 - (int)roundf(uy * (float)half);
+            x2 = x2 + (int)roundf(ux * (float)half);
+            y2 = y2 + (int)roundf(uy * (float)half);
+        }
+	}
+	
 	LCDBitmap *pattern = NULL;
 	int minx;
-    int maxx;
-    int miny;
-    int maxy;
+	int maxx;
+	int miny;
+	int maxy;
 	int width;
-    int height;
+	int height;
 	int drawLineWidth = make_even(linewidth+1);
 	int halfdrawLineWidth = drawLineWidth >> 1;
 	switch (color)
-    {
-        case kColorBlack:
-            break;
-        case kColorWhite:
-            break;
-        case kColorXOR:
-            break;
-        case kColorClear:
-            break;
+	{
+		case kColorBlack:
+			break;
+		case kColorWhite:
+			break;
+		case kColorXOR:
+			break;
+		case kColorClear:
+			break;
 		default:
 			//assume lcd pattern
 			pattern = pd_api_gfx_PatternToBitmap((uint8_t*)color);
 		break;
-    }
+	}
 
-    LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
-    //for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
-    LCDBitmap *bitmap = NULL;
-    if (color == kColorXOR || pattern != NULL)
-    {
-        minx = std::min(x1,x2);
-        maxx = std::max(x1,x2);
-        miny = std::min(y1,y2);
-        maxy = std::max(y1,y2);
+	LCDBitmap *mask = _pd_api_gfx_getDrawTarget()->Mask;
+	//for xor we are abusing the api to draw on a bitmap and then draw that bitmap on the current target using xor mode
+	LCDBitmap *bitmap = NULL;
+	if (color == kColorXOR || pattern != NULL)
+	{
+		minx = std::min(x1,x2);
+		maxx = std::max(x1,x2);
+		miny = std::min(y1,y2);
+		maxy = std::max(y1,y2);
 
-        width = maxx-minx + drawLineWidth;
-        height = maxy-miny + drawLineWidth;
-        
-        x1 = x1 - minx + halfdrawLineWidth;
-        x2 = x2 - (minx) + halfdrawLineWidth;
-        y1 = y1 - (miny) + halfdrawLineWidth;
-        y2 = y2 - (miny) + halfdrawLineWidth; 
+		width = maxx-minx + drawLineWidth;
+		height = maxy-miny + drawLineWidth;
+		
+		x1 = x1 - minx + halfdrawLineWidth;
+		x2 = x2 - (minx) + halfdrawLineWidth;
+		y1 = y1 - (miny) + halfdrawLineWidth;
+		y2 = y2 - (miny) + halfdrawLineWidth; 
 		if(color == kColorXOR)
 		{
-        	bitmap = Api->graphics->newBitmap(width+1, height+1, kColorClear);
-        	Api->graphics->pushContext(bitmap);
+			bitmap = Api->graphics->newBitmap(width+1, height+1, kColorClear);
+			Api->graphics->pushContext(bitmap);
 		}
-    }
+	}
 	else
 	{
 		x1 += _pd_api_gfx_CurrentGfxContext->drawoffsetx;
@@ -2836,7 +2815,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 		int xoffset = minx % 8;
 		int tilesx = (width /  8)+2;
 		int tilesy = (height / 8)+2;
-       	bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
+		bitmap = Api->graphics->newBitmap(width + 1, height +1, kColorClear);
 		bitmap->Mask = pd_api_gfx_newBitmap(bitmap->w, bitmap->h, kColorBlack);	
 		pd_api_gfx_pushDrawOffset();
 		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
@@ -2845,7 +2824,7 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 #ifdef MASKPRIMITIVES        
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
-		 		_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
+				_pd_api_gfx_drawBitmapAll(pattern, (xx*8) -std::abs(xoffset), (yy*8) -std::abs(yoffset), 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped,false,true);
 #else
 		for (int yy = 0; yy < tilesy; yy++)
 			for (int xx = 0; xx < tilesx; xx++)
@@ -2863,7 +2842,6 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 		SDL_FillRect(bitmap->Mask->Tex, NULL, SDL_MapRGBA(bitmap->Mask->Tex->format, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a));
 #endif		
 		drawLineRGBASurfacePlaydate(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-		_pd_api_gfx_drawLineCaps(bitmap->Mask->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 		bitmap->BitmapDirty = true;
 		pd_api_gfx_popDrawOffset();
 		Api->graphics->drawBitmap(bitmap,minx -halfdrawLineWidth,  miny -halfdrawLineWidth, kBitmapUnflipped);
@@ -2873,25 +2851,21 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 	}
 	else
 	{
-    
+	
 		SDL_Color maskColor = pd_api_gfx_color_white;
 		switch (color)
 		{
 			case kColorBlack:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
-				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_black.r, pd_api_gfx_color_black.g, pd_api_gfx_color_black.b, pd_api_gfx_color_black.a);
 				break;
 			case kColorWhite:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 				break;
 			case kColorXOR:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
-				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_white.r, pd_api_gfx_color_white.g, pd_api_gfx_color_white.b, pd_api_gfx_color_white.a);
 				break;
 			case kColorClear:
 				drawLineRGBASurfacePlaydate(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
-				_pd_api_gfx_drawLineCaps(_pd_api_gfx_getDrawTarget()->Tex, x1, y1, x2, y2, linewidth, pd_api_gfx_color_clear.r, pd_api_gfx_color_clear.g, pd_api_gfx_color_clear.b, pd_api_gfx_color_clear.a);
 				maskColor = pd_api_gfx_color_black;
 				break;
 			default:
@@ -2900,21 +2874,26 @@ void pd_api_gfx_drawLine(int x1, int y1, int x2, int y2, int linewidth, LCDColor
 		if (mask && color != kColorXOR)
 		{
 			drawLineRGBASurfacePlaydate(mask->Tex, x1, y1, x2, y2, linewidth, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
-			_pd_api_gfx_drawLineCaps(mask->Tex, x1, y1, x2, y2, linewidth, maskColor.r, maskColor.g, maskColor.b, maskColor.a);
 		}
 	}
 
-    if (color == kColorXOR)
-    {
-        Api->graphics->popContext();
+	if (color == kColorXOR)
+	{
+		Api->graphics->popContext();
 		pd_api_gfx_pushDrawOffset();
-        Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
-        Api->graphics->setDrawMode(kDrawModeXOR);
+		Api->graphics->pushContext(_pd_api_gfx_getDrawTarget());
+		Api->graphics->setDrawMode(kDrawModeXOR);
 		pd_api_gfx_popDrawOffset();
-        _pd_api_gfx_drawBitmapAll(bitmap, minx -halfdrawLineWidth, miny -halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
-        Api->graphics->popContext();
-        Api->graphics->freeBitmap(bitmap);
-    }
+		_pd_api_gfx_drawBitmapAll(bitmap, minx -halfdrawLineWidth, miny -halfdrawLineWidth, 1.0f, 1.0f, false, 0, 0, 0, kBitmapUnflipped, true,true);
+		Api->graphics->popContext();
+		Api->graphics->freeBitmap(bitmap);
+	}
+
+	if (capStyle == kLineCapStyleRound)
+	{
+		pd_api_gfx_fillEllipse(ox1-half, oy1-half, linewidth, linewidth, 0, 360, color);
+		pd_api_gfx_fillEllipse(ox2-half, oy2-half, linewidth, linewidth, 0, 360, color);
+	}
 	_pd_api_gfx_getDrawTarget()->BitmapDirty = true;
 }
 
