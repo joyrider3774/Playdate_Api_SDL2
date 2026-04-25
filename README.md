@@ -109,6 +109,32 @@ in order for this to work correctly you need to make sure that you implemented t
 It works by first calling kEventTerminate and then kEventInit again so you need to make sure that you also reset global variables inside kEventInit.
 you can also provide a colors.ini file to determine the colors used for black and white. You need to make sure that the clear color lies between black and white. For an example on this i suggest to check some of my playdate game repo's.
 
+## Simple palette swaps using only colors.ini
+Besides creating new assets folders you can also just created "SourceX" folders with a colors.ini for simple palette swaps. Here is an example palette swap for gameboy color graphics.
+The rules are that Black < BlachThreshold < Clear < Whitethreshold < White and the thresholds should be near the clear color.
+`pd_api_gfx_color_force_black_white=1` is what makes graphics be converted to 1 bit graphics setting it 0 will retain original assets like if you want to replace assets with colored assets but still use
+different colors for main api drawing functions
+
+```
+pd_api_gfx_color_clear_r=100
+pd_api_gfx_color_clear_g=110
+pd_api_gfx_color_clear_b=68
+pd_api_gfx_color_white_r=168
+pd_api_gfx_color_white_g=182
+pd_api_gfx_color_white_b=104
+pd_api_gfx_color_black_r=15
+pd_api_gfx_color_black_g=56
+pd_api_gfx_color_black_b=15
+pd_api_gfx_color_whitetreshold_r=102
+pd_api_gfx_color_whitetreshold_g=112
+pd_api_gfx_color_whitetreshold_b=70
+pd_api_gfx_color_blacktreshold_r=98
+pd_api_gfx_color_blacktreshold_g=108
+pd_api_gfx_color_blacktreshold_b=66
+pd_api_gfx_color_force_black_white=1
+
+```
+
 # credits
 - Playdate api headers (contained in PD_API directory) are copyright by panic inc
 - bump.hpp by Polynominal (https://github.com/Polynominal/bump.hpp)
