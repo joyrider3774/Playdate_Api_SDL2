@@ -7,7 +7,7 @@ It's probably done in a very bad way but it does seem to work for my games and o
 ## Implemented
 
 ### Graphics:
-- Bitmap operations — load (no gif), new, free, copy, clear, getBitmapData (converts to 1bpp), rotate, scale, tile, drawBitmap, drawScaledBitmap, drawRotatedBitmap, tileBitmap
+- Bitmap operations — load (gif if sdl2image is new enough), new, free, copy, clear, getBitmapData (converts to 1bpp), rotate, scale, tile, drawBitmap, drawScaledBitmap, drawRotatedBitmap, tileBitmap
 - Primitives — drawLine, fillRect, drawRect, fillTriangle, fillPolygon, drawEllipse, fillEllipse, drawRoundRect, fillRoundRect (all via drawBitmapAll)
 - Stencil — applied in drawBitmapAll (covers all primitives and bitmap drawing, but not fnt drawText)
 - getFrame / getDisplayFrame — (raw 1bpp frame buffer access implemented) 
@@ -22,7 +22,8 @@ It's probably done in a very bad way but it does seem to work for my games and o
 
 ### System: 
 - buttons
-- crank (simulated by 2 buttons rotating 5 degrees in a certain directions)
+- crank (simulated by 2 buttons rotating 5 degrees in a certain directions or controlled by a joystick)
+- setPeripheralsEnabled & Accelerometer (controlled by a joystick)
 - timer (elapsed/epoch/ms)
 - memory (realloc/formatString)
 - menu items (Fake menu system implemented with standard/checkmark/options/setMenuImage)
@@ -70,10 +71,9 @@ It's probably done in a very bad way but it does seem to work for my games and o
 
 ### System:
 - getLanguage — hardcoded English, ignores system locale
-- getAccelerometer
 - getBatteryPercentage / getBatteryVoltage — hardcoded 100% / 5.0V
 - getFlipped, getReduceFlashing — always 0
-- setPeripheralsEnabled, setAutoLockDisabled, clearICache — empty no-ops
+- setAutoLockDisabled, clearICache — empty no-ops
 - restartGame, getLaunchArgs, sendMirrorData, setSerialMessageCallback — empty/hardcoded
 
 ### Sound:
@@ -88,8 +88,8 @@ It's probably done in a very bad way but it does seem to work for my games and o
 - Network/HTTP — not present
 
 # how to
-1. place your playdate game's unaltered source code files inside src/srcgame
-2. place your playdate game's Source directory (containing assets) inside Source + make sure it contains a pdxinfo file with a bundleID set (it's used to determine unique save folder)
+1. place your playdate game's unaltered source code files inside src/srcgame (so the contents of your "src" folder)
+2. place your playdate game's Source directory (containing assets) inside Source (so the contents of your "Source" folder) + make sure it contains a pdxinfo file with a bundleID set (it's used to determine unique save folder)
 3. OPTIONALLY (fnt loading is now supported, ttf no longer required): Convert fonts (fnt+png) files to TTF files:
    by using [bitsnpicas](https://github.com/kreativekorp/bitsnpicas) to export to BDF file, 
    then open BDF file in [fontforge studio](https://fontforge.org/en-US/) and export to ttf. 
@@ -115,7 +115,11 @@ you can also provide a colors.ini file to determine the colors used for black an
 - nlohmann json (https://github.com/nlohmann/json)
 - menu system / code is based on cranked emulator implementation (https://github.com/TheLogicMaster/Cranked)
 
+# Showcase video
+[![Playdate SDL2 Api Showcase Video](http://img.youtube.com/vi/lm071qvq98k/0.jpg)](http://www.youtube.com/watch?v=0lm071qvq98k "Playdate SDL2 Api Showcase Video")
+
 # example games
 - collection of playdate games, including mine compiled with this api for html: https://joyrider3774.github.io/playdate_games_html/
 - Poker Poker Magic: https://rapcal.itch.io/poker-poker-magic
+
 
