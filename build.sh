@@ -9,6 +9,10 @@ MAKE_ARGS="${@}"  # pass any extra make args e.g. DEBUG=1 or -j4
 # ============================================================
 # Per-game flag lists — add the srcgame dir name to enable
 # ============================================================
+NOMASKPRIMITIVES_GAMES=(
+	"srcgame_racer"
+)
+
 WALLCLOCK_GAMES=(
     "srcgame_demo-pd-cranktheworld"
     "srcgame_FactoryFarming"
@@ -23,16 +27,19 @@ HWRENDER_GAMES=(
 # ============================================================
 
 SRCGAME_DIRS=(
+	"srcgame_racer"
+    "srcgame_tests"
+    "srcgame_YouCannotGoBack"
+    "srcgame_cascada"
+    "srcgame_FactoryFarming"  
+    "srcgame_spaceshipment"
     "srcgame_fractal-clock"
     "srcgame_slime_Ascend"
     "srcgame_falling-sand"
     "srcgame_sokoban"
     "srcgame_demo-pd-cranktheworld"
     "srcgame_kuroobi"
-    "srcgame_melice-starterkit"    
-    "srcgame_cascada"
-    "srcgame_FactoryFarming"
-    "srcgame_YouCannotGoBack"  
+    "srcgame_melice-starterkit"
     "srcgame_peanutgb"
     "srcgame_waternet"
     "srcgame_blips"  
@@ -46,8 +53,6 @@ SRCGAME_DIRS=(
     "srcgame_bunnymark"
     "srcgame_bunnymark_original"
     "srcgame_PastaWipeoutPD"
-    "srcgame_racer"
-    "srcgame_tests"
     "srcgame_pdxlander"
     "srcgame_sphere"  
     "srcgame_tetraminosdate"
@@ -103,7 +108,6 @@ SRCGAME_DIRS=(
     "srcgame_retrotime"
     "srcgame_rubido"
     "srcgame_simplebreakout"
-    "srcgame_spaceshipment"
     "srcgame_sprite"
     "srcgame_sprite_collisions"
     "srcgame_squirel"
@@ -179,6 +183,11 @@ for SRCGAME in "${SRCGAME_DIRS[@]}"; do
         EXTRA_MAKE="FORCE_ACCELERATED_RENDER=1"
         echo "  [flag] hardware accelerated render enabled"
     fi
+	
+	if in_list "$SRCGAME" "${NOMASKPRIMITIVES_GAMES[@]}"; then
+		EXTRA_MAKE="${EXTRA_MAKE} MASKPRIMITIVES=0"
+		echo "  [flag] no mask primitives enabled"
+	fi
 
     ALL_C_DIRS="$(find_dirs_with "${GAME_ROOT}" "*.c" "*.h") $(find_dirs_with "${STUB_ROOT}" "*.c" "*.h")"
     ALL_CPP_DIRS="$(find_dirs_with "${GAME_ROOT}" "*.cpp" "*.hpp") $(find_dirs_with "${STUB_ROOT}" "*.cpp" "*.hpp")"
