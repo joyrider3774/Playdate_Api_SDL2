@@ -46,9 +46,10 @@ bool stubDoQuit;
 SDL_PixelFormatEnum pd_api_gfx_PIXELFORMAT = SDL_PIXELFORMAT_ARGB8888;
 SDL_Texture* _pd_api_TexScreen;
 
-const int MAXSOURCEDIRS = 20;
+const int MAXSOURCEDIRS = 21;
 
-const char *_pd_alternate_source_dirs[MAXSOURCEDIRS] = {".", "Source1", "Source2", "Source3", "Source4", "Source5"};
+const char *_pd_alternate_source_dirs[MAXSOURCEDIRS] = {".", "Source1", "Source2", "Source3", "Source4", "Source5", "Source6", "Source7", "Source8",
+	"Source9", "Source10", "Source11", "Source12", "Source13", "Source14", "Source15", "Source16", "Source17", "Source18", "Source19", "Source20"};
 int _pd_current_source_dir = 0;
 bool _pd_do_load_next_source_dir = false;
 
