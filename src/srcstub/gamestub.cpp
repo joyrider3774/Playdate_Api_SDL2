@@ -85,6 +85,12 @@ void _pd_load_source_colors()
 		fscanf(fp, "pd_api_gfx_color_blacktreshold_r=%hhd\n", &pd_api_gfx_color_blacktreshold.r);
 		fscanf(fp, "pd_api_gfx_color_blacktreshold_g=%hhd\n", &pd_api_gfx_color_blacktreshold.g);
 		fscanf(fp, "pd_api_gfx_color_blacktreshold_b=%hhd\n", &pd_api_gfx_color_blacktreshold.b);
+
+		int tmp = -1;
+		pd_gfx_force_black_and_white = false;
+		int r = fscanf(fp, "pd_api_gfx_color_force_black_white=%d\n", &tmp);
+		if(r == 1 && tmp == 1)
+			pd_gfx_force_black_and_white = true;			
 		fclose(fp);
 	}
 }

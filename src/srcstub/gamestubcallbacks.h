@@ -52,6 +52,7 @@ extern void _pd_api_gfx_getDrawOffset(int* dx, int* dy);
 extern bool pd_gfx_in_update_callback; // defined in pd_api_gfx.cpp
 extern void _pd_api_gfx_restoreFramebufferAfterMenu();
 extern void _pd_api_gfx_saveFramebufferForMenu();
+extern bool pd_gfx_force_black_and_white;
 
 //sys
 extern PDCallbackFunction* _pd_api_sys_DoUpdate;

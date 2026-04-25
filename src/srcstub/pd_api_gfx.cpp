@@ -39,6 +39,7 @@ static bool pd_gfx_rows_pushed = false; // true if markUpdatedRows was called th
 // Saved copy of pd_gfx_framebuffer taken just before menu opens.
 static uint8_t pd_gfx_framebuffer_menu_save[LCD_ROWSIZE * LCD_ROWS];
 static bool    pd_gfx_framebuffer_menu_save_valid = false;
+bool pd_gfx_force_black_and_white = false;
 
 struct LCDBitmap;
 
@@ -787,7 +788,7 @@ LCDBitmap* pd_api_gfx_loadBitmap(const char* path, const char** outerr)
 		if (Img2)
 		{
 			bool opaque = false;
-			if (_pd_current_source_dir == 0)
+			if (_pd_current_source_dir == 0 || pd_gfx_force_black_and_white)
 				opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(Img2);
 			else
 				opaque = pd_api_gfx_MakeSurfaceOpaque(Img2);
@@ -1176,7 +1177,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 									return NULL;
 								}
 								bool opaque = false;
-								if (_pd_current_source_dir == 0)
+								if (_pd_current_source_dir == 0 || pd_gfx_force_black_and_white)
 									opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
 								else
 									opaque = pd_api_gfx_MakeSurfaceOpaque(Img);
@@ -1228,7 +1229,7 @@ LCDBitmapTable* _pd_api_gfx_do_loadBitmapTable(const char* path, const char** ou
 					if(result)
 					{
 						bool opaque = false;
-						if (_pd_current_source_dir == 0)
+						if (_pd_current_source_dir == 0 || pd_gfx_force_black_and_white)
 							opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(Img);
 						else
 							opaque = pd_api_gfx_MakeSurfaceOpaque(Img);
@@ -1340,7 +1341,7 @@ static LCDBitmapTable* _pd_api_gfx_loadGifTable(const char* gifpath, const char*
         }
 
         bool opaque = false;
-        if (_pd_current_source_dir == 0)
+        if (_pd_current_source_dir == 0 || pd_gfx_force_black_and_white)
             opaque = pd_api_gfx_MakeSurfaceBlackAndWhite(converted);
         else
             opaque = pd_api_gfx_MakeSurfaceOpaque(converted);
