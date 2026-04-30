@@ -198,14 +198,17 @@ void _pd_load_source_dir()
 
 void _pd_load_next_source_dir()
 {
-	_pd_current_source_dir++;
-	if(_pd_current_source_dir >= MAXSOURCEDIRS)
-		_pd_current_source_dir = 0;
-	
-	_pd_validate_source_dir();
-	printfDebug(DebugInfo, "_pd_current_source_dir = %d\n", _pd_current_source_dir);
-	_pd_save_source_dir();
-	_pd_reset();
+	if(_pd_count_valid_source_dirs() > 1)
+	{
+		_pd_current_source_dir++;
+		if(_pd_current_source_dir >= MAXSOURCEDIRS)
+			_pd_current_source_dir = 0;
+		
+		_pd_validate_source_dir();
+		printfDebug(DebugInfo, "_pd_current_source_dir = %d\n", _pd_current_source_dir);
+		_pd_save_source_dir();
+		_pd_reset();
+	}
 }
 
 
