@@ -142,7 +142,7 @@ pd_api_gfx_color_force_black_white=1
 - menu system / code is based on cranked emulator implementation (https://github.com/TheLogicMaster/Cranked)
 
 # Showcase video
-[![Playdate SDL2 Api Showcase Video](http://img.youtube.com/vi/lm071qvq98k/0.jpg)](http://www.youtube.com/watch?v=0lm071qvq98k "Playdate SDL2 Api Showcase Video")
+[![Playdate SDL2 Api Showcase Video](http://img.youtube.com/vi/lm071qvq98k/0.jpg)](https://www.youtube.com/watch?v=lm071qvq98k "Playdate SDL2 Api Showcase Video")
 
 # example games
 - collection of playdate games, including mine compiled with this api for html: https://joyrider3774.github.io/playdate_games_html/
